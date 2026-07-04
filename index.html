@@ -544,11 +544,36 @@ document.getElementById('stGo').addEventListener('click',async()=>{
       const html=j.html.split('__PHOTO__').join(photo);
       const scr=document.getElementById('screen');scr.innerHTML='';
       const fr=document.createElement('iframe');fr.setAttribute('sandbox','');fr.srcdoc=html;scr.appendChild(fr);
-      msg.textContent='Rough cut rendered. The full production is where the film happens.';
+      if(j.production&&j.orderId){
+        msg.textContent='🎬 Rough cut on screen. The director\'s cut is in production — this screen updates itself (2-6 min).';
+        pollCut(j.orderId,fr,msg);
+      }else{
+        msg.textContent='Rough cut rendered. The full production is where the film happens.';
+      }
     }else{msg.textContent=j.error==='cv_too_short'?'Paste a bit more CV text.':'Something went sideways — try again.';}
   }catch{msg.textContent='Network hiccup — try again.';}
   btn.disabled=false;btn.textContent='Roll camera';
 });
+
+/* ---------- director's cut polling ---------- */
+function pollCut(orderId,fr,msg){
+  let tries=0;
+  const t=setInterval(async()=>{
+    tries++;
+    if(tries>45){clearInterval(t);msg.textContent='Rough cut on screen. The director\'s cut will be emailed when it wraps.';return;}
+    try{
+      const s=await(await fetch('/api/status?id='+orderId)).json();
+      if(s.status==='ready'){
+        clearInterval(t);
+        const c=await(await fetch('/api/cut?id='+orderId)).json();
+        if(c.ok&&c.html){
+          fr.srcdoc=c.html;
+          msg.textContent='🎬 DIRECTOR\'S CUT ARRIVED — built by the production agent, just for you.';
+        }
+      }
+    }catch(e){}
+  },8000);
+}
 
 /* ---------- contact ---------- */
 document.getElementById('ctGo').addEventListener('click',async()=>{
