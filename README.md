@@ -41,3 +41,16 @@ Also enable Vercel Analytics (project settings) for referrer data.
 ## Agent webhook
 
 Set `AGENT_WEBHOOK_URL` in Vercel env to forward every Studio order (JSON: email, name, role, cvText) to the production agent. Fire-and-forget; the instant rough cut is served regardless.
+
+## Async production loop (director's cut)
+
+Env vars (Vercel project settings):
+- `AGENT_WEBHOOK_URL` - the Hyperagent webhook receive URL
+- `AGENT_WEBHOOK_SECRET` - sent as X-Hyperagent-Webhook-Secret
+- `CF_CALLBACK_SECRET` - shared secret for /api/callback (any long random string)
+
+Flow: /api/generate returns the instant rough cut AND fires the agent webhook with a
+self-describing payload (orderId + deliver contract). The agent builds a bespoke
+one-page portfolio and POSTs {orderId, html} to /api/callback with X-CF-Secret.
+The client polls /api/status?id= and swaps in the director's cut when ready.
+Without the env vars the Studio still works (rough cut only).
