@@ -3,257 +3,483 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>CineFolio — Your career, filmed. Cinematic AI portfolios</title>
-<meta name="description" content="CineFolio turns you into the hero of a cinematic, scroll-driven portfolio film: identity-locked AI scenes, an interactive terminal, verified credentials, your own domain. Join the waitlist.">
-<meta property="og:title" content="CineFolio — Your career, filmed.">
-<meta property="og:description" content="Cinematic AI portfolios. Your face, identity-locked, in a scroll-driven film. Join the waitlist.">
+<title>CineFolio Studios — We turn careers into cinema</title>
+<meta name="description" content="CineFolio Studios: cinematic AI portfolio films. Your face, identity-locked, in a scroll-driven production. Try the Studio, join the waitlist.">
+<meta property="og:title" content="CineFolio Studios — We turn careers into cinema">
+<meta property="og:description" content="Cinematic AI portfolio films. Try the Studio: upload a photo and CV, review your rough cut in 60 seconds.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230a0b0a'/%3E%3Ctext x='32' y='42' font-family='Arial Black' font-size='28' font-weight='900' fill='%23ece5d8' text-anchor='middle'%3ECF%3C/text%3E%3Ccircle cx='52' cy='52' r='6' fill='%2317c07f'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#0c0a09">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%230c0a09'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%23e8442e' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23f2ead9'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-<link href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --ink:#0a0b0a; --ink-2:#0e100e; --emerald:#17c07f; --emerald-hi:#42e8a4;
-  --cream:#ece5d8; --dim:rgba(236,229,216,.55); --faint:rgba(236,229,216,.14);
-  --mono:'JetBrains Mono',monospace; --body:'Space Grotesk',sans-serif; --disp:'Clash Display',sans-serif;
+  --bg:#0c0a09; --panel:#151110; --line:rgba(242,234,217,.14);
+  --red:#e8442e; --red-hi:#ff6a55; --red-dim:rgba(232,68,46,.35);
+  --paper:#f2ead9; --dim:rgba(242,234,217,.58); --faint:rgba(242,234,217,.32);
+  --disp:'Bricolage Grotesque',sans-serif; --body:'Inter',sans-serif; --mono:'IBM Plex Mono',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{background:var(--ink);color:var(--cream);font-family:var(--body);overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
-::selection{background:var(--emerald);color:var(--ink)}
+body{background:var(--bg);color:var(--paper);font-family:var(--body);overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+::selection{background:var(--red);color:var(--bg)}
 a{color:inherit;text-decoration:none}
-img,video{display:block;max-width:100%}
+img,video,iframe{display:block;max-width:100%}
+button{font:inherit;cursor:pointer}
 
-nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;justify-content:space-between;align-items:center;padding:1.2rem clamp(1.2rem,3vw,2.6rem);font-family:var(--mono);font-size:.7rem;letter-spacing:.3em;mix-blend-mode:difference}
-nav .brand{font-family:var(--disp);font-weight:700;font-size:1rem;letter-spacing:.14em}
-nav .brand i{color:var(--emerald-hi);font-style:normal}
-nav .links{display:flex;gap:1.6rem}
-nav a:hover{color:var(--emerald-hi)}
-@media(max-width:760px){nav .links{display:none}}
-nav .cta{color:var(--emerald-hi)}
+/* letterbox bars */
+.lbar{position:fixed;left:0;right:0;height:30px;background:#000;z-index:80;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-family:var(--mono);font-size:9px;letter-spacing:.26em;color:var(--faint)}
+.lbar.top{top:0}.lbar.bot{bottom:0}
+.lbar .rec{color:var(--red);animation:blink 1.3s steps(2) infinite}
+@keyframes blink{50%{opacity:.15}}
 
+/* nav */
+nav{position:fixed;top:30px;left:0;right:0;z-index:70;display:flex;justify-content:space-between;align-items:center;padding:1rem clamp(1.2rem,3vw,2.4rem);background:linear-gradient(rgba(12,10,9,.92),rgba(12,10,9,0))}
+.brand{font-family:var(--disp);font-weight:800;font-size:1.05rem;letter-spacing:.06em;display:flex;align-items:center;gap:.5rem}
+.brand .lens{width:16px;height:16px;border-radius:50%;border:3.5px solid var(--red);display:inline-block}
+.tabs{display:flex;gap:.4rem}
+.tabs button{font-family:var(--mono);font-size:.64rem;letter-spacing:.24em;padding:.65rem 1rem;background:none;border:1px solid transparent;color:var(--dim);text-transform:uppercase;transition:all .25s}
+.tabs button:hover{color:var(--paper)}
+.tabs button.on{color:var(--red-hi);border-color:var(--red-dim)}
+.joinbtn{font-family:var(--mono);font-size:.64rem;letter-spacing:.24em;padding:.7rem 1.2rem;background:var(--red);border:none;color:#fff;text-transform:uppercase;font-weight:600;transition:all .25s}
+.joinbtn:hover{background:var(--red-hi)}
+@media(max-width:820px){
+  nav{flex-wrap:wrap;gap:.5rem}
+  .tabs{order:3;width:100%;justify-content:space-between;background:rgba(12,10,9,.9);padding:.3rem 0}
+  .tabs button{padding:.55rem .5rem;font-size:.6rem}
+}
+
+main{display:none;padding-top:30px}
+main.on{display:block}
+
+/* HOME hero */
 .hero{position:relative;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
-.hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.5) saturate(1.05)}
-.hero .shade{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(6,7,6,.15) 30%,rgba(6,7,6,.88) 100%)}
-.hero .inner{position:relative;z-index:2;padding:0 5vw;max-width:1100px}
-.eyebrow{font-family:var(--mono);font-size:.66rem;letter-spacing:.5em;color:var(--emerald-hi);margin-bottom:1.6rem}
-h1{font-family:var(--disp);font-weight:700;font-size:clamp(2.9rem,9vw,7.6rem);line-height:.96;text-transform:uppercase;letter-spacing:.01em}
-.hero .sub{margin:1.8rem auto 0;max-width:44rem;font-size:clamp(.95rem,1.6vw,1.15rem);line-height:1.75;color:var(--dim)}
-.hero .sub b{color:var(--cream);font-weight:500}
-.cta-row{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:2.6rem}
-.btn{font-family:var(--mono);font-size:.72rem;letter-spacing:.28em;padding:1.1rem 2.2rem;border:1px solid var(--emerald);transition:all .3s;text-transform:uppercase;cursor:pointer;background:none;color:var(--cream)}
-.btn.primary{background:var(--emerald);color:#06110c;font-weight:600}
-.btn.primary:hover{background:var(--emerald-hi);transform:translateY(-2px)}
-.btn.ghost:hover{background:rgba(23,192,127,.12);transform:translateY(-2px)}
-.hero .proof{margin-top:2.4rem;font-family:var(--mono);font-size:.64rem;letter-spacing:.24em;color:var(--dim)}
-.hero .proof a{color:var(--emerald-hi);border-bottom:1px solid var(--emerald)}
-.hero .proof b{color:var(--emerald-hi);font-weight:600}
+.hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:sepia(.35) hue-rotate(-28deg) saturate(1.25) brightness(.5)}
+.hero .shade{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(12,10,9,.1) 25%,rgba(12,10,9,.92) 100%)}
+.hero .inner{position:relative;z-index:2;padding:6rem 5vw 4rem;max-width:1150px}
+.slate{display:inline-flex;align-items:center;gap:.8rem;font-family:var(--mono);font-size:.62rem;letter-spacing:.4em;color:var(--dim);border:1px solid var(--line);padding:.55rem 1.1rem;margin-bottom:2rem}
+.slate b{color:var(--red);font-weight:600}
+h1{font-family:var(--disp);font-weight:800;font-size:clamp(2.7rem,8.6vw,7.2rem);line-height:.95;text-transform:uppercase;letter-spacing:-.01em}
+h1 .r{color:var(--red)}
+.hero .sub{margin:1.9rem auto 0;max-width:42rem;font-size:clamp(.95rem,1.5vw,1.12rem);line-height:1.8;color:var(--dim)}
+.hero .sub b{color:var(--paper);font-weight:500}
+.cta-row{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:2.5rem}
+.btn{font-family:var(--mono);font-size:.7rem;letter-spacing:.26em;padding:1.05rem 2rem;border:1px solid var(--red);transition:all .3s;text-transform:uppercase;background:none;color:var(--paper)}
+.btn.primary{background:var(--red);color:#fff;font-weight:600}
+.btn.primary:hover{background:var(--red-hi);transform:translateY(-2px)}
+.btn.ghost:hover{background:rgba(232,68,46,.12);transform:translateY(-2px)}
+.hero .below{margin-top:2.3rem;font-family:var(--mono);font-size:.62rem;letter-spacing:.24em;color:var(--dim)}
+.hero .below a{color:var(--red-hi);border-bottom:1px solid var(--red)}
 
-.marquee{padding:1.4rem 0;border-top:1px solid var(--faint);border-bottom:1px solid var(--faint);overflow:hidden;background:var(--ink)}
-.marquee .track{display:flex;gap:2.6rem;width:max-content;animation:mq 30s linear infinite}
-.marquee span{font-family:var(--mono);font-size:.66rem;letter-spacing:.34em;color:var(--dim);white-space:nowrap}
-.marquee span.g{color:var(--emerald-hi)}
+/* ticker */
+.ticker{padding:1.1rem 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);overflow:hidden;background:#000}
+.ticker .track{display:flex;gap:2.4rem;width:max-content;animation:mq 28s linear infinite}
+.ticker span{font-family:var(--mono);font-size:.62rem;letter-spacing:.32em;color:var(--dim);white-space:nowrap;text-transform:uppercase}
+.ticker span.r{color:var(--red-hi)}
 @keyframes mq{to{transform:translateX(-50%)}}
 
-section{padding:clamp(4.5rem,11vh,8rem) clamp(1.2rem,4vw,3rem);max-width:1240px;margin:0 auto}
-.sec-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.5em;color:var(--emerald-hi);margin-bottom:2.6rem;display:flex;align-items:center;gap:1.1rem}
-.sec-label:before{content:"";width:2.2rem;height:1px;background:var(--emerald)}
-h2{font-family:var(--disp);font-weight:600;font-size:clamp(2rem,5.4vw,4.2rem);line-height:1;text-transform:uppercase;letter-spacing:.01em;margin-bottom:2.6rem}
-h2 em{font-style:normal;color:transparent;-webkit-text-stroke:1px rgba(236,229,216,.42)}
+section{padding:clamp(4rem,10vh,7.5rem) clamp(1.2rem,4vw,3rem);max-width:1220px;margin:0 auto}
+.scene{font-family:var(--mono);font-size:.62rem;letter-spacing:.5em;color:var(--red);margin-bottom:2.2rem;display:flex;align-items:center;gap:1rem}
+.scene:before{content:"";width:2rem;height:1px;background:var(--red)}
+h2{font-family:var(--disp);font-weight:800;font-size:clamp(1.9rem,5vw,3.8rem);line-height:1;text-transform:uppercase;margin-bottom:2.4rem;letter-spacing:-.01em}
+h2 .r{color:var(--red)}
 
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--faint);border:1px solid var(--faint)}
-.step{background:var(--ink-2);padding:2.2rem 1.9rem 2.5rem}
-.step .n{font-family:var(--mono);font-size:.64rem;letter-spacing:.3em;color:var(--emerald-hi);margin-bottom:1.1rem}
-.step h3{font-family:var(--disp);font-weight:600;font-size:1.5rem;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.9rem}
-.step p{font-size:.92rem;line-height:1.7;color:var(--dim)}
-@media(max-width:860px){.steps{grid-template-columns:1fr}}
+/* production steps */
+.prod{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem}
+.take{background:var(--panel);border:1px solid var(--line);padding:2rem 1.8rem 2.3rem;position:relative}
+.take:before{content:attr(data-tc);position:absolute;top:1rem;right:1.2rem;font-family:var(--mono);font-size:.56rem;letter-spacing:.2em;color:var(--faint)}
+.take .n{font-family:var(--disp);font-weight:800;font-size:2.2rem;color:var(--red);margin-bottom:.8rem}
+.take h3{font-family:var(--disp);font-weight:700;font-size:1.3rem;text-transform:uppercase;margin-bottom:.8rem;letter-spacing:.01em}
+.take p{font-size:.9rem;line-height:1.7;color:var(--dim)}
+@media(max-width:860px){.prod{grid-template-columns:1fr}}
 
-.examples{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
-.ex{border:1px solid var(--faint);background:var(--ink-2);overflow:hidden;transition:transform .4s cubic-bezier(.22,1,.36,1),border-color .4s;position:relative}
-.ex:hover{transform:translateY(-6px);border-color:rgba(236,229,216,.32)}
-.ex video{aspect-ratio:16/10;object-fit:cover;width:100%;filter:saturate(1.05)}
-.ex .placeholder{aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;border-bottom:1px dashed var(--faint);font-family:var(--mono);font-size:.66rem;letter-spacing:.3em;color:var(--dim);text-align:center;padding:1rem}
-.ex .meta{padding:1.3rem 1.4rem 1.5rem}
-.ex .meta .tag{font-family:var(--mono);font-size:.6rem;letter-spacing:.3em;color:var(--emerald-hi);margin-bottom:.5rem}
-.ex .meta h3{font-family:var(--disp);font-weight:600;font-size:1.25rem;text-transform:uppercase;letter-spacing:.03em}
-.ex .meta p{font-size:.84rem;color:var(--dim);margin-top:.45rem;line-height:1.6}
-.ex .meta a{color:var(--emerald-hi);font-family:var(--mono);font-size:.64rem;letter-spacing:.24em;display:inline-block;margin-top:.9rem;border-bottom:1px solid var(--emerald)}
-@media(max-width:960px){.examples{grid-template-columns:1fr}}
+/* releases (examples) — film strip edges */
+.releases{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
+.reel{background:var(--panel);border:1px solid var(--line);overflow:hidden;transition:transform .4s cubic-bezier(.22,1,.36,1),border-color .4s;position:relative;padding:14px 0}
+.reel:before,.reel:after{content:"";position:absolute;left:0;right:0;height:14px;background-image:radial-gradient(circle,#000 3.4px,transparent 3.6px);background-size:22px 14px;background-position:center;background-color:var(--bg)}
+.reel:before{top:0}.reel:after{bottom:0}
+.reel:hover{transform:translateY(-6px);border-color:var(--red-dim)}
+.reel video{aspect-ratio:16/10;object-fit:cover;width:100%}
+.reel .empty{aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.62rem;letter-spacing:.3em;color:var(--dim);border-bottom:1px dashed var(--line);text-align:center;padding:1rem}
+.reel .meta{padding:1.2rem 1.3rem 1rem}
+.reel .tag{font-family:var(--mono);font-size:.58rem;letter-spacing:.3em;color:var(--red-hi);margin-bottom:.45rem;text-transform:uppercase}
+.reel h3{font-family:var(--disp);font-weight:700;font-size:1.2rem;text-transform:uppercase}
+.reel p{font-size:.83rem;color:var(--dim);margin-top:.4rem;line-height:1.6}
+.reel a{color:var(--red-hi);font-family:var(--mono);font-size:.62rem;letter-spacing:.22em;display:inline-block;margin-top:.8rem;border-bottom:1px solid var(--red)}
+@media(max-width:960px){.releases{grid-template-columns:1fr}}
 
-.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--faint);border:1px solid var(--faint)}
-.f{background:var(--ink);padding:1.7rem 1.6rem;display:flex;flex-direction:column;gap:.55rem}
-.f b{font-family:var(--disp);font-weight:600;font-size:1.02rem;text-transform:uppercase;letter-spacing:.04em}
-.f span{font-size:.85rem;color:var(--dim);line-height:1.6}
-@media(max-width:860px){.feat{grid-template-columns:1fr 1fr}}
-@media(max-width:560px){.feat{grid-template-columns:1fr}}
-
-#join{position:relative;overflow:hidden;border-top:1px solid var(--faint);max-width:none}
-#join .wrap{max-width:760px;margin:0 auto;text-align:center;position:relative;z-index:2}
-#join p.lead{color:var(--dim);line-height:1.75;max-width:36rem;margin:0 auto 2.4rem}
-form{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
-input[type=email],select{font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;background:#0d0f0d;border:1px solid rgba(236,229,216,.25);color:var(--cream);padding:1.05rem 1.2rem;outline:none;min-width:min(300px,80vw)}
-input[type=email]:focus{border-color:var(--emerald)}
-select{min-width:150px}
+/* waitlist */
+#wlwrap{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line);max-width:none}
+#wlwrap .wrap{max-width:720px;margin:0 auto;text-align:center}
+#wlwrap p.lead{color:var(--dim);line-height:1.75;margin:0 auto 2.2rem;max-width:34rem}
+form.wl{display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap}
+input,select,textarea{font-family:var(--mono);font-size:.78rem;background:#0a0808;border:1px solid var(--faint);color:var(--paper);padding:1rem 1.1rem;outline:none}
+input:focus,textarea:focus{border-color:var(--red)}
+input[type=email]{min-width:min(300px,78vw)}
 .hp{position:absolute;left:-9999px;opacity:0}
-.note{margin-top:1.4rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.22em;color:rgba(236,229,216,.4)}
-.result{margin-top:1.6rem;font-family:var(--mono);font-size:.78rem;letter-spacing:.1em;color:var(--emerald-hi);min-height:1.4em}
+.result{margin-top:1.4rem;font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;color:var(--red-hi);min-height:1.3em}
+.smallnote{margin-top:1.2rem;font-family:var(--mono);font-size:.58rem;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
 
-footer{border-top:1px solid var(--faint);padding:1.6rem clamp(1.2rem,4vw,3rem);display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;font-family:var(--mono);font-size:.62rem;letter-spacing:.24em;color:var(--dim)}
-footer a{color:var(--emerald-hi)}
-#grain{position:fixed;inset:-140px;z-index:90;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==) repeat}
+/* SERVICES */
+.packs{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
+.pack{background:var(--panel);border:1px solid var(--line);padding:2.1rem 1.9rem 2.3rem;display:flex;flex-direction:column;gap:1rem;position:relative;transition:border-color .3s,transform .3s}
+.pack:hover{transform:translateY(-5px);border-color:var(--red-dim)}
+.pack.star{border-color:var(--red)}
+.pack.star .flag{position:absolute;top:-1px;right:-1px;background:var(--red);color:#fff;font-family:var(--mono);font-size:.54rem;letter-spacing:.24em;padding:.4rem .8rem}
+.pack .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.32em;color:var(--red-hi);text-transform:uppercase}
+.pack h3{font-family:var(--disp);font-weight:800;font-size:1.7rem;text-transform:uppercase}
+.pack .price{font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;color:var(--dim)}
+.pack ul{list-style:none;display:flex;flex-direction:column;gap:.55rem;margin-top:.4rem}
+.pack li{font-size:.86rem;color:var(--dim);padding-left:1.2rem;position:relative;line-height:1.55}
+.pack li:before{content:"◆";position:absolute;left:0;color:var(--red);font-size:.6rem;top:.35em}
+.pack .foot{margin-top:auto;padding-top:1.2rem}
+@media(max-width:960px){.packs{grid-template-columns:1fr}}
+
+/* STUDIO */
+.studio-grid{display:grid;grid-template-columns:420px 1fr;gap:1.6rem;align-items:start}
+.panel{background:var(--panel);border:1px solid var(--line);padding:1.8rem}
+.panel h3{font-family:var(--disp);font-weight:700;font-size:1.25rem;text-transform:uppercase;margin-bottom:1.2rem}
+.field{margin-bottom:1.1rem}
+.field label{display:block;font-family:var(--mono);font-size:.58rem;letter-spacing:.26em;color:var(--dim);margin-bottom:.5rem;text-transform:uppercase}
+.field input,.field select,.field textarea{width:100%}
+.field textarea{min-height:170px;resize:vertical;line-height:1.6}
+.drop{border:1px dashed var(--faint);padding:1.1rem;text-align:center;font-family:var(--mono);font-size:.62rem;letter-spacing:.18em;color:var(--dim);cursor:pointer;transition:border-color .3s}
+.drop:hover{border-color:var(--red)}
+.drop.has{border-color:var(--red);color:var(--red-hi)}
+.drop input{display:none}
+.screen{background:#000;border:1px solid var(--line);min-height:560px;display:flex;align-items:center;justify-content:center;position:relative}
+.screen iframe{width:100%;height:560px;border:0;background:#0b0908}
+.screen .idle{font-family:var(--mono);font-size:.64rem;letter-spacing:.3em;color:var(--faint);text-align:center;line-height:2.4;padding:2rem}
+.screen .idle b{color:var(--red)}
+.actions{display:flex;gap:.8rem;margin-top:1rem;flex-wrap:wrap}
+.lockbtn{font-family:var(--mono);font-size:.64rem;letter-spacing:.22em;padding:.9rem 1.4rem;border:1px solid var(--faint);background:none;color:var(--faint);text-transform:uppercase;cursor:not-allowed;position:relative}
+.lockbtn:hover:after{content:attr(data-lock);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#000;border:1px solid var(--red-dim);color:var(--paper);font-size:.56rem;letter-spacing:.14em;padding:.5rem .8rem;white-space:nowrap;z-index:5}
+.unlock{font-family:var(--mono);font-size:.62rem;letter-spacing:.2em;color:var(--red-hi);margin-top:.9rem;display:inline-block;border-bottom:1px solid var(--red)}
+@media(max-width:1020px){.studio-grid{grid-template-columns:1fr}.screen iframe{height:70vh}}
+
+/* CONTACT */
+.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.6rem;align-items:start}
+.qa{border-top:1px solid var(--line);padding:1.2rem 0}
+.qa b{font-family:var(--disp);font-weight:700;font-size:1.02rem;text-transform:uppercase;display:block;margin-bottom:.5rem}
+.qa p{font-size:.88rem;color:var(--dim);line-height:1.7}
+@media(max-width:900px){.contact-grid{grid-template-columns:1fr}}
+
+/* credits footer */
+footer{border-top:1px solid var(--line);padding:2.6rem clamp(1.2rem,4vw,3rem) 3.4rem;text-align:center;font-family:var(--mono);font-size:.6rem;letter-spacing:.3em;color:var(--faint);line-height:2.6;text-transform:uppercase}
+footer .big{font-family:var(--disp);font-weight:800;font-size:1.4rem;letter-spacing:.08em;color:var(--paper);margin-bottom:.6rem}
+footer a{color:var(--red-hi)}
+#grain{position:fixed;inset:-140px;z-index:85;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==) repeat}
 </style>
 </head>
 <body>
 
+<div class="lbar top"><span>CINEFOLIO STUDIOS</span><span class="rec">● REC</span><span id="tcTop">TC 00:00:00:00</span></div>
+<div class="lbar bot"><span>CF-2026</span><span>EST. BUDAPEST</span><span>REEL 01</span></div>
+
 <nav>
-  <a class="brand" href="#top">CINEFOLIO<i>•</i></a>
-  <div class="links">
-    <a href="#how">HOW IT WORKS</a><a href="#examples">EXAMPLES</a><a href="#what">WHAT YOU GET</a>
+  <a class="brand" href="#/" data-nav><span class="lens"></span>CINEFOLIO</a>
+  <div class="tabs">
+    <button data-tab="home" class="on">Home</button>
+    <button data-tab="services">Services</button>
+    <button data-tab="studio">Studio</button>
+    <button data-tab="contact">Contact</button>
   </div>
-  <a class="cta" href="#join">JOIN THE LIST →</a>
+  <button class="joinbtn" id="joinNav">Join the list</button>
 </nav>
 
-<header class="hero" id="top">
-  <video autoplay muted loop playsinline preload="metadata" poster="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
-  <div class="shade"></div>
-  <div class="inner">
-    <div class="eyebrow">CINEMATIC AI PORTFOLIOS</div>
-    <h1>Your career,<br>filmed.</h1>
-    <p class="sub">Templates are wallpaper. CineFolio makes you the <b>hero of a scroll-driven film</b>: identity-locked AI scenes of you, massive kinetic type, an interactive terminal, verified credentials, your own domain. <b>Shipped in a day.</b></p>
-    <div class="cta-row">
-      <a class="btn primary" href="#join">Join the waitlist</a>
-      <a class="btn ghost" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live one ↗</a>
+<!-- ============ HOME ============ -->
+<main data-page="home" class="on">
+  <header class="hero">
+    <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
+    <div class="shade"></div>
+    <div class="inner">
+      <div class="slate"><b>PROD Nº 001</b> SCENE 01 · TAKE 01</div>
+      <h1>We turn careers<br>into <span class="r">cinema.</span></h1>
+      <p class="sub">Everyone else gives you a template. CineFolio Studios casts you as the lead: <b>identity-locked AI film scenes of you</b>, cut into a scroll-driven portfolio site with kinetic type, an interactive terminal and verified credentials. <b>Premiere in 24 hours.</b></p>
+      <div class="cta-row">
+        <button class="btn primary" data-goto="studio">Try the Studio — free rough cut</button>
+        <a class="btn ghost" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">Watch release Nº1 ↗</a>
+      </div>
+      <div class="below">FIRST RELEASE NOW SCREENING — <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a></div>
     </div>
-    <div class="proof" id="proof">DEMO Nº1 IS LIVE — <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">aitelqadi.dev</a></div>
-  </div>
-</header>
+  </header>
 
-<div class="marquee" aria-hidden="true"><div class="track" id="mq"></div></div>
+  <div class="ticker" aria-hidden="true"><div class="track" id="ticker"></div></div>
 
-<section id="how">
-  <div class="sec-label">HOW IT WORKS</div>
-  <h2>Three steps.<br><em>One day.</em></h2>
-  <div class="steps">
-    <div class="step"><div class="n">STEP 01</div><h3>Send photos + CV</h3><p>Two or three well-lit photos of you and your resume or LinkedIn. That is the entire brief. No design calls, no questionnaires.</p></div>
-    <div class="step"><div class="n">STEP 02</div><h3>We film you with AI</h3><p>Identity-locked cinematic scenes: a 360° hero orbit, story scenes for your work, every clip quality-gated so it is unmistakably you.</p></div>
-    <div class="step"><div class="n">STEP 03</div><h3>Your film ships</h3><p>A scroll-driven site with kinetic type, an interactive terminal, verifiable credentials and CV download, deployed to your own domain.</p></div>
-  </div>
-</section>
-
-<section id="examples">
-  <div class="sec-label">EXAMPLES</div>
-  <h2>Real cuts,<br><em>not mockups.</em></h2>
-  <div class="examples">
-    <article class="ex">
-      <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
-      <div class="meta">
-        <div class="tag">CUT Nº1 — SHIPPED</div>
-        <h3>The Engineer</h3>
-        <p>DevOps &amp; platform engineer, Budapest. Full film: orbit, pipeline, terminal, credentials.</p>
-        <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">VIEW LIVE ↗</a>
+  <section>
+    <div class="scene">THE PRODUCTION</div>
+    <h2>Lights. Camera.<br><span class="r">Career.</span></h2>
+    <div class="prod">
+      <div class="take" data-tc="TC 00:01">
+        <div class="n">01</div><h3>The casting</h3>
+        <p>Send two or three well-lit photos and your CV. That is the whole brief — no design calls, no forms longer than a coffee.</p>
       </div>
-    </article>
-    <article class="ex" id="exampleTwo">
-      <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video>
-      <div class="meta">
-        <div class="tag">CUT Nº2 — CONCEPT</div>
-        <h3>The Creative Director</h3>
-        <p>Amber-lit concept cut, straight from the AI camera. Every client gets their own lighting.</p>
+      <div class="take" data-tc="TC 00:02">
+        <div class="n">02</div><h3>The shoot</h3>
+        <p>Our AI cameras film you: a 360° hero orbit, story scenes for your work. Identity-locked and quality-gated — every frame is unmistakably you.</p>
       </div>
-    </article>
-    <article class="ex">
-      <div class="placeholder">CUT Nº3 — RESERVED FOR YOU</div>
-      <div class="meta">
-        <div class="tag">CUT Nº3 — OPEN</div>
-        <h3>Your Cut</h3>
-        <p>Engineer, designer, founder, marketer: your story, your lighting, your film.</p>
-        <a href="#join">CLAIM THE SLOT ↓</a>
+      <div class="take" data-tc="TC 00:03">
+        <div class="n">03</div><h3>The premiere</h3>
+        <p>Your film ships as a scroll-driven site on your own domain: kinetic type, interactive terminal, verified credentials, CV download.</p>
       </div>
-    </article>
-  </div>
-</section>
+    </div>
+  </section>
 
-<section id="what">
-  <div class="sec-label">WHAT YOU GET</div>
-  <h2>Not a template.<br><em>A production.</em></h2>
-  <div class="feat">
-    <div class="f"><b>Hero orbit film</b><span>A 360° cinematic shot of you, scroll-scrubbed frame by frame like an award site.</span></div>
-    <div class="f"><b>Identity-locked scenes</b><span>Every AI scene is generated against your photos and quality-gated for likeness.</span></div>
-    <div class="f"><b>Interactive terminal</b><span>Visitors type whoami, stack, resume. Recruiters remember it.</span></div>
-    <div class="f"><b>Verified credentials</b><span>Certifications with real verification links, not badge JPEGs.</span></div>
-    <div class="f"><b>CV download + SEO</b><span>Your resume served from the site, social cards, search-ready metadata.</span></div>
-    <div class="f"><b>Your domain, your repo</b><span>Deployed to your domain with the source in your GitHub. You own everything.</span></div>
-  </div>
-</section>
+  <section>
+    <div class="scene">THE RELEASES</div>
+    <h2>Real cuts,<br><span class="r">not mockups.</span></h2>
+    <div class="releases">
+      <article class="reel">
+        <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
+        <div class="meta">
+          <div class="tag">RELEASE Nº1 — NOW SCREENING</div>
+          <h3>The Engineer</h3>
+          <p>DevOps &amp; platform engineer, Budapest. Full production: orbit, pipeline, terminal, credentials.</p>
+          <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">WATCH LIVE ↗</a>
+        </div>
+      </article>
+      <article class="reel">
+        <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video>
+        <div class="meta">
+          <div class="tag">RELEASE Nº2 — CONCEPT CUT</div>
+          <h3>The Creative Director</h3>
+          <p>Amber-lit concept straight from the AI camera. Every lead gets their own lighting design.</p>
+        </div>
+      </article>
+      <article class="reel">
+        <div class="empty">RELEASE Nº3<br>RESERVED FOR YOU</div>
+        <div class="meta">
+          <div class="tag">RELEASE Nº3 — OPEN CASTING</div>
+          <h3>Your Story</h3>
+          <p>Engineer, designer, founder, marketer. Your story, your lighting, your premiere.</p>
+          <a href="#" data-goto="studio">START YOUR CUT →</a>
+        </div>
+      </article>
+    </div>
+  </section>
 
-<section id="join">
-  <div class="wrap">
-    <div class="sec-label" style="justify-content:center">THE WAITLIST</div>
-    <h2>Be an early cut.</h2>
-    <p class="lead">No payment, no spam. Drop your email and we will reach out when your slot opens. Early list members get founding pricing.</p>
-    <form id="wl" autocomplete="off">
-      <input type="email" id="email" name="email" placeholder="you@domain.com" required>
-      <select id="role" name="role" aria-label="Your role">
-        <option value="engineer">Engineer</option>
-        <option value="designer">Designer</option>
-        <option value="founder">Founder</option>
-        <option value="other">Other</option>
-      </select>
-      <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true">
-      <button class="btn primary" type="submit" id="submitBtn">Join</button>
-    </form>
-    <div class="result" id="result"></div>
-    <div class="note" id="countNote">EARLY ACCESS · FOUNDING PRICING · BUILT BY AN ENGINEER WHO SHIPPED HIS OWN</div>
-  </div>
-</section>
+  <section id="wlwrap">
+    <div class="wrap" id="waitlist">
+      <div class="scene" style="justify-content:center">THE GUEST LIST</div>
+      <h2>Be an early <span class="r">cut.</span></h2>
+      <p class="lead">No payment, no spam. Founding members get first slots and founding pricing when the cameras start rolling.</p>
+      <form class="wl" id="wl" autocomplete="off">
+        <input type="email" id="wlEmail" placeholder="you@domain.com" required>
+        <select id="wlRole" aria-label="Your role">
+          <option value="engineer">Engineer</option>
+          <option value="designer">Designer</option>
+          <option value="founder">Founder</option>
+          <option value="other">Other</option>
+        </select>
+        <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true">
+        <button class="btn primary" type="submit" id="wlBtn">Join</button>
+      </form>
+      <div class="result" id="wlResult"></div>
+      <div class="smallnote" id="wlCount">FOUNDING PRICING · FIRST SLOTS · BUILT BY AN ENGINEER WHO SHIPPED HIS OWN</div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ SERVICES ============ -->
+<main data-page="services">
+  <section style="padding-top:9rem">
+    <div class="scene">SERVICES</div>
+    <h2>Pick your <span class="r">production.</span></h2>
+    <div class="packs">
+      <div class="pack">
+        <div class="k">FORMAT 01</div>
+        <h3>The Short</h3>
+        <div class="price">FOUNDING PRICING · TBA</div>
+        <ul>
+          <li>One identity-locked hero orbit film</li>
+          <li>Single-page cinematic site, kinetic type</li>
+          <li>CV download + social cards</li>
+          <li>Deployed to your domain</li>
+        </ul>
+        <div class="foot"><button class="btn ghost" data-goto="studio">Try a rough cut</button></div>
+      </div>
+      <div class="pack star">
+        <div class="flag">MOST WANTED</div>
+        <div class="k">FORMAT 02</div>
+        <h3>The Feature</h3>
+        <div class="price">FOUNDING PRICING · TBA</div>
+        <ul>
+          <li>Three AI film scenes: orbit + two story scenes</li>
+          <li>Full scroll-scrub production, section pinning</li>
+          <li>Interactive terminal visitors can type into</li>
+          <li>Verified credentials with real links</li>
+          <li>Career-as-pipeline section, telemetry HUD</li>
+          <li>Your domain, your repo — you own everything</li>
+        </ul>
+        <div class="foot"><button class="btn primary" id="joinFromPack">Join the guest list</button></div>
+      </div>
+      <div class="pack">
+        <div class="k">FORMAT 03</div>
+        <h3>The Franchise</h3>
+        <div class="price">FOUNDING PRICING · TBA</div>
+        <ul>
+          <li>Everything in The Feature</li>
+          <li>Matching CV redesign (print-grade PDF)</li>
+          <li>Social banner kit: LinkedIn, X, OG cards</li>
+          <li>One revision shoot per quarter, first year</li>
+        </ul>
+        <div class="foot"><button class="btn ghost" data-goto="contact">Talk to the studio</button></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ STUDIO ============ -->
+<main data-page="studio">
+  <section style="padding-top:9rem">
+    <div class="scene">THE STUDIO — LIVE DEMO</div>
+    <h2>Direct your own<br><span class="r">rough cut.</span></h2>
+    <div class="studio-grid">
+      <div class="panel">
+        <h3>Casting sheet</h3>
+        <div class="field"><label>Your email · required</label><input type="email" id="stEmail" placeholder="you@domain.com"></div>
+        <div class="field"><label>Your name</label><input type="text" id="stName" placeholder="Ada Lovelace"></div>
+        <div class="field"><label>Your role</label>
+          <select id="stRole"><option value="engineer">Engineer</option><option value="designer">Designer</option><option value="founder">Founder</option><option value="other">Other</option></select>
+        </div>
+        <div class="field"><label>Headshot · stays in your browser</label>
+          <label class="drop" id="drop">CLICK TO ADD A PHOTO<input type="file" id="stPhoto" accept="image/*"></label>
+        </div>
+        <div class="field"><label>Paste your CV / LinkedIn about</label><textarea id="stCV" placeholder="Paste the text of your CV here — experience lines with years work best."></textarea></div>
+        <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="stHp">
+        <button class="btn primary" id="stGo" style="width:100%">Roll camera</button>
+        <div class="result" id="stMsg"></div>
+      </div>
+      <div>
+        <div class="screen" id="screen">
+          <div class="idle" id="idle">THE SCREENING ROOM<br><br>FILL THE CASTING SHEET AND <b>ROLL CAMERA</b>.<br>YOUR ROUGH CUT RENDERS HERE IN SECONDS.<br><br>PHOTO NEVER LEAVES YOUR BROWSER IN THE DEMO.</div>
+        </div>
+        <div class="actions">
+          <button class="lockbtn" data-lock="🔒 Founding members only — join the list">DEPLOY TO YOUR DOMAIN</button>
+          <button class="lockbtn" data-lock="🔒 Founding members only — join the list">EXPORT SOURCE</button>
+          <button class="lockbtn" data-lock="🔒 The full production adds your AI film scenes">RENDER AI FILM SCENES</button>
+        </div>
+        <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING — JOIN THE GUEST LIST →</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ CONTACT ============ -->
+<main data-page="contact">
+  <section style="padding-top:9rem">
+    <div class="scene">CONTACT</div>
+    <h2>Talk to the <span class="r">studio.</span></h2>
+    <div class="contact-grid">
+      <div class="panel">
+        <h3>Send a note</h3>
+        <div class="field"><label>Your email</label><input type="email" id="ctEmail" placeholder="you@domain.com"></div>
+        <div class="field"><label>Message</label><textarea id="ctMsg" placeholder="Tell us about your story, your deadline, or your questions."></textarea></div>
+        <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="ctHp">
+        <button class="btn primary" id="ctGo" style="width:100%">Send</button>
+        <div class="result" id="ctResult"></div>
+      </div>
+      <div>
+        <div class="qa"><b>Is this real AI video of me?</b><p>Yes. We generate cinematic scenes with your photos as identity references and quality-gate every clip for likeness before it ships.</p></div>
+        <div class="qa"><b>How fast is delivery?</b><p>The full production premieres within 24 hours of your casting sheet. The Studio rough cut here renders in seconds.</p></div>
+        <div class="qa"><b>Who owns the result?</b><p>You do. Your domain, your repo, your film. We keep nothing but the credit line.</p></div>
+        <div class="qa"><b>Direct line</b><p>studio@cinefolio — until the domain lands: <a href="mailto:aitelqadi22@gmail.com" style="color:var(--red-hi)">aitelqadi22@gmail.com</a></p></div>
+      </div>
+    </div>
+  </section>
+</main>
 
 <footer>
-  <span>© 2026 CINEFOLIO</span>
-  <span>A PROJECT BY <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">MOHAMMED AIT EL QADI</a></span>
-  <span>BUDAPEST, HU</span>
+  <div class="big">CINEFOLIO<span style="color:var(--red)">•</span>STUDIOS</div>
+  DIRECTED BY <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">MOHAMMED AIT EL QADI</a><br>
+  SHOT ON SEEDANCE · GRADED IN BUDAPEST · © 2026 ALL RIGHTS RESERVED
 </footer>
 
 <div id="grain" aria-hidden="true"></div>
 
 <script>
-const items = ['SCROLL-SCRUB FILM','IDENTITY-LOCKED AI','INTERACTIVE TERMINAL','VERIFIED CREDENTIALS','YOUR OWN DOMAIN','SHIPPED IN A DAY'];
-const half = items.map((s,i)=>`<span class="${i%2?'g':''}">${s}</span><span>✦</span>`).join('');
-document.getElementById('mq').innerHTML = half + half;
+/* ---------- ticker ---------- */
+const items=['NOW SCREENING','IDENTITY-LOCKED AI FILM','SCROLL-SCRUB CINEMATOGRAPHY','INTERACTIVE TERMINAL','VERIFIED CREDENTIALS','YOUR DOMAIN','PREMIERE IN 24H'];
+document.getElementById('ticker').innerHTML=(items.map((s,i)=>`<span class="${i%2?'r':''}">${s}</span><span>·</span>`).join('')).repeat(2);
 
-fetch('/api/count').then(r=>r.json()).then(({count})=>{
-  if(count && count > 4){
-    document.getElementById('countNote').textContent = count + ' PEOPLE ON THE LIST · FOUNDING PRICING · NO SPAM';
-  }
-}).catch(()=>{});
+/* ---------- timecode ---------- */
+(function(){let f=0;setInterval(()=>{f=(f+1)%24;const t=Math.floor(Date.now()/1000);const s=t%60,m=Math.floor(t/60)%60,h=Math.floor(t/3600)%24;document.getElementById('tcTop').textContent=`TC ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;},1000/24);})();
 
-document.getElementById('wl').addEventListener('submit', async e => {
+/* ---------- tab router ---------- */
+const pages=[...document.querySelectorAll('main[data-page]')];
+const tabs=[...document.querySelectorAll('.tabs button')];
+function go(name,push=true){
+  pages.forEach(p=>p.classList.toggle('on',p.dataset.page===name));
+  tabs.forEach(b=>b.classList.toggle('on',b.dataset.tab===name));
+  if(push) history.replaceState(null,'','#/'+(name==='home'?'':name));
+  window.scrollTo({top:0});
+}
+tabs.forEach(b=>b.addEventListener('click',()=>go(b.dataset.tab)));
+document.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();go(el.dataset.goto);}));
+document.querySelector('[data-nav]').addEventListener('click',e=>{e.preventDefault();go('home');});
+function route(){const h=location.hash.replace('#/','');go(['services','studio','contact'].includes(h)?h:'home',false);}
+addEventListener('hashchange',route);route();
+
+/* ---------- join buttons ---------- */
+function toWaitlist(){go('home');setTimeout(()=>document.getElementById('waitlist').scrollIntoView({behavior:'smooth'}),60);}
+document.getElementById('joinNav').addEventListener('click',toWaitlist);
+document.getElementById('unlockLink').addEventListener('click',e=>{e.preventDefault();toWaitlist();});
+const jp=document.getElementById('joinFromPack'); if(jp) jp.addEventListener('click',toWaitlist);
+
+/* ---------- waitlist ---------- */
+fetch('/api/count').then(r=>r.json()).then(({count})=>{if(count&&count>4)document.getElementById('wlCount').textContent=count+' ON THE GUEST LIST · FOUNDING PRICING · NO SPAM';}).catch(()=>{});
+document.getElementById('wl').addEventListener('submit',async e=>{
   e.preventDefault();
-  const btn = document.getElementById('submitBtn'), out = document.getElementById('result');
-  btn.disabled = true; btn.textContent = '…';
-  try {
-    const r = await fetch('/api/waitlist', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: document.getElementById('email').value,
-        role: document.getElementById('role').value,
-        company: document.querySelector('.hp').value
-      })
-    });
-    const j = await r.json();
-    if (j.ok) {
-      out.textContent = j.duplicate ? 'You are already on the list. We got you.' :
-        (j.position ? `You're in — Nº ${j.position} on the list.` : "You're in. We'll be in touch.");
-      document.getElementById('wl').style.display = 'none';
-    } else {
-      out.textContent = 'That email does not look right. Try again?';
-      btn.disabled = false; btn.textContent = 'Join';
-    }
-  } catch {
-    out.textContent = 'Network hiccup. Try once more.';
-    btn.disabled = false; btn.textContent = 'Join';
-  }
+  const btn=document.getElementById('wlBtn'),out=document.getElementById('wlResult');
+  btn.disabled=true;btn.textContent='…';
+  try{
+    const r=await fetch('/api/waitlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('wlEmail').value,role:document.getElementById('wlRole').value,company:document.querySelector('#wl .hp').value})});
+    const j=await r.json();
+    if(j.ok){out.textContent=j.duplicate?'Already on the list. We got you.':(j.position?`You're in — Nº ${j.position} on the guest list.`:"You're in. We'll be in touch.");document.getElementById('wl').style.display='none';}
+    else{out.textContent='That email does not look right.';btn.disabled=false;btn.textContent='Join';}
+  }catch{out.textContent='Network hiccup — try again.';btn.disabled=false;btn.textContent='Join';}
+});
+
+/* ---------- studio ---------- */
+let photoData=null;
+const drop=document.getElementById('drop');
+document.getElementById('stPhoto').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{photoData=rd.result;drop.classList.add('has');drop.childNodes[0].textContent='PHOTO LOADED ✓ — CLICK TO CHANGE';};
+  rd.readAsDataURL(f);
+});
+document.getElementById('stGo').addEventListener('click',async()=>{
+  const btn=document.getElementById('stGo'),msg=document.getElementById('stMsg');
+  const email=document.getElementById('stEmail').value,cv=document.getElementById('stCV').value;
+  if(!/^\S+@\S+\.\S{2,}$/.test(email)){msg.textContent='Add a valid email to roll camera.';return;}
+  if(!cv||cv.trim().length<40){msg.textContent='Paste a bit more CV text (a few lines).';return;}
+  btn.disabled=true;btn.textContent='ROLLING…';msg.textContent='';
+  try{
+    const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,name:document.getElementById('stName').value,role:document.getElementById('stRole').value,cvText:cv,company:document.getElementById('stHp').value})});
+    const j=await r.json();
+    if(j.ok&&j.html){
+      const photo=photoData||'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#151110"/><circle cx="50" cy="38" r="16" fill="#e8442e"/><rect x="26" y="60" width="48" height="30" rx="14" fill="#e8442e"/></svg>');
+      const html=j.html.split('__PHOTO__').join(photo);
+      const scr=document.getElementById('screen');scr.innerHTML='';
+      const fr=document.createElement('iframe');fr.setAttribute('sandbox','');fr.srcdoc=html;scr.appendChild(fr);
+      msg.textContent='Rough cut rendered. The full production is where the film happens.';
+    }else{msg.textContent=j.error==='cv_too_short'?'Paste a bit more CV text.':'Something went sideways — try again.';}
+  }catch{msg.textContent='Network hiccup — try again.';}
+  btn.disabled=false;btn.textContent='Roll camera';
+});
+
+/* ---------- contact ---------- */
+document.getElementById('ctGo').addEventListener('click',async()=>{
+  const btn=document.getElementById('ctGo'),out=document.getElementById('ctResult');
+  btn.disabled=true;btn.textContent='…';
+  try{
+    const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('ctEmail').value,message:document.getElementById('ctMsg').value,company:document.getElementById('ctHp').value})});
+    const j=await r.json();
+    out.textContent=j.ok?'Sent. The studio will get back to you.':'Check the email and message, then retry.';
+    if(j.ok){document.getElementById('ctMsg').value='';}
+  }catch{out.textContent='Network hiccup — try again.';}
+  btn.disabled=false;btn.textContent='Send';
 });
 </script>
 </body>
