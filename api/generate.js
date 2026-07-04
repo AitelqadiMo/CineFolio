@@ -87,11 +87,19 @@ export default async function handler(req, res) {
   if (!cvText || String(cvText).trim().length < 40) return res.status(400).json({ ok: false, error: "cv_too_short" });
 
   const parsed = parseCV(cvText, name, role);
-  const order = { email: clean, name: parsed.name, role: role || "other", cvChars: String(cvText).length, at: new Date().toISOString() };
+  const orderId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
+  const order = { orderId, email: clean, name: parsed.name, role: role || "other", cvChars: String(cvText).length, at: new Date().toISOString() };
+
+  const hook = process.env.AGENT_WEBHOOK_URL;
+  const hookSecret = process.env.AGENT_WEBHOOK_SECRET;
+  const cbSecret = process.env.CF_CALLBACK_SECRET;
+  const production = Boolean(hook && hookSecret && cbSecret && redisEnv());
 
   try {
     if (redisEnv()) {
       await redis(["LPUSH", "cinefolio:orders", JSON.stringify(order)]);
+      await redis(["SET", `cinefolio:order:${orderId}`, JSON.stringify(order), "EX", 60 * 60 * 24 * 14]);
+      await redis(["SET", `cinefolio:orderstatus:${orderId}`, "rough", "EX", 60 * 60 * 24 * 14]);
       await redis(["SADD", "cinefolio:emails", clean]);
       await redis(["LPUSH", "cinefolio:waitlist", JSON.stringify({ ...order, source: "studio" })]);
     } else {
@@ -99,15 +107,23 @@ export default async function handler(req, res) {
     }
   } catch (e) { console.error("[studio:store]", e.message); }
 
-  // Agent webhook handoff (async production run) - fire and forget
-  const hook = process.env.AGENT_WEBHOOK_URL;
-  if (hook) {
+  // Agent webhook handoff (async production run) — the payload is self-describing
+  // so the fresh agent run knows exactly how to build and deliver the director's cut.
+  if (production) {
+    const callbackUrl = `https://${req.headers.host}/api/callback`;
     fetch(hook, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "cinefolio_order", ...order, cvText: String(cvText).slice(0, 6000) }),
+      headers: { "Content-Type": "application/json", "X-Hyperagent-Webhook-Secret": hookSecret },
+      body: JSON.stringify({
+        type: "cinefolio_order",
+        orderId,
+        client: { name: parsed.name, role: order.role, email: clean },
+        cvText: String(cvText).slice(0, 6000),
+        deliver: { method: "POST", url: callbackUrl, headers: { "X-CF-Secret": cbSecret, "Content-Type": "application/json" }, body: { orderId, html: "<the complete html document>" } },
+        instructions: "CineFolio production order. Build a COMPLETE single-file one-page cinematic portfolio HTML for this client from cvText: dark cinematic design (NOT the CineFolio landing brand - invent a look that fits the client), their name huge, role, skills, experience story, contact footer, self-contained inline CSS, no external secrets, no tracking, under 400KB, must start with <!DOCTYPE html>. Then deliver it exactly as described in 'deliver': POST the JSON body {orderId, html} with the given headers to the given url (curl from Bash is fine). HTTP 200 {ok:true} means delivered. Do not email anyone. Do not include the secret anywhere in the html."
+      }),
     }).catch(() => {});
   }
 
-  return res.status(200).json({ ok: true, html: previewHTML(parsed) });
+  return res.status(200).json({ ok: true, html: previewHTML(parsed), orderId, production });
 }
