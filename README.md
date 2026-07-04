@@ -30,3 +30,14 @@ set `cinefolio:emails` (dedupe). Or `LRANGE cinefolio:waitlist 0 -1` in the CLI.
 Cut Nº1: [aitelqadi.dev](https://www.aitelqadi.dev)
 
 © 2026 Mohammed Ait El Qadi. All rights reserved.
+
+## Funnel analytics (built in)
+
+Daily counters in Redis: `cinefolio:hits:YYYY-MM-DD:{home|services|studio|contact}`.
+Full funnel: page hits -> `cinefolio:orders` (studio runs) -> `cinefolio:waitlist` (signups) -> `cinefolio:contact`.
+Read in Upstash console or CLI: `KEYS cinefolio:hits:*`, `LRANGE cinefolio:orders 0 -1`.
+Also enable Vercel Analytics (project settings) for referrer data.
+
+## Agent webhook
+
+Set `AGENT_WEBHOOK_URL` in Vercel env to forward every Studio order (JSON: email, name, role, cvText) to the production agent. Fire-and-forget; the instant rough cut is served regardless.
