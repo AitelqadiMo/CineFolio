@@ -640,6 +640,8 @@ if(finePointer && !reduceMotion){
 (function(){
   if(reduceMotion || typeof gsap === 'undefined') return;
   const h = document.getElementById('heroTitle');
+  /* split plain text into chars; gradient-clipped .serif animates as ONE block
+     (background-clip:text does not survive per-char transforms) */
   const walk = node => {
     [...node.childNodes].forEach(n=>{
       if(n.nodeType === 3){
@@ -649,11 +651,14 @@ if(finePointer && !reduceMotion){
           const s = document.createElement('span'); s.className = 'ch'; s.textContent = ch; frag.appendChild(s);
         });
         node.replaceChild(frag, n);
-      }else if(n.nodeType === 1 && n.tagName !== 'BR'){ walk(n); }
+      }else if(n.nodeType === 1 && n.tagName !== 'BR' && !n.classList.contains('serif')){ walk(n); }
     });
   };
   walk(h);
+  const serif = h.querySelector('.serif');
+  if(serif){ serif.style.display = 'inline-block'; gsap.set(serif, { y: '0.9em', opacity: 0 }); }
   gsap.to('#heroTitle .ch', { y: 0, opacity: 1, duration: 1.05, ease: 'power4.out', stagger: .022, delay: 1.15 });
+  if(serif) gsap.to(serif, { y: 0, opacity: 1, duration: 1.1, ease: 'power4.out', delay: 1.55 });
 })();
 
 /* ================= GSAP: VELOCITY MARQUEE + PINNED REEL ================= */
