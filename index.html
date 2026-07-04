@@ -3,235 +3,225 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>CineFolio Studios — We turn careers into cinema</title>
-<meta name="description" content="CineFolio Studios: cinematic AI portfolio films. Your face, identity-locked, in a scroll-driven production. Try the Studio, join the guest list.">
-<meta property="og:title" content="CineFolio Studios — We turn careers into cinema">
-<meta property="og:description" content="Cinematic AI portfolio films. Try the Studio: upload a photo and CV, review your rough cut in 60 seconds.">
+<title>CineFolio Studios — Portfolios people fall in love with</title>
+<meta name="description" content="CineFolio Studios crafts cinematic AI portfolio films: your own AI film scenes, your own colors, a scroll-driven site people remember. Try a free rough cut in the Studio.">
+<meta property="og:title" content="CineFolio Studios — Portfolios people fall in love with">
+<meta property="og:description" content="Cinematic AI portfolio films in your own colors. Try a free rough cut in the Studio.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta property="og:image" content="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/3d01b713-67ef-402e-9a13-65bd836cb0a0.png">
 <meta name="twitter:image" content="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/3d01b713-67ef-402e-9a13-65bd836cb0a0.png">
-<meta name="twitter:title" content="CineFolio Studios — We turn careers into cinema">
-<meta name="theme-color" content="#0c0a09">
+<meta name="theme-color" content="#FAF4EA">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"Organization","name":"CineFolio Studios","description":"Cinematic AI portfolio films: identity-locked scenes, scroll-driven sites, premiere in 24 hours.","founder":{"@type":"Person","name":"Mohammed Ait El Qadi","url":"https://www.aitelqadi.dev"}}
+{"@context":"https://schema.org","@type":"Organization","name":"CineFolio Studios","description":"Cinematic AI portfolio films: identity-locked scenes, your own colors, scroll-driven sites, premiere in 24 hours."}
 </script>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%230c0a09'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%23e8442e' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23f2ead9'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23FAF4EA'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%236C4CF1' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23FF5C4D'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0c0a09; --panel:#151110; --panel2:#1a1512; --line:rgba(242,234,217,.13);
-  --red:#e8442e; --red-hi:#ff6a55; --red-dim:rgba(232,68,46,.35);
-  --paper:#f2ead9; --dim:rgba(242,234,217,.6); --faint:rgba(242,234,217,.34);
+  --paper:#FAF4EA; --card:#FFFDF8; --ink:#221B15; --soft:#6E6259; --line:rgba(34,27,21,.13);
+  --violet:#6C4CF1; --coral:#FF5C4D; --amber:#F5A623; --emerald:#12A87B; --cyan:#0FA3C8;
+  --spectrum:linear-gradient(90deg,#6C4CF1,#FF5C4D,#F5A623);
   --disp:'Bricolage Grotesque',sans-serif; --serif:'Instrument Serif',serif;
   --body:'Inter',sans-serif; --mono:'IBM Plex Mono',monospace;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:var(--bg);color:var(--paper);font-family:var(--body);overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
-::selection{background:var(--red);color:var(--bg)}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+::selection{background:var(--violet);color:#fff}
 a{color:inherit;text-decoration:none}
 img,video,iframe{display:block;max-width:100%}
 button{font:inherit;cursor:pointer}
 
-/* letterbox bars */
-.lbar{position:fixed;left:0;right:0;height:30px;background:#000;z-index:80;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-family:var(--mono);font-size:9px;letter-spacing:.26em;color:var(--faint)}
-.lbar.top{top:0}.lbar.bot{bottom:0}
-.lbar .rec{color:var(--red);animation:blink 1.3s steps(2) infinite}
-@keyframes blink{50%{opacity:.15}}
+/* spectrum ribbons */
+.ribbon{position:fixed;left:0;right:0;height:6px;background:var(--spectrum);z-index:90}
+.ribbon.top{top:0}.ribbon.bot{bottom:0}
 
 /* nav */
-nav{position:fixed;top:30px;left:0;right:0;z-index:70;display:flex;justify-content:space-between;align-items:center;padding:1rem clamp(1.2rem,3vw,2.4rem);background:linear-gradient(rgba(12,10,9,.94),rgba(12,10,9,0))}
-.brand{font-family:var(--disp);font-weight:800;font-size:1.05rem;letter-spacing:.06em;display:flex;align-items:center;gap:.5rem}
-.brand .lens{width:15px;height:15px;border-radius:50%;border:3.5px solid var(--red);display:inline-block}
-.tabs{display:flex;gap:.3rem}
-.tabs button{font-family:var(--mono);font-size:.62rem;letter-spacing:.24em;padding:.65rem .95rem;background:none;border:none;border-bottom:1px solid transparent;color:var(--dim);text-transform:uppercase;transition:all .25s}
-.tabs button:hover{color:var(--paper)}
-.tabs button.on{color:var(--red-hi);border-bottom-color:var(--red)}
-.joinbtn{font-family:var(--mono);font-size:.62rem;letter-spacing:.24em;padding:.75rem 1.3rem;background:var(--red);border:none;color:#fff;text-transform:uppercase;font-weight:600;transition:all .25s}
-.joinbtn:hover{background:var(--red-hi)}
-@media(max-width:820px){
+nav{position:fixed;top:6px;left:0;right:0;z-index:70;display:flex;justify-content:space-between;align-items:center;padding:1rem clamp(1.2rem,3vw,2.4rem);background:linear-gradient(rgba(250,244,234,.96),rgba(250,244,234,.7),transparent)}
+.brand{font-family:var(--disp);font-weight:800;font-size:1.1rem;letter-spacing:.02em;display:flex;align-items:center;gap:.55rem}
+.brand .lens{width:16px;height:16px;border-radius:50%;border:4px solid var(--violet);display:inline-block;position:relative}
+.brand .lens:after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--coral)}
+.tabs{display:flex;gap:.2rem}
+.tabs button{font-family:var(--mono);font-size:.63rem;letter-spacing:.2em;padding:.6rem .95rem;background:none;border:none;border-radius:99px;color:var(--soft);text-transform:uppercase;transition:all .25s}
+.tabs button:hover{color:var(--ink);background:rgba(34,27,21,.05)}
+.tabs button.on{color:#fff;background:var(--ink)}
+.joinbtn{font-family:var(--mono);font-size:.63rem;letter-spacing:.2em;padding:.75rem 1.3rem;background:var(--violet);border:none;border-radius:99px;color:#fff;text-transform:uppercase;font-weight:600;transition:all .25s;box-shadow:0 6px 18px rgba(108,76,241,.3)}
+.joinbtn:hover{background:#5a3be0;transform:translateY(-2px)}
+@media(max-width:840px){
   nav{flex-wrap:wrap;gap:.4rem}
-  .tabs{order:3;width:100%;justify-content:space-between;background:rgba(12,10,9,.92);padding:.25rem 0}
-  .tabs button{padding:.55rem .4rem;font-size:.58rem}
+  .tabs{order:3;width:100%;justify-content:space-between;background:rgba(250,244,234,.96);padding:.25rem 0}
+  .tabs button{padding:.5rem .45rem;font-size:.58rem}
 }
 
-main{display:none;padding-top:30px}
+main{display:none;padding-top:6px}
 main.on{display:block}
 
-/* ============ HERO ============ */
-.hero{position:relative;min-height:100vh;min-height:100dvh;display:flex;align-items:flex-end;overflow:hidden}
-.hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:sepia(.5) hue-rotate(-32deg) saturate(1.5) brightness(.44) contrast(1.06)}
-.hero .wash{position:absolute;inset:0;background:linear-gradient(105deg,rgba(12,10,9,.94) 0%,rgba(12,10,9,.55) 45%,rgba(20,8,6,.35) 100%)}
-.hero .vig{position:absolute;inset:0;background:radial-gradient(ellipse at 70% 40%,transparent 30%,rgba(10,6,5,.85) 100%)}
-.hero .inner{position:relative;z-index:2;width:100%;padding:8rem clamp(1.4rem,4.5vw,4rem) 0}
-.kicker{display:flex;align-items:center;gap:1rem;font-family:var(--mono);font-size:.62rem;letter-spacing:.44em;color:var(--red-hi);margin-bottom:2rem;text-transform:uppercase}
-.kicker:before{content:"";width:2.6rem;height:1px;background:var(--red)}
-h1{font-family:var(--disp);font-weight:800;font-size:clamp(3rem,10.5vw,9.2rem);line-height:.92;text-transform:uppercase;letter-spacing:-.015em;max-width:12ch}
-h1 .serif{font-family:var(--serif);font-style:italic;font-weight:400;text-transform:none;color:var(--red);letter-spacing:0}
-.hero .sub{margin:2.2rem 0 0;max-width:34rem;font-size:clamp(.98rem,1.4vw,1.12rem);line-height:1.8;color:var(--dim)}
-.hero .sub b{color:var(--paper);font-weight:500}
-.cta-row{display:flex;gap:1rem;flex-wrap:wrap;margin-top:2.4rem}
-.btn{font-family:var(--mono);font-size:.68rem;letter-spacing:.24em;padding:1.05rem 1.9rem;border:1px solid var(--red);transition:all .3s;text-transform:uppercase;background:none;color:var(--paper)}
-.btn.primary{background:var(--red);color:#fff;font-weight:600}
-.btn.primary:hover{background:var(--red-hi);transform:translateY(-2px)}
-.btn.ghost:hover{background:rgba(232,68,46,.14);transform:translateY(-2px)}
-/* slate bar */
-.slatebar{position:relative;z-index:2;margin-top:4rem;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);background:rgba(8,6,5,.6);backdrop-filter:blur(4px)}
-.slatebar div{padding:1.1rem clamp(1rem,2.4vw,2rem);border-right:1px solid var(--line);font-family:var(--mono);font-size:.6rem;letter-spacing:.22em;color:var(--faint);text-transform:uppercase;line-height:2}
-.slatebar div b{display:block;color:var(--paper);font-weight:600;font-size:.72rem}
-.slatebar div:last-child{border-right:0}
-.slatebar a b{color:var(--red-hi)}
-@media(max-width:760px){.slatebar{grid-template-columns:1fr 1fr}h1{max-width:none}}
-/* film rail */
-.rail{position:absolute;top:0;right:0;bottom:0;width:44px;z-index:3;border-left:1px solid var(--line);display:flex;align-items:center;justify-content:center;background:rgba(8,6,5,.4)}
-.rail span{font-family:var(--mono);font-size:.56rem;letter-spacing:.5em;color:var(--faint);writing-mode:vertical-rl;text-transform:uppercase}
-.rail i{color:var(--red);font-style:normal}
-@media(max-width:900px){.rail{display:none}}
+/* HERO */
+.hero{position:relative;padding:9.5rem clamp(1.2rem,4.5vw,4rem) 4rem;max-width:1280px;margin:0 auto;text-align:center}
+.blob{position:absolute;pointer-events:none;filter:blur(90px);opacity:.35;border-radius:50%}
+.blob.a{width:420px;height:420px;background:var(--violet);top:-80px;left:-120px}
+.blob.b{width:380px;height:380px;background:var(--coral);top:40px;right:-140px;opacity:.28}
+.blob.c{width:300px;height:300px;background:var(--amber);bottom:-100px;left:38%;opacity:.25}
+.kicker{display:inline-flex;align-items:center;gap:.7rem;font-family:var(--mono);font-size:.62rem;letter-spacing:.32em;color:var(--violet);margin-bottom:1.8rem;text-transform:uppercase;border:1.5px solid rgba(108,76,241,.3);border-radius:99px;padding:.6rem 1.2rem;background:var(--card)}
+.kicker .dot{width:8px;height:8px;border-radius:50%;background:var(--coral);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.3}}
+h1{font-family:var(--disp);font-weight:800;font-size:clamp(2.8rem,7.6vw,6.4rem);line-height:1.0;letter-spacing:-.02em;position:relative}
+h1 .serif{font-family:var(--serif);font-style:italic;font-weight:400;letter-spacing:0;background:var(--spectrum);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .sub{margin:1.8rem auto 0;max-width:39rem;font-size:clamp(1rem,1.5vw,1.18rem);line-height:1.8;color:var(--soft)}
+.hero .sub b{color:var(--ink);font-weight:600}
+.cta-row{display:flex;gap:.9rem;justify-content:center;flex-wrap:wrap;margin-top:2.4rem}
+.btn{font-family:var(--mono);font-size:.68rem;letter-spacing:.2em;padding:1.05rem 1.9rem;border-radius:99px;border:1.5px solid var(--ink);transition:all .3s;text-transform:uppercase;background:none;color:var(--ink);font-weight:600}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn.primary:hover{background:var(--violet);border-color:var(--violet);transform:translateY(-2px);box-shadow:0 10px 24px rgba(108,76,241,.35)}
+.btn.ghost:hover{background:rgba(34,27,21,.06);transform:translateY(-2px)}
+.hero .proof{margin-top:1.8rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.22em;color:var(--soft);text-transform:uppercase}
+.hero .proof a{color:var(--violet);border-bottom:1.5px solid var(--violet)}
+
+/* spectrum wall */
+.wallwrap{max-width:1280px;margin:0 auto;padding:0 clamp(1.2rem,4.5vw,4rem) 2rem}
+.spectrum-wall{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+.cut{position:relative;border-radius:18px;overflow:hidden;background:var(--card);border:1.5px solid var(--line);transition:transform .45s cubic-bezier(.22,1,.36,1),box-shadow .45s}
+.cut:hover{transform:translateY(-8px) rotate(-.5deg);box-shadow:0 24px 48px rgba(34,27,21,.16)}
+.cut video{aspect-ratio:4/5;object-fit:cover;width:100%}
+.cut .chip{position:absolute;bottom:.8rem;left:.8rem;font-family:var(--mono);font-size:.56rem;letter-spacing:.22em;padding:.45rem .8rem;border-radius:99px;color:#fff;text-transform:uppercase;backdrop-filter:blur(6px)}
+.cut:nth-child(1) .chip{background:rgba(108,76,241,.85)}
+.cut:nth-child(2) .chip{background:rgba(15,163,200,.85)}
+.cut:nth-child(3) .chip{background:rgba(245,166,35,.88)}
+.cut:nth-child(4) .chip{background:rgba(255,92,77,.85)}
+@media(max-width:900px){.spectrum-wall{grid-template-columns:repeat(2,1fr)}}
+.wallnote{text-align:center;margin-top:1.4rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.24em;color:var(--soft);text-transform:uppercase}
+.wallnote b{color:var(--violet)}
 
 /* ticker */
-.ticker{padding:1.05rem 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);overflow:hidden;background:#000}
-.ticker .track{display:flex;gap:2.4rem;width:max-content;animation:mq 28s linear infinite}
-.ticker span{font-family:var(--mono);font-size:.6rem;letter-spacing:.32em;color:var(--dim);white-space:nowrap;text-transform:uppercase}
-.ticker span.r{color:var(--red-hi)}
+.ticker{padding:1.05rem 0;border-top:1.5px solid var(--line);border-bottom:1.5px solid var(--line);overflow:hidden;background:var(--card);margin-top:3rem}
+.ticker .track{display:flex;gap:2.4rem;width:max-content;animation:mq 30s linear infinite}
+.ticker span{font-family:var(--mono);font-size:.6rem;letter-spacing:.3em;color:var(--soft);white-space:nowrap;text-transform:uppercase}
+.ticker span.v{color:var(--violet)}.ticker span.c{color:var(--coral)}.ticker span.a{color:var(--amber)}
 @keyframes mq{to{transform:translateX(-50%)}}
 
-section{padding:clamp(4.5rem,11vh,8.5rem) clamp(1.4rem,4.5vw,4rem);max-width:1280px;margin:0 auto}
-.scene{font-family:var(--mono);font-size:.62rem;letter-spacing:.5em;color:var(--red);margin-bottom:2.2rem;display:flex;align-items:center;gap:1rem;text-transform:uppercase}
-.scene:before{content:"";width:2rem;height:1px;background:var(--red)}
-h2{font-family:var(--disp);font-weight:800;font-size:clamp(2.2rem,6vw,4.6rem);line-height:.98;text-transform:uppercase;margin-bottom:2.6rem;letter-spacing:-.015em}
-h2 .serif{font-family:var(--serif);font-style:italic;font-weight:400;text-transform:none;color:var(--red);letter-spacing:0}
+section{padding:clamp(4rem,10vh,7.5rem) clamp(1.2rem,4.5vw,4rem);max-width:1280px;margin:0 auto}
+.scene{font-family:var(--mono);font-size:.62rem;letter-spacing:.4em;color:var(--coral);margin-bottom:2rem;display:flex;align-items:center;gap:1rem;text-transform:uppercase}
+.scene:before{content:"";width:2rem;height:2.5px;background:var(--spectrum);border-radius:2px}
+h2{font-family:var(--disp);font-weight:800;font-size:clamp(2rem,5.2vw,4rem);line-height:1.02;margin-bottom:2.4rem;letter-spacing:-.02em}
+h2 .serif{font-family:var(--serif);font-style:italic;font-weight:400;letter-spacing:0;background:var(--spectrum);-webkit-background-clip:text;background-clip:text;color:transparent}
 
-/* reveal */
-.reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)}
+.reveal{opacity:0;transform:translateY(24px);transition:opacity .8s cubic-bezier(.22,1,.36,1),transform .8s cubic-bezier(.22,1,.36,1)}
 .reveal.in{opacity:1;transform:none}
-@media (prefers-reduced-motion: reduce){.reveal{opacity:1;transform:none;transition:none}.ticker .track{animation:none}.lbar .rec{animation:none}}
+@media (prefers-reduced-motion: reduce){.reveal{opacity:1;transform:none;transition:none}.ticker .track{animation:none}.kicker .dot{animation:none}}
 
-/* production steps */
+/* steps */
 .prod{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem}
-.take{background:var(--panel);border:1px solid var(--line);padding:2.1rem 1.9rem 2.4rem;position:relative;transition:border-color .35s}
-.take:hover{border-color:var(--red-dim)}
-.take:before{content:attr(data-tc);position:absolute;top:1.05rem;right:1.2rem;font-family:var(--mono);font-size:.56rem;letter-spacing:.2em;color:var(--faint)}
-.take .n{font-family:var(--serif);font-style:italic;font-size:2.6rem;color:var(--red);margin-bottom:.7rem;line-height:1}
-.take h3{font-family:var(--disp);font-weight:700;font-size:1.35rem;text-transform:uppercase;margin-bottom:.8rem;letter-spacing:.01em}
-.take p{font-size:.9rem;line-height:1.75;color:var(--dim)}
+.take{background:var(--card);border:1.5px solid var(--line);border-radius:20px;padding:2.1rem 1.9rem 2.3rem;position:relative;transition:transform .35s,box-shadow .35s}
+.take:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(34,27,21,.12)}
+.take .n{font-family:var(--serif);font-style:italic;font-size:2.4rem;line-height:1;margin-bottom:.7rem}
+.take:nth-child(1) .n{color:var(--violet)}.take:nth-child(2) .n{color:var(--coral)}.take:nth-child(3) .n{color:var(--amber)}
+.take h3{font-family:var(--disp);font-weight:700;font-size:1.3rem;margin-bottom:.7rem}
+.take p{font-size:.92rem;line-height:1.75;color:var(--soft)}
 @media(max-width:860px){.prod{grid-template-columns:1fr}}
 
-/* poster wall */
-.wall{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem}
-.onesheet{position:relative;border:1px solid var(--line);background:var(--panel);overflow:hidden;transition:transform .45s cubic-bezier(.22,1,.36,1),border-color .45s,box-shadow .45s}
-.onesheet:hover{transform:translateY(-10px) rotate(-.4deg);border-color:var(--red-dim);box-shadow:0 30px 60px rgba(0,0,0,.5)}
-.onesheet img{width:100%;aspect-ratio:2/3;object-fit:cover}
-.onesheet .shine{position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(242,234,217,.14) 46%,transparent 60%);transform:translateX(-120%);transition:transform .9s ease;pointer-events:none}
-.onesheet:hover .shine{transform:translateX(120%)}
-.onesheet .strip{padding:1rem 1.2rem;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
-.onesheet .strip a,.onesheet .strip button{color:var(--red-hi);background:none;border:none;font:inherit;letter-spacing:inherit;text-transform:inherit;border-bottom:1px solid var(--red);padding:0}
-@media(max-width:960px){.wall{grid-template-columns:1fr}.onesheet img{aspect-ratio:auto}}
+/* manifesto */
+#statement{max-width:900px;text-align:center}
+#statement .q{font-family:var(--serif);font-style:italic;font-size:clamp(1.5rem,3.2vw,2.5rem);line-height:1.5;color:var(--ink)}
+#statement .q em{background:var(--spectrum);-webkit-background-clip:text;background-clip:text;color:transparent;font-style:italic}
+#statement .who{margin-top:1.8rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.26em;color:var(--soft);text-transform:uppercase}
 
-/* director's statement */
-#statement{max-width:920px;text-align:center}
-#statement .q{font-family:var(--serif);font-style:italic;font-size:clamp(1.6rem,3.4vw,2.7rem);line-height:1.45;color:var(--paper)}
-#statement .q em{color:var(--red);font-style:italic}
-#statement .who{margin-top:2rem;font-family:var(--mono);font-size:.62rem;letter-spacing:.3em;color:var(--dim);text-transform:uppercase}
-#statement .who a{color:var(--red-hi);border-bottom:1px solid var(--red)}
-
-/* receipts slate */
-.receipts{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);background:var(--panel)}
-.rc{padding:1.7rem 1.5rem;border-right:1px solid var(--line)}
+/* receipts */
+.receipts{display:grid;grid-template-columns:repeat(4,1fr);border-radius:20px;overflow:hidden;border:1.5px solid var(--line);background:var(--card)}
+.rc{padding:1.7rem 1.5rem;border-right:1.5px solid var(--line)}
 .rc:last-child{border-right:0}
-.rc b{font-family:var(--disp);font-weight:800;font-size:2.2rem;display:block;color:var(--paper);line-height:1}
-.rc b i{font-style:normal;color:var(--red)}
-.rc span{font-family:var(--mono);font-size:.56rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;line-height:1.9;display:block;margin-top:.55rem}
-@media(max-width:860px){.receipts{grid-template-columns:1fr 1fr}.rc{border-bottom:1px solid var(--line)}}
-.opensrc{margin-top:1rem;font-family:var(--mono);font-size:.58rem;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
-.opensrc a{color:var(--red-hi)}
+.rc b{font-family:var(--disp);font-weight:800;font-size:2.1rem;display:block;line-height:1}
+.rc:nth-child(1) b{color:var(--violet)}.rc:nth-child(2) b{color:var(--coral)}.rc:nth-child(3) b{color:var(--amber)}.rc:nth-child(4) b{color:var(--emerald)}
+.rc span{font-family:var(--mono);font-size:.56rem;letter-spacing:.16em;color:var(--soft);text-transform:uppercase;line-height:1.9;display:block;margin-top:.55rem}
+@media(max-width:860px){.receipts{grid-template-columns:1fr 1fr}.rc{border-bottom:1.5px solid var(--line)}}
+.opensrc{margin-top:1.1rem;font-family:var(--mono);font-size:.58rem;letter-spacing:.18em;color:var(--soft);text-transform:uppercase}
+.opensrc a{color:var(--violet);border-bottom:1.5px solid var(--violet)}
 
 /* waitlist */
-#wlwrap{background:var(--panel);border-top:1px solid var(--line);border-bottom:1px solid var(--line);max-width:none}
-#wlwrap .wrap{max-width:740px;margin:0 auto;text-align:center}
-#wlwrap p.lead{color:var(--dim);line-height:1.8;margin:0 auto 2.4rem;max-width:33rem}
+#wlwrap{background:var(--card);border-top:1.5px solid var(--line);border-bottom:1.5px solid var(--line);max-width:none}
+#wlwrap .wrap{max-width:720px;margin:0 auto;text-align:center}
+#wlwrap p.lead{color:var(--soft);line-height:1.8;margin:0 auto 2.2rem;max-width:32rem}
 form.wl{display:flex;gap:.7rem;justify-content:center;flex-wrap:wrap}
-input,select,textarea{font-family:var(--mono);font-size:.78rem;background:#0a0808;border:1px solid var(--faint);color:var(--paper);padding:1rem 1.1rem;outline:none;transition:border-color .25s}
-input:focus,textarea:focus{border-color:var(--red)}
+input,select,textarea{font-family:var(--mono);font-size:.78rem;background:#fff;border:1.5px solid var(--line);border-radius:12px;color:var(--ink);padding:1rem 1.1rem;outline:none;transition:border-color .25s}
+input:focus,textarea:focus{border-color:var(--violet)}
 input[type=email]{min-width:min(300px,78vw)}
 .hp{position:absolute;left:-9999px;opacity:0}
-.result{margin-top:1.4rem;font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;color:var(--red-hi);min-height:1.3em}
-.smallnote{margin-top:1.2rem;font-family:var(--mono);font-size:.56rem;letter-spacing:.2em;color:var(--faint);text-transform:uppercase}
+.result{margin-top:1.4rem;font-family:var(--mono);font-size:.74rem;letter-spacing:.06em;color:var(--emerald);min-height:1.3em;font-weight:600}
+.smallnote{margin-top:1.1rem;font-family:var(--mono);font-size:.56rem;letter-spacing:.18em;color:var(--soft);text-transform:uppercase}
 
 /* SERVICES */
 .packs{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
-.pack{background:var(--panel);border:1px solid var(--line);padding:0 0 2rem;display:flex;flex-direction:column;gap:1rem;position:relative;transition:border-color .3s,transform .3s;overflow:hidden}
-.pack:hover{transform:translateY(-6px);border-color:var(--red-dim)}
-.pack .head{padding:1.6rem 1.8rem;border-bottom:1px solid var(--line);background:var(--panel2)}
-.pack.star .head{background:linear-gradient(135deg,rgba(232,68,46,.22),var(--panel2))}
-.pack.star{border-color:var(--red-dim)}
-.pack.star .flag{position:absolute;top:1.1rem;right:-2.3rem;background:var(--red);color:#fff;font-family:var(--mono);font-size:.52rem;letter-spacing:.22em;padding:.35rem 2.6rem;transform:rotate(38deg)}
-.pack .k{font-family:var(--mono);font-size:.58rem;letter-spacing:.32em;color:var(--red-hi);text-transform:uppercase;margin-bottom:.5rem}
-.pack h3{font-family:var(--disp);font-weight:800;font-size:1.8rem;text-transform:uppercase}
-.pack .price{font-family:var(--mono);font-size:.66rem;letter-spacing:.18em;color:var(--dim);margin-top:.4rem}
+.pack{background:var(--card);border:1.5px solid var(--line);border-radius:22px;padding:0 0 2rem;display:flex;flex-direction:column;gap:1rem;position:relative;transition:transform .3s,box-shadow .3s;overflow:hidden}
+.pack:hover{transform:translateY(-6px);box-shadow:0 20px 44px rgba(34,27,21,.13)}
+.pack .head{padding:1.7rem 1.8rem 1.4rem;border-bottom:1.5px solid var(--line)}
+.pack:nth-child(1) .head{background:linear-gradient(135deg,rgba(108,76,241,.12),transparent)}
+.pack:nth-child(2) .head{background:linear-gradient(135deg,rgba(255,92,77,.14),transparent)}
+.pack:nth-child(3) .head{background:linear-gradient(135deg,rgba(245,166,35,.14),transparent)}
+.pack.star{border-color:var(--coral)}
+.pack.star .flag{position:absolute;top:1.15rem;right:-2.2rem;background:var(--coral);color:#fff;font-family:var(--mono);font-size:.52rem;letter-spacing:.2em;padding:.35rem 2.6rem;transform:rotate(38deg)}
+.pack .k{font-family:var(--mono);font-size:.58rem;letter-spacing:.28em;color:var(--soft);text-transform:uppercase;margin-bottom:.5rem}
+.pack h3{font-family:var(--disp);font-weight:800;font-size:1.7rem}
+.pack .price{font-family:var(--mono);font-size:.64rem;letter-spacing:.16em;color:var(--soft);margin-top:.4rem;text-transform:uppercase}
 .pack ul{list-style:none;display:flex;flex-direction:column;gap:.6rem;padding:1.2rem 1.8rem 0}
-.pack li{font-size:.87rem;color:var(--dim);padding-left:1.2rem;position:relative;line-height:1.6}
-.pack li:before{content:"◆";position:absolute;left:0;color:var(--red);font-size:.58rem;top:.4em}
+.pack li{font-size:.88rem;color:var(--soft);padding-left:1.3rem;position:relative;line-height:1.6}
+.pack li:before{content:"✦";position:absolute;left:0;font-size:.7rem;top:.28em}
+.pack:nth-child(1) li:before{color:var(--violet)}.pack:nth-child(2) li:before{color:var(--coral)}.pack:nth-child(3) li:before{color:var(--amber)}
 .pack .foot{margin-top:auto;padding:1.4rem 1.8rem 0}
 @media(max-width:960px){.packs{grid-template-columns:1fr}}
-.faq{margin-top:4rem;display:grid;grid-template-columns:1fr 1fr;gap:2.4rem}
-.qa{border-top:1px solid var(--line);padding:1.3rem 0}
-.qa b{font-family:var(--disp);font-weight:700;font-size:1.05rem;text-transform:uppercase;display:block;margin-bottom:.5rem}
-.qa p{font-size:.88rem;color:var(--dim);line-height:1.75}
+.faq{margin-top:4rem;display:grid;grid-template-columns:1fr 1fr;gap:2.2rem}
+.qa{border-top:1.5px solid var(--line);padding:1.3rem 0}
+.qa b{font-family:var(--disp);font-weight:700;font-size:1.06rem;display:block;margin-bottom:.5rem}
+.qa p{font-size:.9rem;color:var(--soft);line-height:1.75}
 @media(max-width:800px){.faq{grid-template-columns:1fr}}
 
 /* STUDIO */
-.studio-grid{display:grid;grid-template-columns:430px 1fr;gap:1.6rem;align-items:start}
-.panel{background:var(--panel);border:1px solid var(--line);padding:1.9rem}
-.panel h3{font-family:var(--disp);font-weight:700;font-size:1.3rem;text-transform:uppercase;margin-bottom:1.3rem;display:flex;align-items:center;gap:.7rem}
-.panel h3:before{content:"🎬"}
+.studio-grid{display:grid;grid-template-columns:430px 1fr;gap:1.5rem;align-items:start}
+.panel{background:var(--card);border:1.5px solid var(--line);border-radius:22px;padding:1.9rem}
+.panel h3{font-family:var(--disp);font-weight:800;font-size:1.3rem;margin-bottom:1.3rem;display:flex;align-items:center;gap:.6rem}
 .field{margin-bottom:1.1rem}
-.field label{display:block;font-family:var(--mono);font-size:.56rem;letter-spacing:.24em;color:var(--dim);margin-bottom:.5rem;text-transform:uppercase}
+.field label{display:block;font-family:var(--mono);font-size:.56rem;letter-spacing:.2em;color:var(--soft);margin-bottom:.5rem;text-transform:uppercase}
 .field input,.field select,.field textarea{width:100%}
 .field textarea{min-height:170px;resize:vertical;line-height:1.6}
-.drop{border:1px dashed var(--faint);padding:1.1rem;text-align:center;font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;color:var(--dim);cursor:pointer;transition:border-color .3s;display:block;text-transform:uppercase}
-.drop:hover{border-color:var(--red)}
-.drop.has{border-color:var(--red);color:var(--red-hi)}
+.drop{border:2px dashed rgba(108,76,241,.4);border-radius:14px;padding:1.1rem;text-align:center;font-family:var(--mono);font-size:.6rem;letter-spacing:.14em;color:var(--soft);cursor:pointer;transition:all .3s;display:block;text-transform:uppercase;background:rgba(108,76,241,.04)}
+.drop:hover{border-color:var(--violet);color:var(--violet)}
+.drop.has{border-color:var(--emerald);color:var(--emerald);background:rgba(18,168,123,.06)}
 .drop input{display:none}
-.screen{background:#000;border:1px solid var(--line);min-height:560px;display:flex;align-items:center;justify-content:center;position:relative}
-.screen:before{content:"";position:absolute;top:-7px;left:0;right:0;height:7px;background-image:radial-gradient(circle,#000 2.4px,transparent 2.6px);background-size:16px 7px;background-color:transparent}
-.screen iframe{width:100%;height:560px;border:0;background:#0b0908}
-.screen .idle{font-family:var(--mono);font-size:.62rem;letter-spacing:.3em;color:var(--faint);text-align:center;line-height:2.5;padding:2rem;text-transform:uppercase}
-.screen .idle b{color:var(--red)}
-.actions{display:flex;gap:.8rem;margin-top:1rem;flex-wrap:wrap}
-.lockbtn{font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;padding:.9rem 1.3rem;border:1px solid var(--faint);background:none;color:var(--faint);text-transform:uppercase}
-.lockbtn:hover{border-color:var(--red-dim);color:var(--dim)}
-.unlock{font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;color:var(--red-hi);margin-top:.9rem;display:inline-block;border-bottom:1px solid var(--red);text-transform:uppercase}
+.screen{background:#171310;border-radius:22px;border:1.5px solid var(--line);min-height:560px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+.screen iframe{width:100%;height:560px;border:0;background:#171310}
+.screen .idle{font-family:var(--mono);font-size:.62rem;letter-spacing:.26em;color:rgba(250,244,234,.5);text-align:center;line-height:2.5;padding:2rem;text-transform:uppercase}
+.screen .idle b{background:var(--spectrum);-webkit-background-clip:text;background-clip:text;color:transparent}
+.actions{display:flex;gap:.7rem;margin-top:1rem;flex-wrap:wrap}
+.lockbtn{font-family:var(--mono);font-size:.6rem;letter-spacing:.16em;padding:.85rem 1.2rem;border:1.5px solid var(--line);border-radius:99px;background:var(--card);color:var(--soft);text-transform:uppercase;transition:all .25s}
+.lockbtn:hover{border-color:var(--violet);color:var(--violet)}
+.unlock{font-family:var(--mono);font-size:.6rem;letter-spacing:.18em;color:var(--violet);margin-top:.9rem;display:inline-block;border-bottom:1.5px solid var(--violet);text-transform:uppercase;font-weight:600}
 @media(max-width:1020px){.studio-grid{grid-template-columns:1fr}.screen iframe{height:70vh}}
 
 /* CONTACT */
-.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.6rem;align-items:start}
+.contact-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start}
 @media(max-width:900px){.contact-grid{grid-template-columns:1fr}}
 
-/* credits footer */
-footer{border-top:1px solid var(--line);padding:3rem clamp(1.4rem,4.5vw,4rem) 3.6rem;text-align:center;font-family:var(--mono);font-size:.58rem;letter-spacing:.28em;color:var(--faint);line-height:2.7;text-transform:uppercase}
-footer .big{font-family:var(--disp);font-weight:800;font-size:clamp(1.6rem,4vw,2.6rem);letter-spacing:.06em;color:var(--paper);margin-bottom:.8rem}
-footer .big i{font-style:normal;color:var(--red)}
-footer a{color:var(--red-hi)}
-#grain{position:fixed;inset:-140px;z-index:85;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==) repeat}
+/* footer */
+footer{border-top:1.5px solid var(--line);padding:3rem clamp(1.2rem,4.5vw,4rem) 3.4rem;text-align:center;font-family:var(--mono);font-size:.58rem;letter-spacing:.24em;color:var(--soft);line-height:2.7;text-transform:uppercase;background:var(--card)}
+footer .big{font-family:var(--disp);font-weight:800;font-size:clamp(1.5rem,3.6vw,2.3rem);letter-spacing:.02em;color:var(--ink);margin-bottom:.6rem}
+footer .big i{font-style:normal;background:var(--spectrum);-webkit-background-clip:text;background-clip:text;color:transparent}
+footer a{color:var(--violet)}
 
-/* unlock modal */
-#modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(5,4,3,.84);backdrop-filter:blur(4px);padding:1.4rem}
+/* modal */
+#modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(34,27,21,.45);backdrop-filter:blur(5px);padding:1.4rem}
 #modal.on{display:flex}
-#modal .box{background:var(--panel);border:1px solid var(--red-dim);max-width:430px;width:100%;padding:2.3rem;text-align:center;position:relative}
-#modal .x{position:absolute;top:.7rem;right:1rem;background:none;border:none;color:var(--dim);font-size:1.2rem}
-#modal .k{font-family:var(--mono);font-size:.58rem;letter-spacing:.4em;color:var(--red);margin-bottom:1rem;text-transform:uppercase}
-#modal h3{font-family:var(--disp);font-weight:800;font-size:1.5rem;text-transform:uppercase;margin-bottom:.9rem}
-#modal p{color:var(--dim);font-size:.9rem;line-height:1.75;margin-bottom:1.6rem}
+#modal .box{background:var(--card);border-radius:24px;max-width:430px;width:100%;padding:2.3rem;text-align:center;position:relative;box-shadow:0 30px 80px rgba(34,27,21,.3)}
+#modal .x{position:absolute;top:.8rem;right:1.1rem;background:none;border:none;color:var(--soft);font-size:1.25rem}
+#modal .k{font-family:var(--mono);font-size:.58rem;letter-spacing:.34em;color:var(--coral);margin-bottom:1rem;text-transform:uppercase}
+#modal h3{font-family:var(--disp);font-weight:800;font-size:1.45rem;margin-bottom:.9rem}
+#modal p{color:var(--soft);font-size:.92rem;line-height:1.75;margin-bottom:1.6rem}
 </style>
 </head>
 <body>
 
-<div class="lbar top"><span>CINEFOLIO STUDIOS</span><span class="rec">● REC</span><span id="tcTop">TC 00:00:00:00</span></div>
-<div class="lbar bot"><span>CF-2026</span><span>EST. BUDAPEST</span><span>REEL 01</span></div>
+<div class="ribbon top"></div><div class="ribbon bot"></div>
 
 <nav>
-  <a class="brand" href="#/" data-nav><span class="lens"></span>CINEFOLIO</a>
+  <a class="brand" href="#/" data-nav><span class="lens"></span>CineFolio</a>
   <div class="tabs">
     <button data-tab="home" class="on">Home</button>
     <button data-tab="services">Services</button>
@@ -244,83 +234,61 @@ footer a{color:var(--red-hi)}
 <!-- ============ HOME ============ -->
 <main data-page="home" class="on">
   <header class="hero">
-    <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
-    <div class="wash"></div><div class="vig"></div>
-    <div class="rail"><span>PROD 001 <i>●</i> EST. BUDAPEST <i>●</i> 35MM DIGITAL <i>●</i> 2026</span></div>
-    <div class="inner">
-      <div class="kicker">A film studio for one subject: you</div>
-      <h1>We turn careers into <span class="serif">cinema.</span></h1>
-      <p class="sub">Everyone else hands you a template. We cast you as the lead: <b>identity-locked AI film scenes of you</b>, cut into a scroll-driven portfolio with kinetic type, a working terminal and verified credentials.</p>
-      <div class="cta-row">
-        <button class="btn primary" data-goto="studio">Try the Studio — free rough cut</button>
-        <a class="btn ghost" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">Watch Release Nº1 ↗</a>
-      </div>
-      <div class="slatebar">
-        <div>PRODUCTION<b>CINEFOLIO Nº001</b></div>
-        <div>DELIVERY<b>24 HOURS</b></div>
-        <div>FORMAT<b>SCROLL-SCRUB FILM</b></div>
-        <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer"><div style="border-right:0">NOW SCREENING<b>AITELQADI.DEV ↗</b></div></a>
-      </div>
+    <div class="blob a"></div><div class="blob b"></div><div class="blob c"></div>
+    <div class="kicker"><span class="dot"></span>THE AI FILM STUDIO FOR CAREERS</div>
+    <h1>Portfolios people<br><span class="serif">fall in love with.</span></h1>
+    <p class="sub">Templates all look the same. We make you the lead of a <b>cinematic AI film</b>: scenes of you, in your colors, cut into a scroll-driven site that people actually remember. <b>Premiere in 24 hours.</b></p>
+    <div class="cta-row">
+      <button class="btn primary" data-goto="studio">Try a free rough cut</button>
+      <a class="btn ghost" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live release ↗</a>
     </div>
+    <div class="proof">EVERY CAREER GETS ITS OWN LIGHTING — <a href="#" data-goto="studio">PICK YOURS ↓</a></div>
   </header>
+
+  <div class="wallwrap">
+    <div class="spectrum-wall">
+      <div class="cut reveal"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212954_8600e4c3-1335-4834-92f3-59c79847edca.mp4"></video><span class="chip">The Lavender Cut</span></div>
+      <div class="cut reveal"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212957_b65bc691-59f0-4da6-be3a-0e33f63a2fd3.mp4"></video><span class="chip">The Neon Cut</span></div>
+      <div class="cut reveal"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video><span class="chip">The Ember Cut</span></div>
+    </div>
+    <div class="wallnote">THREE STYLES, THREE STORIES — ALL SHOT BY OUR AI CAMERAS · <b>YOURS IS NEXT</b></div>
+  </div>
 
   <div class="ticker" aria-hidden="true"><div class="track" id="ticker"></div></div>
 
   <section>
-    <div class="scene reveal">The production</div>
-    <h2 class="reveal">Lights. Camera. <span class="serif">Career.</span></h2>
+    <div class="scene reveal">How it works</div>
+    <h2 class="reveal">Three steps to <span class="serif">your premiere.</span></h2>
     <div class="prod">
-      <div class="take reveal" data-tc="TC 00:01">
-        <div class="n">one</div><h3>The casting</h3>
-        <p>Two or three well-lit photos and your CV. That is the entire brief. No design calls, no forms longer than an espresso.</p>
+      <div class="take reveal">
+        <div class="n">one</div><h3>Send photos + CV</h3>
+        <p>Two or three well-lit photos and your CV. That's the whole brief. No design calls, no forms longer than an espresso.</p>
       </div>
-      <div class="take reveal" data-tc="TC 00:02">
-        <div class="n">two</div><h3>The shoot</h3>
-        <p>Our AI cameras film you: a 360° hero orbit and story scenes for your work. Identity-locked, quality-gated, unmistakably you.</p>
+      <div class="take reveal">
+        <div class="n">two</div><h3>We film you with AI</h3>
+        <p>A 360° hero orbit and story scenes, in the lighting and palette that fits you. Identity-locked and quality-gated, so every frame is unmistakably you.</p>
       </div>
-      <div class="take reveal" data-tc="TC 00:03">
-        <div class="n">three</div><h3>The premiere</h3>
-        <p>Your film ships as a scroll-driven site on your own domain: kinetic type, interactive terminal, verified credentials, CV download.</p>
+      <div class="take reveal">
+        <div class="n">three</div><h3>Your film premieres</h3>
+        <p>A scroll-driven site on your own domain: kinetic type, an interactive terminal, verified credentials, CV download. Yours, forever.</p>
       </div>
-    </div>
-  </section>
-
-  <section>
-    <div class="scene reveal">The releases</div>
-    <h2 class="reveal">Real cuts, <span class="serif">not mockups.</span></h2>
-    <div class="wall">
-      <article class="onesheet reveal">
-        <img src="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/437fae43-8477-48fb-9fb6-45d46f86eb1f.png" alt="The Engineer — Release Nº1 poster" loading="lazy">
-        <div class="shine"></div>
-        <div class="strip"><span>RELEASE Nº1</span><a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">WATCH LIVE ↗</a></div>
-      </article>
-      <article class="onesheet reveal">
-        <img src="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/5322120e-9666-4eec-a6a1-2417ff9cf59f.png" alt="The Creative Director — concept cut poster" loading="lazy">
-        <div class="shine"></div>
-        <div class="strip"><span>RELEASE Nº2</span><span>CONCEPT CUT</span></div>
-      </article>
-      <article class="onesheet reveal">
-        <img src="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/c2be998c-0227-4ec7-ad24-f7093dcf5dbd.png" alt="Your Story — open casting poster" loading="lazy">
-        <div class="shine"></div>
-        <div class="strip"><span>RELEASE Nº3</span><button data-goto="studio">START YOUR CUT →</button></div>
-      </article>
     </div>
   </section>
 
   <section id="statement">
-    <div class="q reveal">“A resume says what you did. A template says you exist. <em>A film says you're worth watching.</em> We built the camera that makes one of you.”</div>
-    <div class="who reveal">— MOHAMMED AIT EL QADI, FOUNDER · <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">RELEASE Nº1 IS HIS</a></div>
+    <div class="q reveal">“A resume says what you did. A template says you exist. <em>A film says you're worth watching.</em>”</div>
+    <div class="who reveal">THE CINEFOLIO PRINCIPLE</div>
   </section>
 
   <section>
-    <div class="scene reveal">The craft — receipts, not promises</div>
+    <div class="scene reveal">Receipts, not promises</div>
     <div class="receipts reveal">
-      <div class="rc"><b>48<i>H</i></b><span>First release: concept to live custom domain, verified end to end</span></div>
-      <div class="rc"><b>120<i>F</i></b><span>Frames in the scroll-scrub engine, quality-gated per clip</span></div>
-      <div class="rc"><b>3<i>+</i></b><span>Identity-locked AI scenes per feature production</span></div>
-      <div class="rc"><b>24<i>H</i></b><span>Casting sheet to premiere. Same pipeline, every client</span></div>
+      <div class="rc"><b>24H</b><span>Casting sheet to premiere. Same pipeline, every client</span></div>
+      <div class="rc"><b>120F</b><span>Frames in the scroll-scrub engine, quality-gated per clip</span></div>
+      <div class="rc"><b>3</b><span>Distinct lighting worlds on this page alone. Yours will be new</span></div>
+      <div class="rc"><b>1</b><span>Live release already screening on a real custom domain</span></div>
     </div>
-    <p class="opensrc reveal">OPEN PRODUCTION — THIS PAGE'S SOURCE IS PUBLIC AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB.COM/AITELQADIMO/CINEFOLIO</a></p>
+    <p class="opensrc reveal">OPEN PRODUCTION — THIS PAGE'S SOURCE IS PUBLIC AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE EXAMPLE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a></p>
   </section>
 
   <section id="wlwrap">
@@ -340,7 +308,7 @@ footer a{color:var(--red-hi)}
         <button class="btn primary" type="submit" id="wlBtn">Join</button>
       </form>
       <div class="result" id="wlResult"></div>
-      <div class="smallnote" id="wlCount">FOUNDING PRICING · FIRST SLOTS · BUILT BY AN ENGINEER WHO SHIPPED HIS OWN</div>
+      <div class="smallnote" id="wlCount">FOUNDING PRICING · FIRST SLOTS · NO SPAM, EVER</div>
     </div>
   </section>
 </main>
@@ -352,7 +320,7 @@ footer a{color:var(--red-hi)}
     <h2>Pick your <span class="serif">production.</span></h2>
     <div class="packs">
       <div class="pack">
-        <div class="head"><div class="k">FORMAT 01</div><h3>The Short</h3><div class="price">FOUNDING PRICING · TBA</div></div>
+        <div class="head"><div class="k">FORMAT 01</div><h3>The Short</h3><div class="price">Founding pricing · TBA</div></div>
         <ul>
           <li>One identity-locked hero orbit film</li>
           <li>Single-page cinematic site, kinetic type</li>
@@ -362,20 +330,20 @@ footer a{color:var(--red-hi)}
         <div class="foot"><button class="btn ghost" data-goto="studio">Try a rough cut</button></div>
       </div>
       <div class="pack star">
-        <div class="flag">MOST WANTED</div>
-        <div class="head"><div class="k">FORMAT 02</div><h3>The Feature</h3><div class="price">FOUNDING PRICING · TBA</div></div>
+        <div class="flag">MOST LOVED</div>
+        <div class="head"><div class="k">FORMAT 02</div><h3>The Feature</h3><div class="price">Founding pricing · TBA</div></div>
         <ul>
           <li>Three AI film scenes: orbit + two story scenes</li>
           <li>Full scroll-scrub production, section pinning</li>
           <li>Interactive terminal visitors can type into</li>
           <li>Verified credentials with real links</li>
-          <li>Career-as-pipeline section, telemetry HUD</li>
+          <li>Your palette, your lighting, your story</li>
           <li>Your domain, your repo — you own everything</li>
         </ul>
         <div class="foot"><button class="btn primary" id="joinFromPack">Join the guest list</button></div>
       </div>
       <div class="pack">
-        <div class="head"><div class="k">FORMAT 03</div><h3>The Franchise</h3><div class="price">FOUNDING PRICING · TBA</div></div>
+        <div class="head"><div class="k">FORMAT 03</div><h3>The Franchise</h3><div class="price">Founding pricing · TBA</div></div>
         <ul>
           <li>Everything in The Feature</li>
           <li>Matching CV redesign (print-grade PDF)</li>
@@ -386,9 +354,9 @@ footer a{color:var(--red-hi)}
       </div>
     </div>
     <div class="faq">
-      <div class="qa"><b>Why film instead of a template?</b><p>Attention. A recruiter sees three hundred identical portfolio links a week. A cinematic film of you is the one they forward to a colleague.</p></div>
+      <div class="qa"><b>Why a film instead of a template?</b><p>Attention. A recruiter sees three hundred identical portfolio links a week. A cinematic film of you is the one they forward to a colleague.</p></div>
       <div class="qa"><b>Is the AI video really me?</b><p>Yes. Scenes are generated against your photos as identity references and quality-gated for likeness before anything ships.</p></div>
-      <div class="qa"><b>What do I need to provide?</b><p>Two or three well-lit photos, your CV, and a domain if you have one. We handle the rest, end to end.</p></div>
+      <div class="qa"><b>Can I pick my style?</b><p>That's the point. Lavender softness, neon edge, golden daylight, ember drama, or something we invent for you. One style per story.</p></div>
       <div class="qa"><b>Who owns the result?</b><p>You do. Your domain, your repo, your film. We keep nothing but the credit line.</p></div>
     </div>
   </section>
@@ -401,7 +369,7 @@ footer a{color:var(--red-hi)}
     <h2>Direct your own <span class="serif">rough cut.</span></h2>
     <div class="studio-grid">
       <div class="panel">
-        <h3>Casting sheet</h3>
+        <h3>🎬 Casting sheet</h3>
         <div class="field"><label>Your email · required</label><input type="email" id="stEmail" placeholder="you@domain.com"></div>
         <div class="field"><label>Your name</label><input type="text" id="stName" placeholder="Ada Lovelace"></div>
         <div class="field"><label>Your role</label>
@@ -410,14 +378,14 @@ footer a{color:var(--red-hi)}
         <div class="field"><label>Headshot · stays in your browser</label>
           <label class="drop" id="drop">CLICK TO ADD A PHOTO<input type="file" id="stPhoto" accept="image/*"></label>
         </div>
-        <div class="field"><label>Paste your CV · or <span style="color:var(--red-hi);cursor:pointer" id="cvFileBtn">upload .txt</span> · or <span style="color:var(--red-hi);cursor:pointer" id="sampleBtn">use a sample</span></label><textarea id="stCV" placeholder="Paste the text of your CV here — experience lines with years work best."></textarea><input type="file" id="cvFile" accept=".txt,text/plain" style="display:none"></div>
+        <div class="field"><label>Paste your CV · or <span style="color:var(--violet);cursor:pointer;font-weight:600" id="cvFileBtn">upload .txt</span> · or <span style="color:var(--coral);cursor:pointer;font-weight:600" id="sampleBtn">use a sample</span></label><textarea id="stCV" placeholder="Paste the text of your CV here — experience lines with years work best."></textarea><input type="file" id="cvFile" accept=".txt,text/plain" style="display:none"></div>
         <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="stHp">
         <button class="btn primary" id="stGo" style="width:100%">Roll camera</button>
         <div class="result" id="stMsg"></div>
       </div>
       <div>
         <div class="screen" id="screen">
-          <div class="idle" id="idle">THE SCREENING ROOM<br><br>FILL THE CASTING SHEET AND <b>ROLL CAMERA</b>.<br>YOUR ROUGH CUT RENDERS HERE IN SECONDS.<br><br>PHOTO NEVER LEAVES YOUR BROWSER IN THE DEMO.</div>
+          <div class="idle" id="idle">THE SCREENING ROOM<br><br>FILL THE CASTING SHEET AND <b>ROLL CAMERA</b>.<br>YOUR ROUGH CUT RENDERS HERE IN SECONDS.<br><br>YOUR PHOTO NEVER LEAVES YOUR BROWSER IN THE DEMO.</div>
         </div>
         <div class="actions">
           <button class="lockbtn" data-feature="Deploy to your domain">DEPLOY TO YOUR DOMAIN 🔒</button>
@@ -437,7 +405,7 @@ footer a{color:var(--red-hi)}
     <h2>Talk to the <span class="serif">studio.</span></h2>
     <div class="contact-grid">
       <div class="panel">
-        <h3>Send a note</h3>
+        <h3>💌 Send a note</h3>
         <div class="field"><label>Your email</label><input type="email" id="ctEmail" placeholder="you@domain.com"></div>
         <div class="field"><label>Message</label><textarea id="ctMsg" placeholder="Tell us about your story, your deadline, or your questions."></textarea></div>
         <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="ctHp">
@@ -446,17 +414,17 @@ footer a{color:var(--red-hi)}
       </div>
       <div>
         <div class="qa"><b>How fast is delivery?</b><p>The full production premieres within 24 hours of your casting sheet. The Studio rough cut renders in seconds.</p></div>
-        <div class="qa"><b>Can you match my brand?</b><p>Every production gets its own lighting design and typography. No two releases look alike — that is the point.</p></div>
-        <div class="qa"><b>Direct line</b><p><a href="mailto:aitelqadi22@gmail.com" style="color:var(--red-hi)">aitelqadi22@gmail.com</a> — the founder reads everything.</p></div>
+        <div class="qa"><b>Will mine look like these?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike — that's the whole point.</p></div>
+        <div class="qa"><b>The studio inbox</b><p><a href="mailto:aitelqadi22@gmail.com" style="color:var(--violet);font-weight:600">Write to us</a> — a human reads everything.</p></div>
       </div>
     </div>
   </section>
 </main>
 
 <footer>
-  <div class="big">CINEFOLIO<i>•</i>STUDIOS</div>
-  DIRECTED BY <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">MOHAMMED AIT EL QADI</a> · SOURCE ON <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a><br>
-  SHOT ON SEEDANCE · GRADED IN BUDAPEST · © 2026 ALL RIGHTS RESERVED
+  <div class="big">CineFolio<i>•</i>Studios</div>
+  MADE WITH AI CAMERAS AND TASTE · EST. BUDAPEST<br>
+  SOURCE ON <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE RELEASE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · © 2026
 </footer>
 
 <div id="modal" role="dialog" aria-modal="true">
@@ -469,15 +437,10 @@ footer a{color:var(--red-hi)}
   </div>
 </div>
 
-<div id="grain" aria-hidden="true"></div>
-
 <script>
 /* ---------- ticker ---------- */
-const items=['NOW SCREENING','IDENTITY-LOCKED AI FILM','SCROLL-SCRUB CINEMATOGRAPHY','INTERACTIVE TERMINAL','VERIFIED CREDENTIALS','YOUR DOMAIN','PREMIERE IN 24H'];
-document.getElementById('ticker').innerHTML=(items.map((s,i)=>`<span class="${i%2?'r':''}">${s}</span><span>·</span>`).join('')).repeat(2);
-
-/* ---------- timecode ---------- */
-(function(){setInterval(()=>{const t=Math.floor(Date.now()/1000);const f=Math.floor(Date.now()/41.67)%24;const s=t%60,m=Math.floor(t/60)%60,h=Math.floor(t/3600)%24;document.getElementById('tcTop').textContent=`TC ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;},1000/24);})();
+const items=[['NOW CASTING','v'],['YOUR COLORS, YOUR LIGHTING','c'],['IDENTITY-LOCKED AI FILM','a'],['INTERACTIVE TERMINAL','v'],['VERIFIED CREDENTIALS','c'],['YOUR OWN DOMAIN','a'],['PREMIERE IN 24H','v']];
+document.getElementById('ticker').innerHTML=(items.map(([s,c])=>`<span class="${c}">${s}</span><span>✦</span>`).join('')).repeat(2);
 
 /* ---------- reveal on scroll ---------- */
 const ro=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');ro.unobserve(e.target);}}),{threshold:.12});
@@ -572,7 +535,7 @@ document.getElementById('stGo').addEventListener('click',async()=>{
     const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,name:document.getElementById('stName').value,role:document.getElementById('stRole').value,cvText:cv,company:document.getElementById('stHp').value})});
     const j=await r.json();
     if(j.ok&&j.html){
-      const photo=photoData||'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#151110"/><circle cx="50" cy="38" r="16" fill="#e8442e"/><rect x="26" y="60" width="48" height="30" rx="14" fill="#e8442e"/></svg>');
+      const photo=photoData||'data:image/svg+xml;utf8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#2a221c"/><circle cx="50" cy="38" r="16" fill="#6C4CF1"/><rect x="26" y="60" width="48" height="30" rx="14" fill="#FF5C4D"/></svg>');
       const html=j.html.split('__PHOTO__').join(photo);
       const scr=document.getElementById('screen');scr.innerHTML='';
       const fr=document.createElement('iframe');fr.setAttribute('sandbox','');fr.srcdoc=html;scr.appendChild(fr);
