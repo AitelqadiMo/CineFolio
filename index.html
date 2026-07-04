@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>CineFolio — Your career, filmed. Cinematic AI portfolios</title>
+<meta name="description" content="CineFolio turns you into the hero of a cinematic, scroll-driven portfolio film: identity-locked AI scenes, an interactive terminal, verified credentials, your own domain. Join the waitlist.">
+<meta property="og:title" content="CineFolio — Your career, filmed.">
+<meta property="og:description" content="Cinematic AI portfolios. Your face, identity-locked, in a scroll-driven film. Join the waitlist.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%230a0b0a'/%3E%3Ctext x='32' y='42' font-family='Arial Black' font-size='28' font-weight='900' fill='%23ece5d8' text-anchor='middle'%3ECF%3C/text%3E%3Ccircle cx='52' cy='52' r='6' fill='%2317c07f'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0a0b0a; --ink-2:#0e100e; --emerald:#17c07f; --emerald-hi:#42e8a4;
+  --cream:#ece5d8; --dim:rgba(236,229,216,.55); --faint:rgba(236,229,216,.14);
+  --mono:'JetBrains Mono',monospace; --body:'Space Grotesk',sans-serif; --disp:'Clash Display',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--ink);color:var(--cream);font-family:var(--body);overflow-x:hidden;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+::selection{background:var(--emerald);color:var(--ink)}
+a{color:inherit;text-decoration:none}
+img,video{display:block;max-width:100%}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:50;display:flex;justify-content:space-between;align-items:center;padding:1.2rem clamp(1.2rem,3vw,2.6rem);font-family:var(--mono);font-size:.7rem;letter-spacing:.3em;mix-blend-mode:difference}
+nav .brand{font-family:var(--disp);font-weight:700;font-size:1rem;letter-spacing:.14em}
+nav .brand i{color:var(--emerald-hi);font-style:normal}
+nav .links{display:flex;gap:1.6rem}
+nav a:hover{color:var(--emerald-hi)}
+@media(max-width:760px){nav .links{display:none}}
+nav .cta{color:var(--emerald-hi)}
+
+.hero{position:relative;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
+.hero video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.5) saturate(1.05)}
+.hero .shade{position:absolute;inset:0;background:radial-gradient(ellipse at center,rgba(6,7,6,.15) 30%,rgba(6,7,6,.88) 100%)}
+.hero .inner{position:relative;z-index:2;padding:0 5vw;max-width:1100px}
+.eyebrow{font-family:var(--mono);font-size:.66rem;letter-spacing:.5em;color:var(--emerald-hi);margin-bottom:1.6rem}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(2.9rem,9vw,7.6rem);line-height:.96;text-transform:uppercase;letter-spacing:.01em}
+.hero .sub{margin:1.8rem auto 0;max-width:44rem;font-size:clamp(.95rem,1.6vw,1.15rem);line-height:1.75;color:var(--dim)}
+.hero .sub b{color:var(--cream);font-weight:500}
+.cta-row{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;margin-top:2.6rem}
+.btn{font-family:var(--mono);font-size:.72rem;letter-spacing:.28em;padding:1.1rem 2.2rem;border:1px solid var(--emerald);transition:all .3s;text-transform:uppercase;cursor:pointer;background:none;color:var(--cream)}
+.btn.primary{background:var(--emerald);color:#06110c;font-weight:600}
+.btn.primary:hover{background:var(--emerald-hi);transform:translateY(-2px)}
+.btn.ghost:hover{background:rgba(23,192,127,.12);transform:translateY(-2px)}
+.hero .proof{margin-top:2.4rem;font-family:var(--mono);font-size:.64rem;letter-spacing:.24em;color:var(--dim)}
+.hero .proof a{color:var(--emerald-hi);border-bottom:1px solid var(--emerald)}
+.hero .proof b{color:var(--emerald-hi);font-weight:600}
+
+.marquee{padding:1.4rem 0;border-top:1px solid var(--faint);border-bottom:1px solid var(--faint);overflow:hidden;background:var(--ink)}
+.marquee .track{display:flex;gap:2.6rem;width:max-content;animation:mq 30s linear infinite}
+.marquee span{font-family:var(--mono);font-size:.66rem;letter-spacing:.34em;color:var(--dim);white-space:nowrap}
+.marquee span.g{color:var(--emerald-hi)}
+@keyframes mq{to{transform:translateX(-50%)}}
+
+section{padding:clamp(4.5rem,11vh,8rem) clamp(1.2rem,4vw,3rem);max-width:1240px;margin:0 auto}
+.sec-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.5em;color:var(--emerald-hi);margin-bottom:2.6rem;display:flex;align-items:center;gap:1.1rem}
+.sec-label:before{content:"";width:2.2rem;height:1px;background:var(--emerald)}
+h2{font-family:var(--disp);font-weight:600;font-size:clamp(2rem,5.4vw,4.2rem);line-height:1;text-transform:uppercase;letter-spacing:.01em;margin-bottom:2.6rem}
+h2 em{font-style:normal;color:transparent;-webkit-text-stroke:1px rgba(236,229,216,.42)}
+
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--faint);border:1px solid var(--faint)}
+.step{background:var(--ink-2);padding:2.2rem 1.9rem 2.5rem}
+.step .n{font-family:var(--mono);font-size:.64rem;letter-spacing:.3em;color:var(--emerald-hi);margin-bottom:1.1rem}
+.step h3{font-family:var(--disp);font-weight:600;font-size:1.5rem;text-transform:uppercase;letter-spacing:.03em;margin-bottom:.9rem}
+.step p{font-size:.92rem;line-height:1.7;color:var(--dim)}
+@media(max-width:860px){.steps{grid-template-columns:1fr}}
+
+.examples{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem}
+.ex{border:1px solid var(--faint);background:var(--ink-2);overflow:hidden;transition:transform .4s cubic-bezier(.22,1,.36,1),border-color .4s;position:relative}
+.ex:hover{transform:translateY(-6px);border-color:rgba(236,229,216,.32)}
+.ex video{aspect-ratio:16/10;object-fit:cover;width:100%;filter:saturate(1.05)}
+.ex .placeholder{aspect-ratio:16/10;display:flex;align-items:center;justify-content:center;border-bottom:1px dashed var(--faint);font-family:var(--mono);font-size:.66rem;letter-spacing:.3em;color:var(--dim);text-align:center;padding:1rem}
+.ex .meta{padding:1.3rem 1.4rem 1.5rem}
+.ex .meta .tag{font-family:var(--mono);font-size:.6rem;letter-spacing:.3em;color:var(--emerald-hi);margin-bottom:.5rem}
+.ex .meta h3{font-family:var(--disp);font-weight:600;font-size:1.25rem;text-transform:uppercase;letter-spacing:.03em}
+.ex .meta p{font-size:.84rem;color:var(--dim);margin-top:.45rem;line-height:1.6}
+.ex .meta a{color:var(--emerald-hi);font-family:var(--mono);font-size:.64rem;letter-spacing:.24em;display:inline-block;margin-top:.9rem;border-bottom:1px solid var(--emerald)}
+@media(max-width:960px){.examples{grid-template-columns:1fr}}
+
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--faint);border:1px solid var(--faint)}
+.f{background:var(--ink);padding:1.7rem 1.6rem;display:flex;flex-direction:column;gap:.55rem}
+.f b{font-family:var(--disp);font-weight:600;font-size:1.02rem;text-transform:uppercase;letter-spacing:.04em}
+.f span{font-size:.85rem;color:var(--dim);line-height:1.6}
+@media(max-width:860px){.feat{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.feat{grid-template-columns:1fr}}
+
+#join{position:relative;overflow:hidden;border-top:1px solid var(--faint);max-width:none}
+#join .wrap{max-width:760px;margin:0 auto;text-align:center;position:relative;z-index:2}
+#join p.lead{color:var(--dim);line-height:1.75;max-width:36rem;margin:0 auto 2.4rem}
+form{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap}
+input[type=email],select{font-family:var(--mono);font-size:.8rem;letter-spacing:.06em;background:#0d0f0d;border:1px solid rgba(236,229,216,.25);color:var(--cream);padding:1.05rem 1.2rem;outline:none;min-width:min(300px,80vw)}
+input[type=email]:focus{border-color:var(--emerald)}
+select{min-width:150px}
+.hp{position:absolute;left:-9999px;opacity:0}
+.note{margin-top:1.4rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.22em;color:rgba(236,229,216,.4)}
+.result{margin-top:1.6rem;font-family:var(--mono);font-size:.78rem;letter-spacing:.1em;color:var(--emerald-hi);min-height:1.4em}
+
+footer{border-top:1px solid var(--faint);padding:1.6rem clamp(1.2rem,4vw,3rem);display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;font-family:var(--mono);font-size:.62rem;letter-spacing:.24em;color:var(--dim)}
+footer a{color:var(--emerald-hi)}
+#grain{position:fixed;inset:-140px;z-index:90;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==) repeat}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="brand" href="#top">CINEFOLIO<i>•</i></a>
+  <div class="links">
+    <a href="#how">HOW IT WORKS</a><a href="#examples">EXAMPLES</a><a href="#what">WHAT YOU GET</a>
+  </div>
+  <a class="cta" href="#join">JOIN THE LIST →</a>
+</nav>
+
+<header class="hero" id="top">
+  <video autoplay muted loop playsinline preload="metadata" poster="" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
+  <div class="shade"></div>
+  <div class="inner">
+    <div class="eyebrow">CINEMATIC AI PORTFOLIOS</div>
+    <h1>Your career,<br>filmed.</h1>
+    <p class="sub">Templates are wallpaper. CineFolio makes you the <b>hero of a scroll-driven film</b>: identity-locked AI scenes of you, massive kinetic type, an interactive terminal, verified credentials, your own domain. <b>Shipped in a day.</b></p>
+    <div class="cta-row">
+      <a class="btn primary" href="#join">Join the waitlist</a>
+      <a class="btn ghost" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live one ↗</a>
+    </div>
+    <div class="proof" id="proof">DEMO Nº1 IS LIVE — <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">aitelqadi.dev</a></div>
+  </div>
+</header>
+
+<div class="marquee" aria-hidden="true"><div class="track" id="mq"></div></div>
+
+<section id="how">
+  <div class="sec-label">HOW IT WORKS</div>
+  <h2>Three steps.<br><em>One day.</em></h2>
+  <div class="steps">
+    <div class="step"><div class="n">STEP 01</div><h3>Send photos + CV</h3><p>Two or three well-lit photos of you and your resume or LinkedIn. That is the entire brief. No design calls, no questionnaires.</p></div>
+    <div class="step"><div class="n">STEP 02</div><h3>We film you with AI</h3><p>Identity-locked cinematic scenes: a 360° hero orbit, story scenes for your work, every clip quality-gated so it is unmistakably you.</p></div>
+    <div class="step"><div class="n">STEP 03</div><h3>Your film ships</h3><p>A scroll-driven site with kinetic type, an interactive terminal, verifiable credentials and CV download, deployed to your own domain.</p></div>
+  </div>
+</section>
+
+<section id="examples">
+  <div class="sec-label">EXAMPLES</div>
+  <h2>Real cuts,<br><em>not mockups.</em></h2>
+  <div class="examples">
+    <article class="ex">
+      <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3G20a3gkiMhEulIBga7pqQVv5qP/hf_20260704_090012_f9d9e6b4-18df-4dc9-8261-a949f0eb09c2.mp4"></video>
+      <div class="meta">
+        <div class="tag">CUT Nº1 — SHIPPED</div>
+        <h3>The Engineer</h3>
+        <p>DevOps &amp; platform engineer, Budapest. Full film: orbit, pipeline, terminal, credentials.</p>
+        <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">VIEW LIVE ↗</a>
+      </div>
+    </article>
+    <article class="ex" id="exampleTwo">
+      <video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video>
+      <div class="meta">
+        <div class="tag">CUT Nº2 — CONCEPT</div>
+        <h3>The Creative Director</h3>
+        <p>Amber-lit concept cut, straight from the AI camera. Every client gets their own lighting.</p>
+      </div>
+    </article>
+    <article class="ex">
+      <div class="placeholder">CUT Nº3 — RESERVED FOR YOU</div>
+      <div class="meta">
+        <div class="tag">CUT Nº3 — OPEN</div>
+        <h3>Your Cut</h3>
+        <p>Engineer, designer, founder, marketer: your story, your lighting, your film.</p>
+        <a href="#join">CLAIM THE SLOT ↓</a>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section id="what">
+  <div class="sec-label">WHAT YOU GET</div>
+  <h2>Not a template.<br><em>A production.</em></h2>
+  <div class="feat">
+    <div class="f"><b>Hero orbit film</b><span>A 360° cinematic shot of you, scroll-scrubbed frame by frame like an award site.</span></div>
+    <div class="f"><b>Identity-locked scenes</b><span>Every AI scene is generated against your photos and quality-gated for likeness.</span></div>
+    <div class="f"><b>Interactive terminal</b><span>Visitors type whoami, stack, resume. Recruiters remember it.</span></div>
+    <div class="f"><b>Verified credentials</b><span>Certifications with real verification links, not badge JPEGs.</span></div>
+    <div class="f"><b>CV download + SEO</b><span>Your resume served from the site, social cards, search-ready metadata.</span></div>
+    <div class="f"><b>Your domain, your repo</b><span>Deployed to your domain with the source in your GitHub. You own everything.</span></div>
+  </div>
+</section>
+
+<section id="join">
+  <div class="wrap">
+    <div class="sec-label" style="justify-content:center">THE WAITLIST</div>
+    <h2>Be an early cut.</h2>
+    <p class="lead">No payment, no spam. Drop your email and we will reach out when your slot opens. Early list members get founding pricing.</p>
+    <form id="wl" autocomplete="off">
+      <input type="email" id="email" name="email" placeholder="you@domain.com" required>
+      <select id="role" name="role" aria-label="Your role">
+        <option value="engineer">Engineer</option>
+        <option value="designer">Designer</option>
+        <option value="founder">Founder</option>
+        <option value="other">Other</option>
+      </select>
+      <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true">
+      <button class="btn primary" type="submit" id="submitBtn">Join</button>
+    </form>
+    <div class="result" id="result"></div>
+    <div class="note" id="countNote">EARLY ACCESS · FOUNDING PRICING · BUILT BY AN ENGINEER WHO SHIPPED HIS OWN</div>
+  </div>
+</section>
+
+<footer>
+  <span>© 2026 CINEFOLIO</span>
+  <span>A PROJECT BY <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">MOHAMMED AIT EL QADI</a></span>
+  <span>BUDAPEST, HU</span>
+</footer>
+
+<div id="grain" aria-hidden="true"></div>
+
+<script>
+const items = ['SCROLL-SCRUB FILM','IDENTITY-LOCKED AI','INTERACTIVE TERMINAL','VERIFIED CREDENTIALS','YOUR OWN DOMAIN','SHIPPED IN A DAY'];
+const half = items.map((s,i)=>`<span class="${i%2?'g':''}">${s}</span><span>✦</span>`).join('');
+document.getElementById('mq').innerHTML = half + half;
+
+fetch('/api/count').then(r=>r.json()).then(({count})=>{
+  if(count && count > 4){
+    document.getElementById('countNote').textContent = count + ' PEOPLE ON THE LIST · FOUNDING PRICING · NO SPAM';
+  }
+}).catch(()=>{});
+
+document.getElementById('wl').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submitBtn'), out = document.getElementById('result');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await fetch('/api/waitlist', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        role: document.getElementById('role').value,
+        company: document.querySelector('.hp').value
+      })
+    });
+    const j = await r.json();
+    if (j.ok) {
+      out.textContent = j.duplicate ? 'You are already on the list. We got you.' :
+        (j.position ? `You're in — Nº ${j.position} on the list.` : "You're in. We'll be in touch.");
+      document.getElementById('wl').style.display = 'none';
+    } else {
+      out.textContent = 'That email does not look right. Try again?';
+      btn.disabled = false; btn.textContent = 'Join';
+    }
+  } catch {
+    out.textContent = 'Network hiccup. Try once more.';
+    btn.disabled = false; btn.textContent = 'Join';
+  }
+});
+</script>
+</body>
+</html>
