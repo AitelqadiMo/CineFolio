@@ -9,7 +9,13 @@
 <meta property="og:description" content="Cinematic AI portfolio films. Try the Studio: upload a photo and CV, review your rough cut in 60 seconds.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<meta property="og:image" content="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/3d01b713-67ef-402e-9a13-65bd836cb0a0.png">
+<meta name="twitter:image" content="https://d2ol7oe51mr4n9.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/3d01b713-67ef-402e-9a13-65bd836cb0a0.png">
+<meta name="twitter:title" content="CineFolio Studios — We turn careers into cinema">
 <meta name="theme-color" content="#0c0a09">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Organization","name":"CineFolio Studios","description":"Cinematic AI portfolio films: identity-locked scenes, scroll-driven sites, premiere in 24 hours.","founder":{"@type":"Person","name":"Mohammed Ait El Qadi","url":"https://www.aitelqadi.dev"}}
+</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%230c0a09'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%23e8442e' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23f2ead9'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -169,6 +175,25 @@ footer{border-top:1px solid var(--line);padding:2.6rem clamp(1.2rem,4vw,3rem) 3.
 footer .big{font-family:var(--disp);font-weight:800;font-size:1.4rem;letter-spacing:.08em;color:var(--paper);margin-bottom:.6rem}
 footer a{color:var(--red-hi)}
 #grain{position:fixed;inset:-140px;z-index:85;pointer-events:none;opacity:.05;mix-blend-mode:overlay;background:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==) repeat}
+
+/* receipts strip */
+.receipts{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);background:var(--panel)}
+.rc{padding:1.6rem 1.4rem;border-right:1px solid var(--line)}
+.rc:last-child{border-right:0}
+.rc b{font-family:var(--disp);font-weight:800;font-size:1.9rem;display:block;color:var(--paper)}
+.rc b i{font-style:normal;color:var(--red)}
+.rc span{font-family:var(--mono);font-size:.58rem;letter-spacing:.2em;color:var(--dim);text-transform:uppercase;line-height:1.9;display:block;margin-top:.4rem}
+@media(max-width:860px){.receipts{grid-template-columns:1fr 1fr}.rc{border-bottom:1px solid var(--line)}}
+
+/* unlock modal */
+#modal{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;background:rgba(5,4,3,.82);backdrop-filter:blur(4px);padding:1.4rem}
+#modal.on{display:flex}
+#modal .box{background:var(--panel);border:1px solid var(--red-dim);max-width:430px;width:100%;padding:2.2rem;text-align:center;position:relative}
+#modal .x{position:absolute;top:.7rem;right:1rem;background:none;border:none;color:var(--dim);font-size:1.2rem}
+#modal .k{font-family:var(--mono);font-size:.6rem;letter-spacing:.4em;color:var(--red);margin-bottom:1rem}
+#modal h3{font-family:var(--disp);font-weight:800;font-size:1.6rem;text-transform:uppercase;margin-bottom:.9rem}
+#modal p{color:var(--dim);font-size:.9rem;line-height:1.7;margin-bottom:1.6rem}
+@media (prefers-reduced-motion: reduce){.ticker .track{animation:none}.lbar .rec{animation:none}}
 </style>
 </head>
 <body>
@@ -223,6 +248,17 @@ footer a{color:var(--red-hi)}
         <p>Your film ships as a scroll-driven site on your own domain: kinetic type, interactive terminal, verified credentials, CV download.</p>
       </div>
     </div>
+  </section>
+
+  <section>
+    <div class="scene">THE CRAFT — RECEIPTS, NOT PROMISES</div>
+    <div class="receipts">
+      <div class="rc"><b>48<i>H</i></b><span>First release: concept to live custom domain, verified end to end</span></div>
+      <div class="rc"><b>120<i>F</i></b><span>Frames in the scroll-scrub engine, quality-gated per clip</span></div>
+      <div class="rc"><b>3<i>+</i></b><span>Identity-locked AI scenes per feature production</span></div>
+      <div class="rc"><b>24<i>H</i></b><span>Casting sheet to premiere. Same pipeline, every client</span></div>
+    </div>
+    <p style="margin-top:1rem;font-family:var(--mono);font-size:.6rem;letter-spacing:.2em;color:var(--faint)">OPEN PRODUCTION — THIS PAGE'S SOURCE IS PUBLIC AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer" style="color:var(--red-hi)">GITHUB.COM/AITELQADIMO/CINEFOLIO</a></p>
   </section>
 
   <section>
@@ -345,7 +381,7 @@ footer a{color:var(--red-hi)}
         <div class="field"><label>Headshot · stays in your browser</label>
           <label class="drop" id="drop">CLICK TO ADD A PHOTO<input type="file" id="stPhoto" accept="image/*"></label>
         </div>
-        <div class="field"><label>Paste your CV / LinkedIn about</label><textarea id="stCV" placeholder="Paste the text of your CV here — experience lines with years work best."></textarea></div>
+        <div class="field"><label>Paste your CV / LinkedIn about · or <span style="color:var(--red-hi);cursor:pointer" id="cvFileBtn">upload .txt</span> · or <span style="color:var(--red-hi);cursor:pointer" id="sampleBtn">use a sample</span></label><textarea id="stCV" placeholder="Paste the text of your CV here — experience lines with years work best."></textarea><input type="file" id="cvFile" accept=".txt,text/plain" style="display:none"></div>
         <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="stHp">
         <button class="btn primary" id="stGo" style="width:100%">Roll camera</button>
         <div class="result" id="stMsg"></div>
@@ -355,9 +391,9 @@ footer a{color:var(--red-hi)}
           <div class="idle" id="idle">THE SCREENING ROOM<br><br>FILL THE CASTING SHEET AND <b>ROLL CAMERA</b>.<br>YOUR ROUGH CUT RENDERS HERE IN SECONDS.<br><br>PHOTO NEVER LEAVES YOUR BROWSER IN THE DEMO.</div>
         </div>
         <div class="actions">
-          <button class="lockbtn" data-lock="🔒 Founding members only — join the list">DEPLOY TO YOUR DOMAIN</button>
-          <button class="lockbtn" data-lock="🔒 Founding members only — join the list">EXPORT SOURCE</button>
-          <button class="lockbtn" data-lock="🔒 The full production adds your AI film scenes">RENDER AI FILM SCENES</button>
+          <button class="lockbtn" data-feature="Deploy to your domain">DEPLOY TO YOUR DOMAIN 🔒</button>
+          <button class="lockbtn" data-feature="Export the source">EXPORT SOURCE 🔒</button>
+          <button class="lockbtn" data-feature="AI film scenes of you">RENDER AI FILM SCENES 🔒</button>
         </div>
         <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING — JOIN THE GUEST LIST →</a>
       </div>
@@ -391,9 +427,19 @@ footer a{color:var(--red-hi)}
 
 <footer>
   <div class="big">CINEFOLIO<span style="color:var(--red)">•</span>STUDIOS</div>
-  DIRECTED BY <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">MOHAMMED AIT EL QADI</a><br>
+  DIRECTED BY <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">MOHAMMED AIT EL QADI</a> · SOURCE ON <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a><br>
   SHOT ON SEEDANCE · GRADED IN BUDAPEST · © 2026 ALL RIGHTS RESERVED
 </footer>
+
+<div id="modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <button class="x" id="modalX" aria-label="close">×</button>
+    <div class="k">FOUNDING ACCESS</div>
+    <h3 id="modalTitle">Locked in the demo</h3>
+    <p id="modalText">This is where the full production takes over: identity-locked AI film scenes, deploy to your own domain, source export. Founding members get first slots and founding pricing.</p>
+    <button class="btn primary" id="modalJoin" style="width:100%">Join the guest list</button>
+  </div>
+</div>
 
 <div id="grain" aria-hidden="true"></div>
 
@@ -413,6 +459,7 @@ function go(name,push=true){
   tabs.forEach(b=>b.classList.toggle('on',b.dataset.tab===name));
   if(push) history.replaceState(null,'','#/'+(name==='home'?'':name));
   window.scrollTo({top:0});
+  if(push && window.hit) hit(name);
 }
 tabs.forEach(b=>b.addEventListener('click',()=>go(b.dataset.tab)));
 document.querySelectorAll('[data-goto]').forEach(el=>el.addEventListener('click',e=>{e.preventDefault();go(el.dataset.goto);}));
@@ -440,7 +487,41 @@ document.getElementById('wl').addEventListener('submit',async e=>{
   }catch{out.textContent='Network hiccup — try again.';btn.disabled=false;btn.textContent='Join';}
 });
 
-/* ---------- studio ---------- */
+/* ---------- unlock modal (works on touch, every locked button responds) ---------- */
+const modal=document.getElementById('modal');
+document.querySelectorAll('.lockbtn').forEach(b=>b.addEventListener('click',()=>{
+  document.getElementById('modalTitle').textContent=b.dataset.feature+' — founding access';
+  modal.classList.add('on');
+}));
+document.getElementById('modalX').addEventListener('click',()=>modal.classList.remove('on'));
+modal.addEventListener('click',e=>{if(e.target===modal)modal.classList.remove('on');});
+document.getElementById('modalJoin').addEventListener('click',()=>{modal.classList.remove('on');toWaitlist();});
+
+/* ---------- own-analytics ping ---------- */
+function hit(page){try{fetch('/api/hit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({page})}).catch(()=>{});}catch(e){}}
+hit(location.hash.replace('#/','')||'home');
+
+/* ---------- studio: sample + txt upload ---------- */
+const SAMPLE=`Ada Kovacs
+Senior Product Designer, Budapest
+2021-2026 Lead Product Designer at Fictive Labs: design systems in Figma, UX research, motion design in After Effects, shipped 4 major product launches
+2018-2021 UI Designer at Craftworks: branding, illustration, Photoshop, prototyping
+Skills: Figma, UX, UI, product design, branding, photography, analytics
+Awards: Design Sprint winner 2024`;
+document.getElementById('sampleBtn').addEventListener('click',()=>{
+  document.getElementById('stCV').value=SAMPLE;
+  if(!document.getElementById('stName').value)document.getElementById('stName').value='Ada Kovacs';
+  if(!document.getElementById('stRole').value||document.getElementById('stRole').value==='engineer')document.getElementById('stRole').value='designer';
+  document.getElementById('stMsg').textContent='Sample loaded — add your email and roll camera.';
+});
+document.getElementById('cvFileBtn').addEventListener('click',()=>document.getElementById('cvFile').click());
+document.getElementById('cvFile').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{document.getElementById('stCV').value=String(rd.result).slice(0,8000);document.getElementById('stMsg').textContent='CV text loaded.';};
+  rd.readAsText(f);
+});
+
 let photoData=null;
 const drop=document.getElementById('drop');
 document.getElementById('stPhoto').addEventListener('change',e=>{
