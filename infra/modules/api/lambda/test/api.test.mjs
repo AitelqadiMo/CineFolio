@@ -270,3 +270,15 @@ test("sites: takedown then relight restores pointer and live status", async () =
   // single-release live site still refuses a no-op rollback
   assert.equal(parse(await h(ev("POST /sites/{id}/rollback", { claims: "u1", path: { id }, body: {} }))).code, 400);
 });
+
+test("media: presigned upload for images only, keyed to the user", async () => {
+  const ctx = fakeCtx();
+  ctx.presign = { async put(bucket, key, ct) { return `https://presigned/${bucket}/${key}?ct=${encodeURIComponent(ct)}`; } };
+  const h = makeHandler(async () => ctx);
+  const r = parse(await h(ev("POST /media", { claims: "u9", body: { contentType: "image/jpeg" } })));
+  assert.equal(r.code, 200);
+  assert.match(r.body.key, /^media\/u9\/[a-f0-9-]+\.jpg$/);
+  assert.match(r.body.uploadUrl, /^https:\/\/presigned\/pub\/media\/u9\//);
+  assert.match(r.body.publicUrl, /^https:\/\/cdn\.test\/media\/u9\//);
+  assert.equal(parse(await h(ev("POST /media", { claims: "u9", body: { contentType: "application/pdf" } }))).code, 400);
+});
