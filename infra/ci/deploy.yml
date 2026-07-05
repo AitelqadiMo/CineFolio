@@ -1,0 +1,45 @@
+# CineFolio infra CI — place at .github/workflows/infra.yml in the repo.
+# (The connected GitHub app can't write under .github/workflows, so move this file manually.)
+name: infra
+on:
+  push:
+    branches: [main]
+    paths: ["infra/**"]
+  pull_request:
+    paths: ["infra/**"]
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.10.5"
+  AWS_REGION: "eu-central-1"
+  WORKDIR: "infra/envs/dev"
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::975050163168:role/cinefolio-dev-gha-deploy
+          aws-region: ${{ env.AWS_REGION }}
+      - name: fmt
+        run: terraform -chdir=${{ env.WORKDIR }} fmt -check -recursive
+      - name: init
+        run: terraform -chdir=${{ env.WORKDIR }} init -backend-config="bucket=cinefolio-dev-tfstate-975050163168"
+      - name: validate
+        run: terraform -chdir=${{ env.WORKDIR }} validate
+      - name: plan
+        run: terraform -chdir=${{ env.WORKDIR }} plan -no-color
+      # apply on main only, after review
+      - name: apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform -chdir=${{ env.WORKDIR }} apply -auto-approve
