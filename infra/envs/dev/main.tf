@@ -109,7 +109,6 @@ module "appshell" {
   source      = "../../modules/appshell"
   name_prefix = local.name_prefix
   account_id  = data.aws_caller_identity.current.account_id
-  kms_key_arn = module.kms.key_arn
   tags        = local.tags
 }
 
