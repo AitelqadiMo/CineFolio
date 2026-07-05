@@ -86,6 +86,11 @@ export async function generate(event, ctx) {
       GSI2PK: "STATUS#queued", GSI2SK: now(),
       email, name: parsed.name, role: parsed.roleLabel, skills: parsed.skills,
       cvText, // retained so the pipeline can (re)dispatch without the client
+      brief: { // creative direction from the Studio workspace (deterministic base + custom idea)
+        template: clampStr(b.template, 24) || null,
+        palette: clampStr(b.palette, 24) || null,
+        customIdea: clampStr(b.customIdea, 1200) || null,
+      },
       status: "queued", production, createdAt: now(), updatedAt: now(),
     },
     "attribute_not_exists(PK)" // idempotency: uuid collision or client retry can't double-create
