@@ -42,3 +42,10 @@ variable "sites_domain" {
   type    = string
   default = ""
 }
+
+# API CORS. Dev: "*" (SPA distribution domain only exists after first apply).
+# Prod: pin to the real app origins.
+variable "api_cors_origins" {
+  type    = list(string)
+  default = ["*"]
+}
