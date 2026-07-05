@@ -47,6 +47,7 @@ locals {
     "POST /callback"                = false # authenticated by X-CF-Secret (SSM) inside the handler
     "GET /me"                       = true
     "PUT /me"                       = true
+    "POST /media"                   = true
     "GET /admin/orders"             = true # + admin group check in-handler
     "POST /admin/orders/{id}/retry" = true # + admin group check in-handler
     "POST /sites"                   = true
