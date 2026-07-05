@@ -51,6 +51,7 @@ locals {
     "POST /sites"               = true
     "GET /sites"                = true
     "GET /sites/{id}"           = true
+    "GET /sites/{id}/source"    = true
     "POST /sites/{id}/publish"  = true
     "POST /sites/{id}/rollback" = true
     "DELETE /sites/{id}"        = true
