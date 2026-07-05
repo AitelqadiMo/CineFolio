@@ -10,6 +10,7 @@ export const ROUTES = {
   "GET /health": async (_e, ctx) => json(200, { ok: true, service: "cinefolio-api", env: ctx.config.appEnv, ts: new Date().toISOString() }),
   "GET /me": misc.getMe,
   "PUT /me": misc.putMe,
+  "POST /media": misc.mediaUpload,
   "POST /waitlist": misc.joinWaitlist,
   "GET /waitlist/count": misc.waitlistCount,
   "POST /contact": misc.contact,
@@ -34,7 +35,7 @@ async function buildCtx() {
   if (realCtx) return realCtx;
   const aws = await import("./aws.mjs");
   realCtx = {
-    ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn,
+    ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn, presign: aws.presign,
     secrets: aws.secrets, fetchFn: aws.fetchFn,
     config: {
       appEnv: process.env.APP_ENV || "dev",
