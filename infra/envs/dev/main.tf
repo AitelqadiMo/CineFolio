@@ -90,7 +90,7 @@ module "api" {
   kvs_arn              = module.hosting.kvs_arn
   distribution_id      = module.hosting.distribution_id
   cdn_domain           = module.hosting.distribution_domain
-  cors_allowed_origins = var.app_origins
+  cors_allowed_origins = var.api_cors_origins # "*" in dev: app CF domain is minted after first apply. Pin in prod.
   tags                 = local.tags
 }
 
@@ -103,6 +103,14 @@ module "hosting" {
   enable_custom_domain             = var.enable_custom_domain
   sites_domain                     = var.sites_domain
   tags                             = local.tags
+}
+
+module "appshell" {
+  source      = "../../modules/appshell"
+  name_prefix = local.name_prefix
+  account_id  = data.aws_caller_identity.current.account_id
+  kms_key_arn = module.kms.key_arn
+  tags        = local.tags
 }
 
 module "pipeline" {
@@ -128,6 +136,9 @@ module "observability" {
 }
 
 # ---------- outputs ----------
+output "app_url" { value = "https://${module.appshell.app_cdn_domain}" }
+output "app_bucket" { value = module.appshell.app_bucket }
+output "app_distribution_id" { value = module.appshell.app_distribution_id }
 output "api_endpoint" { value = module.api.api_endpoint }
 output "cognito_user_pool_id" { value = module.identity.user_pool_id }
 output "cognito_client_id" { value = module.identity.client_id }
