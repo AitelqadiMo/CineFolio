@@ -102,13 +102,19 @@ export async function generate(event, ctx) {
       deliver: { method: "POST", url: callbackUrl, headers: { "X-CF-Secret": secrets.CF_CALLBACK_SECRET, "X-CF-Order": orderId, "content-type": "text/html" } },
     };
     try {
-      await ctx.fetchFn(secrets.AGENT_WEBHOOK_URL, {
+      const r = await ctx.fetchFn(secrets.AGENT_WEBHOOK_URL, {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${secrets.AGENT_WEBHOOK_SECRET}` },
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${secrets.AGENT_WEBHOOK_SECRET}`,
+          "x-webhook-secret": secrets.AGENT_WEBHOOK_SECRET, // some receivers expect this header form
+        },
         body: JSON.stringify(payload),
       });
+      if (!r.ok) throw new Error(`webhook responded ${r.status}`); // 4xx/5xx = NOT dispatched
       await ctx.queue.send(ctx.config.ordersQueueUrl, { orderId, dispatchedAt: now() }); // pipeline audit trail (P3 consumer)
-    } catch {
+    } catch (e) {
+      console.error(JSON.stringify({ level: "error", msg: "webhook dispatch failed", orderId, err: e?.message }));
       await setStatus(ctx, orderId, "dispatch_failed");
     }
   }
