@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 import { confetti, friendly } from "../ui.jsx";
-import { parseProfile, compile, TEMPLATES } from "../templates/engine.js";
+import { parseProfile, compile, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
 
 const POLL_MS = 8000, POLL_MAX = 220;
 
@@ -21,6 +21,11 @@ export default function Studio() {
   const [tpl, setTpl] = useState("monolith");
   const [pal, setPal] = useState("jersey");
   const [customIdea, setCustomIdea] = useState("");
+  const [projects, setProjects] = useState([]);
+  const [testimonials, setTestimonials] = useState([]);
+  const [services, setServices] = useState([]);
+  const [sections, setSections] = useState({ ...DEFAULT_SECTIONS });
+  const [openProj, setOpenProj] = useState(null);
   const [view, setView] = useState("desktop");
   const [pdfBusy, setPdfBusy] = useState(false);
   // premiere + director's cut
@@ -33,6 +38,30 @@ export default function Studio() {
   const [tc, setTc] = useState("00:00:00");
   const premiereRef = useRef(null);
   const polls = useRef(0);
+
+  // draft autosave — work survives reloads (localStorage; DDB sync is W2)
+  useEffect(() => {
+    try {
+      const d = JSON.parse(localStorage.getItem("cf.studioDraft") || "null");
+      if (d) {
+        if (d.cvRaw) setCvRaw(d.cvRaw);
+        if (d.q) setQ(d.q);
+        if (d.projects) setProjects(d.projects);
+        if (d.testimonials) setTestimonials(d.testimonials);
+        if (d.services) setServices(d.services);
+        if (d.sections) setSections({ ...DEFAULT_SECTIONS, ...d.sections });
+        if (d.tpl) setTpl(d.tpl);
+        if (d.pal) setPal(d.pal);
+      }
+    } catch { /* fresh start */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { localStorage.setItem("cf.studioDraft", JSON.stringify({ cvRaw, q, projects, testimonials, services, sections, tpl, pal })); } catch { /* full */ }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal]);
 
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
@@ -59,18 +88,53 @@ export default function Studio() {
     } catch { return parseProfile("", { name: q.name || "Your Name" }); }
   }, [cvText, q, photo]);
 
+  const fullProfile = useMemo(() => ({
+    ...profile,
+    ...(projects.length ? { projects } : {}),
+    testimonials, services,
+  }), [profile, projects, testimonials, services]);
+
   const html = useMemo(() => {
-    try { return compile(tpl, pal, profile); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error — adjust the brief</body></html>"; }
-  }, [tpl, pal, profile]);
+    try { return compile(tpl, pal, fullProfile, { sections }); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error — adjust the brief</body></html>"; }
+  }, [tpl, pal, fullProfile, sections]);
 
   // live posters: each template rendered with the CLIENT'S data
   const posters = useMemo(() => TEMPLATES.map((t) => {
-    try { return { id: t.id, html: compile(t.id, t.id === tpl ? pal : t.palettes[0].id, profile) }; }
+    try { return { id: t.id, html: compile(t.id, t.id === tpl ? pal : t.palettes[0].id, fullProfile, { sections }) }; }
     catch { return { id: t.id, html: "" }; }
-  }), [profile, tpl, pal]);
+  }), [fullProfile, tpl, pal, sections]);
 
   useEffect(() => { setTake((n) => n + 1); }, [html]); // every recompile is a new take
   const ready = cvText.trim().length > 60 || q.name;
+
+  // ---------- media: compress client-side, upload via presigned PUT ----------
+  const uploadImage = (file) => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = async () => {
+      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      const dataUrl = c.toDataURL("image/jpeg", 0.82);
+      try {
+        const p = await api.media("image/jpeg");
+        const blob = await (await fetch(dataUrl)).blob();
+        if (blob.size > p.maxBytes) throw new Error("too large");
+        const up = await fetch(p.uploadUrl, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: blob });
+        if (!up.ok) throw new Error("upload failed");
+        resolve(p.publicUrl);
+      } catch { resolve(dataUrl); } // preview + publish still work, embedded inline
+    };
+    img.onerror = () => resolve(null);
+    img.src = URL.createObjectURL(file);
+  });
+
+  const proj = (i, patch) => setProjects(projects.map((p2, k) => (k === i ? { ...p2, ...patch } : p2)));
+  const moveProj = (i, d) => {
+    const a = [...projects]; const j = i + d;
+    if (j < 0 || j >= a.length) return;
+    [a[i], a[j]] = [a[j], a[i]]; setProjects(a);
+  };
 
   // ---------- uploads ----------
   const onResume = async (e) => {
@@ -105,11 +169,10 @@ export default function Studio() {
       rd.readAsText(f);
     }
   };
-  const onPhoto = (e) => {
+  const onPhoto = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => setPhoto(rd.result);
-    rd.readAsDataURL(f);
+    const url = await uploadImage(f);
+    if (url) setPhoto(url);
   };
 
   // ---------- premiere ----------
@@ -197,7 +260,73 @@ export default function Studio() {
           </div>
 
           <div className="railsec act">
-            <div className="acthead"><span className="actno">III</span><div><b>The Look</b><span className="actsub">three worlds, rendered with your data — live</span></div></div>
+            <div className="acthead"><span className="actno">III</span><div><b>The Work</b><span className="actsub">guided case studies, the story not just screenshots</span></div></div>
+            {projects.map((pr, i) => (
+              <div key={i} className={`projcard ${openProj === i ? "open" : ""}`}>
+                <div className="projrow" onClick={() => setOpenProj(openProj === i ? null : i)}>
+                  <b>{pr.name || `Project ${i + 1}`}</b>
+                  <span className="projops" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => moveProj(i, -1)} title="Up">↑</button>
+                    <button onClick={() => moveProj(i, 1)} title="Down">↓</button>
+                    <button onClick={() => { setProjects(projects.filter((_, k) => k !== i)); setOpenProj(null); }} title="Remove">✕</button>
+                  </span>
+                </div>
+                {openProj === i && (
+                  <div className="projbody">
+                    <label className="uploadrow" htmlFor={`cov${i}`} style={{ marginTop: 2 }}>
+                      {pr.cover ? <img className="upthumb" src={pr.cover} alt="" style={{ borderRadius: 4 }} /> : <span className="upic">▦</span>}
+                      <span>{pr.cover ? "COVER LOADED ✓ — REPLACE" : "COVER IMAGE"}</span>
+                      <input id={`cov${i}`} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files[0]; if (!f) return; const u = await uploadImage(f); if (u) proj(i, { cover: u }); }} />
+                    </label>
+                    <input value={pr.name || ""} onChange={(e) => proj(i, { name: e.target.value })} placeholder="Project title" />
+                    <input value={pr.summary || ""} onChange={(e) => proj(i, { summary: e.target.value })} placeholder="One-line summary, what a recruiter remembers" />
+                    <div className="grid" style={{ gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                      <input value={pr.role || ""} onChange={(e) => proj(i, { role: e.target.value })} placeholder="Role" />
+                      <input value={pr.timeline || ""} onChange={(e) => proj(i, { timeline: e.target.value })} placeholder="Timeline" />
+                      <input value={pr.tools || ""} onChange={(e) => proj(i, { tools: e.target.value })} placeholder="Tools" />
+                    </div>
+                    <textarea value={pr.problem || ""} onChange={(e) => proj(i, { problem: e.target.value })} placeholder="The problem: what was broken, risky, or missing before you started?" style={{ minHeight: 48 }} />
+                    <textarea value={pr.process || ""} onChange={(e) => proj(i, { process: e.target.value })} placeholder="The process: how you approached it, what you tried, what you decided." style={{ minHeight: 48 }} />
+                    <textarea value={pr.results || ""} onChange={(e) => proj(i, { results: e.target.value })} placeholder="The results: numbers first — faster, cheaper, safer, adopted by…" style={{ minHeight: 48 }} />
+                  </div>
+                )}
+              </div>
+            ))}
+            <button className="btn ghost" style={{ width: "100%", justifyContent: "center", marginTop: 4 }} onClick={() => { setProjects([...projects, {}]); setOpenProj(projects.length); }}>+ Add a project</button>
+            <div className="mono railh" style={{ marginTop: 14 }}>SCENES ON / OFF</div>
+            <div className="togglerow">
+              {Object.keys(sections).map((k) => (
+                <button key={k} className={`stock ${sections[k] ? "on" : ""}`} onClick={() => setSections({ ...sections, [k]: !sections[k] })}>{k}</button>
+              ))}
+            </div>
+            {sections.testimonials && (
+              <div style={{ marginTop: 10 }}>
+                {testimonials.map((t, i) => (
+                  <div key={i} className="grid" style={{ gridTemplateColumns: "1fr 1fr auto", gap: 6, marginBottom: 6 }}>
+                    <input value={t.quote} onChange={(e) => setTestimonials(testimonials.map((x, k) => (k === i ? { ...x, quote: e.target.value } : x)))} placeholder="Quote" />
+                    <input value={t.who} onChange={(e) => setTestimonials(testimonials.map((x, k) => (k === i ? { ...x, who: e.target.value } : x)))} placeholder="Who said it" />
+                    <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={() => setTestimonials(testimonials.filter((_, k) => k !== i))}>✕</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ fontSize: 9, padding: "7px 12px" }} onClick={() => setTestimonials([...testimonials, { quote: "", who: "" }])}>+ testimonial</button>
+              </div>
+            )}
+            {sections.services && (
+              <div style={{ marginTop: 10 }}>
+                {services.map((sv, i) => (
+                  <div key={i} className="grid" style={{ gridTemplateColumns: "1fr 1fr auto", gap: 6, marginBottom: 6 }}>
+                    <input value={sv.name} onChange={(e) => setServices(services.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} placeholder="Service" />
+                    <input value={sv.desc} onChange={(e) => setServices(services.map((x, k) => (k === i ? { ...x, desc: e.target.value } : x)))} placeholder="What it includes" />
+                    <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={() => setServices(services.filter((_, k) => k !== i))}>✕</button>
+                  </div>
+                ))}
+                <button className="btn ghost" style={{ fontSize: 9, padding: "7px 12px" }} onClick={() => setServices([...services, { name: "", desc: "" }])}>+ service</button>
+              </div>
+            )}
+          </div>
+
+          <div className="railsec act">
+            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">three worlds, rendered with your data — live</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
@@ -225,7 +354,7 @@ export default function Studio() {
           </div>
 
           <div className="railsec act gold">
-            <div className="acthead"><span className="actno">IV</span><div><b>Premiere</b><span className="actsub">one click, on our infrastructure</span></div></div>
+            <div className="acthead"><span className="actno">V</span><div><b>Premiere</b><span className="actsub">one click, on our infrastructure</span></div></div>
             <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn marquee" disabled={!ready || pub.busy || !!pub.done} onClick={premiere}>
