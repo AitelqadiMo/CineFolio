@@ -10,6 +10,12 @@ async function handler(event) {
   var host = (req.headers.host && req.headers.host.value) || "";
   var uri = req.uri;
 
+  // client media (project covers, headshots) is stored at media/* in the same
+  // bucket and served as-is — no slug rewrite.
+  if (uri.indexOf("/media/") === 0) {
+    return req;
+  }
+
   // derive slug from subdomain; the raw cloudfront.net domain demos /sites/_demo/
   var slug = "_demo";
   var parts = host.split(".");
