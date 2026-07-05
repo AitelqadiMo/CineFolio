@@ -23,6 +23,21 @@ async function handler(event) {
     slug = parts[0];
   }
 
+  // staged-release preview: /_r/{siteId}/{n}/... shows a draft release that has
+  // NOT gone live (the pointer has not moved).
+  if (uri.indexOf("/_r/") === 0) {
+    var r2 = uri.slice(4);
+    var s1 = r2.indexOf("/");
+    var sid = s1 === -1 ? r2 : r2.slice(0, s1);
+    var r3 = s1 === -1 ? "/" : r2.slice(s1);
+    var s2 = r3.indexOf("/", 1);
+    var rel = s2 === -1 ? r3.slice(1) : r3.slice(1, s2);
+    var rest = s2 === -1 ? "/" : r3.slice(s2);
+    if (rest.charAt(rest.length - 1) === "/") rest += "index.html";
+    req.uri = "/sites/" + sid + "/releases/" + rel + rest;
+    return req;
+  }
+
   // path preview: /_preview/{slug}/... serves any published site before custom
   // domains exist (the dashboard's "view live" link in dev).
   if (uri.indexOf("/_preview/") === 0) {
