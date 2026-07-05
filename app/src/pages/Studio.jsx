@@ -136,7 +136,7 @@ export default function Studio() {
           {err && <div className="err">{err}</div>}
           {pub.done && (
             <div className="okmsg">
-              Release #{pub.done.release} is live (pointer: {pub.done.pointer}). Manage it in <a onClick={() => nav("dashboard")} style={{ cursor: "pointer" }}>My Films</a>.
+              Release #{pub.done.release} is live: <a href={pub.done.url} target="_blank" rel="noopener noreferrer">{pub.done.url}</a> — manage it in <a onClick={() => nav("dashboard")} style={{ cursor: "pointer" }}>My Films</a>.
             </div>
           )}
           <div className="mono" style={{ marginTop: 14 }}>ORDER {order.orderId}</div>
