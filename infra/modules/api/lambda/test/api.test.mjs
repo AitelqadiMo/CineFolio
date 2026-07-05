@@ -64,6 +64,7 @@ function fakeCtx(overrides = {}) {
     kvs: { puts: [], dels: [], async put(_a, k, val) { this.puts.push([k, val]); }, async del(_a, k) { this.dels.push(k); } },
     cdn: { invalidations: [], async invalidate(_d, p) { this.invalidations.push(p); } },
     queue: { sent: [], async send(_u, m) { this.sent.push(m); } },
+    sfn: { resumed: [], async sendTaskSuccess(t, o) { this.resumed.push([t, o]); } },
     secrets: async () => ({ AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec" }),
     fetchFn: async () => ({ ok: true }),
     config: { appEnv: "test", apiBase: "https://api.test", artifactsBucket: "arts", publishedBucket: "pub", kvsArn: "arn:kvs", distributionId: "DIST", cdnDomain: "cdn.test", ordersQueueUrl: "q" },
@@ -220,4 +221,36 @@ test("sites: source download serves release html to owner only; previewUrl uses 
   assert.equal(parse(await h(ev("GET /sites/{id}/source", { claims: "intruder", path: { id } }))).code, 403);
   // bad release rejected
   assert.equal(parse(await h(ev("GET /sites/{id}/source", { claims: "u1", path: { id }, qs: { release: "9" } }))).code, 400);
+});
+
+test("pipeline: callback resumes task token instead of flipping status; retry re-enqueues", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/generate", { body: { email: "t@x.io", name: "Tok En", role: "engineer", cvText: "2020 platform engineer aws terraform and more text here" } })));
+  const orderId = gen.body.orderId;
+  // generate no longer fires the webhook itself — it only enqueues
+  assert.deepEqual(ctx.queue.sent, [{ orderId }]);
+  // cvText retained for pipeline re-dispatch
+  assert.match(ctx.ddb._store.get(`ORDER#${orderId}|META`).cvText, /platform engineer/);
+
+  // simulate the dispatch step having stored a task token
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  meta.taskToken = "tok-123"; meta.status = "filming";
+
+  const cb = await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: "<!doctype html><html>CUT</html>" });
+  assert.equal(cb.statusCode, 200);
+  assert.equal(JSON.parse(cb.body).resumed, true);
+  assert.deepEqual(ctx.sfn.resumed[0][0], "tok-123");
+  // status NOT flipped by callback in pipeline mode (Finalize owns it)
+  assert.equal(ctx.ddb._store.get(`ORDER#${orderId}|META`).status, "filming");
+
+  // admin retry: non-admin 403, admin re-enqueues stuck order
+  meta.status = "human_review";
+  assert.equal(parse(await h(ev("POST /admin/orders/{id}/retry", { claims: "u1", path: { id: orderId } }))).code, 403);
+  const rt = parse(await h(ev("POST /admin/orders/{id}/retry", { claims: "op", groups: ["admin"], path: { id: orderId } })));
+  assert.equal(rt.body.status, "queued");
+  assert.equal(ctx.queue.sent.length, 2);
+  // ready orders are not retryable
+  ctx.ddb._store.get(`ORDER#${orderId}|META`).status = "ready";
+  assert.equal(parse(await h(ev("POST /admin/orders/{id}/retry", { claims: "op", groups: ["admin"], path: { id: orderId } }))).code, 409);
 });
