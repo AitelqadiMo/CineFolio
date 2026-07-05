@@ -1,221 +1,236 @@
-// Studio v2 — a production tracker, not a form. The timeline is driven by the
-// REAL pipeline status (queued -> filming -> ready), the premiere gets applause,
-// and demo orders started on the landing page are adopted here after signup.
-import { useEffect, useRef, useState } from "react";
+// Studio v3 — the workspace. Left: casting rail (resume PDF/txt/photo, smart
+// questions, template + palette picker). Right: an integrated browser showing
+// the site compiled INSTANTLY by the deterministic engine — no LLM in the loop.
+// Premiere publishes the compiled HTML as an immutable release; the AI film
+// pipeline ("Director's cut") is the optional premium act on top.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
-import { SplitTitle, confetti, friendly } from "../ui.jsx";
+import { confetti, friendly } from "../ui.jsx";
+import { parseProfile, compile, TEMPLATES } from "../templates/engine.js";
 
-const POLL_MS = 8000, POLL_MAX = 220; // pipeline timeout is 30 min x retries; poll generously
-
-const AVATAR = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#132550"/><circle cx="50" cy="38" r="16" fill="#C8102E"/><rect x="26" y="60" width="48" height="30" rx="14" fill="#D9A441"/></svg>');
+const POLL_MS = 8000, POLL_MAX = 220;
 
 export default function Studio() {
   const { nav } = useAuth();
-  const [form, setForm] = useState({ name: "", email: "", role: "engineer", cvText: "" });
-  const [order, setOrder] = useState(null);   // { orderId, production, html? }
-  const [status, setStatus] = useState(null); // queued | filming | ready | dispatch_failed | human_review | timeout | preview_only
-  const [cutHtml, setCutHtml] = useState(null);
+  // intake
+  const [cvText, setCvText] = useState("");
+  const [photo, setPhoto] = useState(null);
+  const [q, setQ] = useState({ name: "", email: "", headline: "", website: "", focus: "" });
+  const [tpl, setTpl] = useState("monolith");
+  const [pal, setPal] = useState("jersey");
+  const [customIdea, setCustomIdea] = useState("");
+  const [view, setView] = useState("desktop");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  // premiere + director's cut
   const [pub, setPub] = useState({ slug: "", busy: false, done: null });
-  const [pending, setPending] = useState(null); // demo order adopted from the landing page
+  const [order, setOrder] = useState(null);
+  const [orderStatus, setOrderStatus] = useState(null);
   const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-  const polls = useRef(0);
   const premiereRef = useRef(null);
+  const polls = useRef(0);
 
-  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  // ---------- the engine: live compile on every keystroke ----------
+  const profile = useMemo(() => parseProfile(cvText, {
+    name: q.name || undefined, email: q.email || undefined,
+    headline: q.headline || undefined, photo: photo || undefined,
+    ...(q.website ? { links: { ...parseProfile(cvText).links, website: q.website } } : {}),
+    ...(q.focus ? { summary: q.focus } : {}),
+  }), [cvText, q, photo]);
+  const html = useMemo(() => compile(tpl, pal, profile), [tpl, pal, profile]);
+  const ready = cvText.trim().length > 60 || q.name;
 
-  // demo -> signup order adoption (landing stores cf.pendingOrder before login)
-  useEffect(() => {
+  // ---------- uploads ----------
+  const onResume = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    setErr("");
+    if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
+      setPdfBusy(true);
+      try {
+        const pdfjs = window.pdfjsLib;
+        if (!pdfjs) throw new Error("PDF reader still loading — try again in a second.");
+        pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+        const buf = await f.arrayBuffer();
+        const doc = await pdfjs.getDocument({ data: buf }).promise;
+        let text = "";
+        for (let i = 1; i <= Math.min(doc.numPages, 6); i++) {
+          const page = await doc.getPage(i);
+          const tc = await page.getTextContent();
+          let last = null;
+          for (const it of tc.items) {
+            if (last !== null && Math.abs(it.transform[5] - last) > 4) text += "\n";
+            text += it.str + " ";
+            last = it.transform[5];
+          }
+          text += "\n";
+        }
+        setCvText(text.replace(/[ \t]+\n/g, "\n").slice(0, 20000));
+      } catch (e2) { setErr(friendly(e2.message)); }
+      finally { setPdfBusy(false); }
+    } else {
+      const rd = new FileReader();
+      rd.onload = () => setCvText(String(rd.result).slice(0, 20000));
+      rd.readAsText(f);
+    }
+  };
+  const onPhoto = (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => setPhoto(rd.result);
+    rd.readAsDataURL(f);
+  };
+
+  // ---------- premiere (deterministic engine output) ----------
+  const premiere = async () => {
+    setErr(""); setPub({ ...pub, busy: true });
     try {
-      const raw = localStorage.getItem("cf.pendingOrder");
-      if (raw) setPending(JSON.parse(raw));
-    } catch { /* ignore */ }
-  }, []);
+      const slug = pub.slug || (profile.name || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const site = await api.createSite({ slug, title: profile.name });
+      const r = await api.publish(site.site.siteId, { html });
+      setPub({ slug, busy: false, done: { ...r, slug: site.site.slug } });
+      setTimeout(() => confetti(premiereRef.current || undefined), 60);
+    } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
+  };
 
-  const adopt = async () => {
+  // ---------- director's cut (AI film pipeline on top) ----------
+  const directorsCut = async () => {
     setErr("");
     try {
-      const s = await api.orderStatus(pending.orderId);
-      setOrder({ orderId: pending.orderId, production: s.production, html: null });
-      setStatus(s.status === "ready" ? "ready" : s.status);
-      if (s.status === "ready") setCutHtml(await api.orderCut(pending.orderId));
-      setPub({ slug: (pending.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), busy: false, done: null });
-      setForm({ ...form, name: pending.name || "", email: pending.email || "" });
-      localStorage.removeItem("cf.pendingOrder");
-      setPending(null);
-    } catch (e) { setErr(friendly(e.message)); }
-  };
-
-  const generate = async (e) => {
-    e.preventDefault();
-    setErr(""); setBusy(true);
-    try {
-      const r = await api.generate(form);
-      setOrder(r);
-      setStatus(r.production ? "queued" : "preview_only");
-      setPub({ slug: (form.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""), busy: false, done: null });
-    } catch (e2) { setErr(friendly(e2.message)); } finally { setBusy(false); }
+      const r = await api.generate({
+        email: profile.email || q.email, name: profile.name, role: "engineer",
+        cvText: cvText || `${profile.name} — ${profile.headline}`,
+        template: tpl, palette: pal, customIdea,
+      });
+      setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
+    } catch (e2) { setErr(friendly(e2.message)); }
   };
 
   useEffect(() => {
-    if (!order?.production || !["queued", "filming"].includes(status)) return;
+    if (!order?.production || !["queued", "filming"].includes(orderStatus)) return;
     polls.current = 0;
     const t = setInterval(async () => {
       polls.current += 1;
       try {
         const s = await api.orderStatus(order.orderId);
-        if (s.status === "ready") {
-          clearInterval(t);
-          setStatus("ready");
-          setCutHtml(await api.orderCut(order.orderId));
-        } else if (["dispatch_failed", "human_review"].includes(s.status)) {
-          clearInterval(t);
-          setStatus(s.status);
-        } else if (s.status === "filming" && status !== "filming") {
-          setStatus("filming"); // the tracker advances live
-        } else if (polls.current >= POLL_MAX) {
-          clearInterval(t);
-          setStatus("timeout");
-        }
+        if (["ready", "dispatch_failed", "human_review"].includes(s.status)) { clearInterval(t); setOrderStatus(s.status); }
+        else if (s.status === "filming") setOrderStatus("filming");
+        else if (polls.current >= POLL_MAX) { clearInterval(t); setOrderStatus("timeout"); }
       } catch { /* transient */ }
     }, POLL_MS);
     return () => clearInterval(t);
-  }, [order, status]);
+  }, [order, orderStatus]);
 
-  const publish = async () => {
-    setErr(""); setPub({ ...pub, busy: true });
-    try {
-      const site = await api.createSite({ slug: pub.slug, title: form.name || pub.slug, orderId: order.orderId });
-      const body = status === "ready" && cutHtml
-        ? { orderId: order.orderId }
-        : { html: (cutHtml || order.html).split("__PHOTO__").join(AVATAR) };
-      const r = await api.publish(site.site.siteId, body);
-      setPub({ ...pub, busy: false, done: { ...r, slug: site.site.slug } });
-      setTimeout(() => confetti(premiereRef.current || undefined), 60);
-    } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
-  };
-
-  // production tracker state mapping
-  const steps = [
-    { k: "brief", l: "01 · Brief" },
-    { k: "queued", l: "02 · Queued" },
-    { k: "filming", l: "03 · Filming" },
-    { k: "ready", l: "04 · Director's cut" },
-    { k: "premiere", l: "05 · Premiere" },
-  ];
-  const idx = !order ? 0 : pub.done ? 5 : status === "ready" ? 3 : status === "filming" ? 2 : 1;
-  const failed = ["dispatch_failed", "human_review", "timeout"].includes(status);
-  const stepClass = (i) => `tstep ${i < idx ? "done" : ""} ${i === idx && !pub.done ? (failed && i >= 1 ? "fail" : "on") : ""} ${pub.done && i <= 4 ? "done" : ""}`;
-  const showFrame = cutHtml || order?.html;
+  const template = TEMPLATES.find((t) => t.id === tpl);
 
   return (
-    <>
-      <div className="pagehead">
-        <SplitTitle text="New" serif="film" />
-        <p className="sub">Paste the CV, roll camera. The studio pipeline films the director's cut; you premiere it to the world in one click.</p>
-      </div>
+    <div className="workspace" ref={premiereRef}>
+      {/* ---------------- casting rail ---------------- */}
+      <aside className="rail">
+        <div className="railsec">
+          <div className="mono railh">01 · CAST</div>
+          <label className="uploadrow" htmlFor="cvUp">
+            {pdfBusy ? <span className="spin" /> : <span className="upic">📄</span>}
+            <span>{cvText ? "Resume loaded ✓ — replace" : "Upload resume (PDF or .txt)"}</span>
+            <input id="cvUp" type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={onResume} hidden />
+          </label>
+          <label className="uploadrow" htmlFor="phUp">
+            {photo ? <img className="upthumb" src={photo} alt="" /> : <span className="upic">🎞️</span>}
+            <span>{photo ? "Headshot loaded ✓ — replace" : "Add a headshot (optional)"}</span>
+            <input id="phUp" type="file" accept="image/*" onChange={onPhoto} hidden />
+          </label>
+          <textarea value={cvText} onChange={(e) => setCvText(e.target.value)} placeholder="…or paste your CV text here. The engine reads sections, years, links and skills automatically." style={{ minHeight: 90, marginTop: 10 }} />
+        </div>
 
-      {pending && !order && (
-        <div className="panel glass" style={{ marginBottom: 18, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <div>
-            <div className="mono" style={{ color: "var(--gold)" }}>UNFINISHED BUSINESS FROM THE LOBBY</div>
-            <div style={{ marginTop: 6 }}>Your demo cut for <b>{pending.name || pending.email}</b> is waiting to premiere.</div>
-          </div>
-          <div className="btnrow" style={{ marginTop: 0 }}>
-            <button className="btn primary" onClick={adopt}>Continue that order</button>
-            <button className="btn ghost" onClick={() => { localStorage.removeItem("cf.pendingOrder"); setPending(null); }}>Dismiss</button>
+        <div className="railsec">
+          <div className="mono railh">02 · THE QUESTIONS THAT MATTER</div>
+          <input value={q.name} onChange={(e) => setQ({ ...q, name: e.target.value })} placeholder="Name (as it should appear)" />
+          <input value={q.headline} onChange={(e) => setQ({ ...q, headline: e.target.value })} placeholder="Headline — e.g. Platform Engineer, AWS certified" />
+          <input value={q.email} onChange={(e) => setQ({ ...q, email: e.target.value })} placeholder="Contact email" />
+          <input value={q.website} onChange={(e) => setQ({ ...q, website: e.target.value })} placeholder="Website / domain (optional)" />
+          <textarea value={q.focus} onChange={(e) => setQ({ ...q, focus: e.target.value })} placeholder="One paragraph about you — what should a visitor remember?" style={{ minHeight: 64 }} />
+        </div>
+
+        <div className="railsec">
+          <div className="mono railh">03 · THE LOOK</div>
+          {TEMPLATES.map((t) => (
+            <div key={t.id} className={`tplcard ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }}>
+              <div>
+                <b>{t.name}</b>
+                <div className="tplblurb">{t.blurb}</div>
+              </div>
+              {tpl === t.id && (
+                <div className="pals" onClick={(e) => e.stopPropagation()}>
+                  {t.palettes.map((p2) => (
+                    <button key={p2.id} title={p2.label} className={`paldot ${pal === p2.id ? "on" : ""}`}
+                      style={{ background: `linear-gradient(135deg, ${p2.vars[2] || p2.vars[1]}, ${p2.vars[3] || p2.vars[2]})` }}
+                      onClick={() => setPal(p2.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Custom idea for the Director's Cut — lighting, mood, references… (goes to the AI film pipeline)" style={{ minHeight: 58, marginTop: 8 }} />
+          <div className="mono" style={{ marginTop: 10, textTransform: "none", letterSpacing: ".05em" }}>
+            Inspiration: a real premiere → <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">aitelqadi.dev</a>
           </div>
         </div>
-      )}
 
-      <div className="tracker">
-        {steps.map((s, i) => (
-          <div key={s.k} className={stepClass(i)}>
-            <div className="bar" /><div className="dot2" />
-            <div className="lbl2">{s.l}</div>
+        <div className="railsec">
+          <div className="mono railh">04 · PREMIERE</div>
+          <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={(profile.name || "your-name").toLowerCase().replace(/[^a-z0-9]+/g, "-")} />
+          <div className="btnrow" style={{ marginTop: 12 }}>
+            <button className="btn primary" disabled={!ready || pub.busy || !!pub.done} onClick={premiere}>
+              {pub.busy ? <span className="spin" /> : null}{pub.done ? "Premiered" : "Premiere this site"}
+            </button>
+            <button className="btn ghost" disabled={!ready || !!order} onClick={directorsCut} title="AI film scenes + bespoke build by the studio pipeline">
+              {order ? "Director's cut ordered" : "+ Director's cut"}
+            </button>
           </div>
-        ))}
-      </div>
-
-      {!order && (
-        <form className="panel" onSubmit={generate}>
-          <div className="grid two">
-            <div>
-              <label className="mono">Full name</label>
-              <input required value={form.name} onChange={set("name")} placeholder="Nadia Benali" />
-            </div>
-            <div>
-              <label className="mono">Email</label>
-              <input required type="email" value={form.email} onChange={set("email")} placeholder="nadia@example.com" />
-            </div>
-          </div>
-          <label className="mono">Role</label>
-          <select value={form.role} onChange={set("role")}>
-            <option value="engineer">Engineer</option>
-            <option value="designer">Designer</option>
-            <option value="founder">Founder</option>
-            <option value="other">Other</option>
-          </select>
-          <label className="mono">CV / career text</label>
-          <textarea required value={form.cvText} onChange={set("cvText")} placeholder="Paste the CV text. Years + skills are picked up automatically." />
-          {err && <div className="err">{err}</div>}
-          <div className="btnrow"><button className="btn primary" disabled={busy}>{busy ? <span className="spin" /> : null}Roll camera</button></div>
-        </form>
-      )}
-
-      {order && (
-        <div className="panel" ref={premiereRef} style={{ position: "relative", overflow: "hidden" }}>
-          {status === "queued" && <div className="mono" style={{ marginBottom: 14 }}><span className="pulse" />IN THE QUEUE — THE PIPELINE PICKS IT UP IN SECONDS</div>}
-          {status === "filming" && <div className="mono" style={{ marginBottom: 14, color: "var(--gold)" }}><span className="pulse" />CAMERAS ROLLING — THE DIRECTOR'S CUT IS IN PRODUCTION</div>}
-          {status === "ready" && !pub.done && <div className="okmsg" style={{ marginTop: 0, marginBottom: 14 }}>The director's cut is in. Review it below, then premiere it.</div>}
-          {status === "preview_only" && <div className="mono" style={{ marginBottom: 14 }}>ROUGH CUT (pipeline not armed in this environment)</div>}
-          {failed && !pub.done && (
-            <div className="err" style={{ marginTop: 0, marginBottom: 14 }}>
-              The studio is at capacity right now — your director's cut will arrive by email. The rough cut below premieres beautifully in the meantime.
+          {order && (
+            <div className="mono" style={{ marginTop: 10, textTransform: "none", letterSpacing: ".05em" }}>
+              {orderStatus === "filming" ? "🎥 Cameras rolling — the pipeline is filming your cut." :
+               orderStatus === "ready" ? "🎬 Director's cut delivered — check your email / My Films." :
+               ["dispatch_failed", "human_review", "timeout"].includes(orderStatus) ? "The studio is at capacity — your cut will arrive by email." :
+               `Order ${order.orderId.slice(0, 8)} queued in the pipeline.`}
             </div>
           )}
-
-          {showFrame ? (
-            <iframe className="cutframe" title="cut" sandbox="allow-scripts" srcDoc={(cutHtml || order.html || "").split("__PHOTO__").join(AVATAR)} />
-          ) : (
-            <div className="cutframe" style={{ display: "grid", placeItems: "center" }}>
-              <div className="mono">{status === "ready" ? "LOADING THE CUT…" : "THE SCREEN LIGHTS UP WHEN THE CUT ARRIVES"}</div>
-            </div>
-          )}
-
-          <div className="grid two" style={{ marginTop: 18 }}>
-            <div>
-              <label className="mono">Premiere slug</label>
-              <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder="nadia-benali" />
-              <div className="mono" style={{ marginTop: 6, letterSpacing: ".08em", textTransform: "none" }}>
-                your URL on the platform CDN — {pub.slug || "slug"}.cinefolio.site when custom domains open
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "flex-end" }}>
-              <div className="btnrow" style={{ marginTop: 0 }}>
-                <button className="btn primary" disabled={pub.busy || !showFrame || !!pub.done} onClick={publish}>
-                  {pub.busy ? <span className="spin" /> : null}{pub.done ? "Premiered" : status === "ready" ? "Premiere director's cut" : "Premiere rough cut"}
-                </button>
-                <button className="btn ghost" onClick={() => { setOrder(null); setStatus(null); setCutHtml(null); setPub({ slug: "", busy: false, done: null }); }}>New brief</button>
-              </div>
-            </div>
-          </div>
-
           {err && <div className="err">{err}</div>}
           {pub.done && (
-            <div className="premiere">
+            <div className="premiere" style={{ marginTop: 12 }}>
               <div className="mq">Now screening — <em>release #{pub.done.release}</em></div>
-              <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <a className="btn gold" style={{ background: "var(--gold)", borderColor: "var(--gold)", color: "var(--navy)" }} href={pub.done.url} target="_blank" rel="noopener noreferrer">Watch it live</a>
-                <button className="btn ghost" onClick={() => { navigator.clipboard?.writeText(pub.done.url); }}>Copy premiere link</button>
-                <a className="btn ghost" onClick={() => nav("dashboard")} style={{ cursor: "pointer" }}>Manage in My Films</a>
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <a className="btn ghost" href={pub.done.url} target="_blank" rel="noopener noreferrer">Open live URL</a>
+                <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(pub.done.url)}>Copy link</button>
+                <a className="btn ghost" onClick={() => nav("dashboard")} style={{ cursor: "pointer" }}>My Films</a>
               </div>
             </div>
           )}
-          <div className="mono" style={{ marginTop: 14 }}>ORDER {order.orderId}</div>
         </div>
-      )}
-    </>
+      </aside>
+
+      {/* ---------------- the integrated browser ---------------- */}
+      <section className="stage">
+        <div className="browser">
+          <div className="browserbar">
+            <span className="bdot" style={{ background: "#ff5f57" }} /><span className="bdot" style={{ background: "#febc2e" }} /><span className="bdot" style={{ background: "#28c840" }} />
+            <div className="burl mono">{(pub.slug || (profile.name || "your-name").toLowerCase().replace(/[^a-z0-9]+/g, "-"))}.cinefolio.site</div>
+            <div className="bviews">
+              <button className={view === "desktop" ? "on" : ""} onClick={() => setView("desktop")} title="Desktop">▭</button>
+              <button className={view === "mobile" ? "on" : ""} onClick={() => setView("mobile")} title="Mobile">▯</button>
+            </div>
+          </div>
+          <div className="stageframe">
+            {ready ? (
+              <iframe title="preview" sandbox="allow-scripts" srcDoc={html} style={view === "mobile" ? { width: 390, margin: "0 auto", display: "block", borderInline: "1px solid var(--faint)" } : undefined} />
+            ) : (
+              <div className="stageempty">
+                <div className="mono">THE SCREENING ROOM</div>
+                <p>Upload a resume or start typing on the left.<br />The site renders here <b>instantly</b> — no waiting, no AI roulette.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
