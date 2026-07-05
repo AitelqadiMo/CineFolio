@@ -126,25 +126,31 @@ export async function source(event, ctx) {
   };
 }
 
-// POST /sites/{id}/rollback { to? } — default: previous release
+// POST /sites/{id}/rollback { to? } — flip the pointer to any retained release.
+// Default: previous release. Also RELIGHTS a taken-down site (pointer restored,
+// status back to live) — publish/unpublish/republish is a full cycle.
 export async function rollback(event, ctx) {
   const claims = claimsOf(event);
   const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
   if (err) return err;
-  if (!site.liveRelease || site.releases < 2) return bad("nothing to roll back to", 409);
+  if (!site.liveRelease) return bad("nothing has premiered yet", 409);
   const b = bodyOf(event) || {};
-  const target = Number(b.to || site.liveRelease - 1);
-  if (!Number.isInteger(target) || target < 1 || target > site.releases || target === site.liveRelease) return bad("bad target release");
+  const target = Number(b.to || (site.status === "taken_down" ? site.liveRelease : site.liveRelease - 1));
+  const relight = site.status === "taken_down" && target === site.liveRelease;
+  if (!Number.isInteger(target) || target < 1 || target > site.releases || (target === site.liveRelease && !relight)) {
+    return bad("bad target release");
+  }
   const rel = await ctx.ddb.get({ PK: site.PK, SK: relSK(target) });
   if (!rel) return bad("release not found", 404);
 
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${target}`, site.slug);
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
-    UpdateExpression: "SET liveRelease = :n, updatedAt = :t, pointerMode = :pm",
-    ExpressionAttributeValues: { ":n": target, ":t": now(), ":pm": flip.mode },
+    UpdateExpression: "SET liveRelease = :n, updatedAt = :t, pointerMode = :pm, #s = :live",
+    ExpressionAttributeNames: { "#s": "status" },
+    ExpressionAttributeValues: { ":n": target, ":t": now(), ":pm": flip.mode, ":live": "live" },
   });
-  return ok({ ok: true, siteId: site.siteId, liveRelease: target, pointer: flip.mode });
+  return ok({ ok: true, siteId: site.siteId, liveRelease: target, pointer: flip.mode, status: "live" });
 }
 
 // DELETE /sites/{id} — takedown (pointer removal; releases stay for audit/restore)
