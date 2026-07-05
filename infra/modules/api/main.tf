@@ -36,25 +36,26 @@ locals {
 
   # route_key => requires JWT
   routes = {
-    "GET /health"               = false
-    "POST /waitlist"            = false
-    "GET /waitlist/count"       = false
-    "POST /contact"             = false
-    "POST /hit"                 = false
-    "POST /studio/generate"     = false # anonymous rough cut allowed in dev; JWT enforced for paid orders at GA
-    "GET /studio/status"        = false
-    "GET /studio/cut"           = false
-    "POST /callback"            = false # authenticated by X-CF-Secret (SSM) inside the handler
-    "GET /me"                   = true
-    "PUT /me"                   = true
-    "GET /admin/orders"         = true # + admin group check in-handler
-    "POST /sites"               = true
-    "GET /sites"                = true
-    "GET /sites/{id}"           = true
-    "GET /sites/{id}/source"    = true
-    "POST /sites/{id}/publish"  = true
-    "POST /sites/{id}/rollback" = true
-    "DELETE /sites/{id}"        = true
+    "GET /health"                   = false
+    "POST /waitlist"                = false
+    "GET /waitlist/count"           = false
+    "POST /contact"                 = false
+    "POST /hit"                     = false
+    "POST /studio/generate"         = false # anonymous rough cut allowed in dev; JWT enforced for paid orders at GA
+    "GET /studio/status"            = false
+    "GET /studio/cut"               = false
+    "POST /callback"                = false # authenticated by X-CF-Secret (SSM) inside the handler
+    "GET /me"                       = true
+    "PUT /me"                       = true
+    "GET /admin/orders"             = true # + admin group check in-handler
+    "POST /admin/orders/{id}/retry" = true # + admin group check in-handler
+    "POST /sites"                   = true
+    "GET /sites"                    = true
+    "GET /sites/{id}"               = true
+    "GET /sites/{id}/source"        = true
+    "POST /sites/{id}/publish"      = true
+    "POST /sites/{id}/rollback"     = true
+    "DELETE /sites/{id}"            = true
   }
 }
 
@@ -120,6 +121,13 @@ data "aws_iam_policy_document" "api" {
     sid       = "Queue"
     actions   = ["sqs:SendMessage"]
     resources = [var.orders_queue_arn]
+  }
+  statement {
+    # SendTaskSuccess/Failure are token-authorized; IAM does not support
+    # resource-scoping them to a state machine (token carries the authority).
+    sid       = "PipelineResume"
+    actions   = ["states:SendTaskSuccess", "states:SendTaskFailure"]
+    resources = ["*"]
   }
   statement {
     sid       = "KvsPointer"
@@ -257,3 +265,4 @@ resource "aws_lambda_permission" "apigw" {
 output "api_endpoint" { value = aws_apigatewayv2_stage.default.invoke_url }
 output "function_name" { value = aws_lambda_function.api.function_name }
 output "route_count" { value = length(local.routes) }
+output "api_id" { value = aws_apigatewayv2_api.http.id }
