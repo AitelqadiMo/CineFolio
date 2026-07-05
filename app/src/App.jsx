@@ -1,6 +1,7 @@
 import { useEffect, useState, createContext, useContext } from "react";
 import { getUser, onAuthChange, restore, signOut } from "./cognito.js";
 import { CONFIG } from "./config.js";
+import Landing from "./marketing/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Studio from "./pages/Studio.jsx";
@@ -13,7 +14,7 @@ export const useAuth = () => useContext(AuthCtx);
 const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account };
 
 function path() {
-  return location.pathname.replace(/^\/+|\/+$/g, "") || "dashboard";
+  return location.pathname.replace(/^\/+|\/+$/g, "") || "";
 }
 
 export default function App() {
@@ -37,8 +38,14 @@ export default function App() {
   if (booting) {
     return <div className="authwrap"><div className="mono"><span className="spin" style={{ marginRight: 10 }} />LOADING THE STUDIO…</div></div>;
   }
-  if (!user) return <Login />;
 
+  /* ---------- public: cinematic landing + login ---------- */
+  if (!user) {
+    if (route === "login") return <Login onBack={() => nav("")} />;
+    return <Landing onEnter={() => nav("login")} />;
+  }
+
+  /* ---------- authenticated: studio console ---------- */
   const Page = PAGES[route] || Dashboard;
   return (
     <AuthCtx.Provider value={{ user, nav }}>
@@ -49,7 +56,7 @@ export default function App() {
           <button className={route === "studio" ? "on" : ""} onClick={() => nav("studio")}>New Film</button>
           {user.admin && <button className={route === "admin" ? "on" : ""} onClick={() => nav("admin")}>Orders</button>}
           <button className={route === "account" ? "on" : ""} onClick={() => nav("account")}>Account</button>
-          <button onClick={() => { signOut(); }}>Sign out</button>
+          <button onClick={() => { signOut(); nav(""); }}>Sign out</button>
         </nav>
       </header>
       <main className="page"><Page /></main>
