@@ -17,6 +17,15 @@ async function handler(event) {
     slug = parts[0];
   }
 
+  // path preview: /_preview/{slug}/... serves any published site before custom
+  // domains exist (the dashboard's "view live" link in dev).
+  if (uri.indexOf("/_preview/") === 0) {
+    var rest = uri.slice(10); // after "/_preview/"
+    var cut = rest.indexOf("/");
+    slug = (cut === -1 ? rest : rest.slice(0, cut)) || slug;
+    uri = cut === -1 ? "/" : rest.slice(cut);
+  }
+
   // atomic pointer lookup; on miss serve the slug prefix as-is
   var target = slug;
   try {
