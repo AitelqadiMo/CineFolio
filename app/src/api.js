@@ -32,6 +32,7 @@ export const api = {
 
   sites: () => req("/sites", { auth: true }),
   site: (id) => req(`/sites/${id}`, { auth: true }),
+  source: (id, release) => req(`/sites/${id}/source${release ? `?release=${release}` : ""}`, { auth: true }), // returns HTML string
   createSite: (body) => req("/sites", { method: "POST", body, auth: true }),
   publish: (id, body) => req(`/sites/${id}/publish`, { method: "POST", body, auth: true }),
   rollback: (id, to) => req(`/sites/${id}/rollback`, { method: "POST", body: to ? { to } : {}, auth: true }),
