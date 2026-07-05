@@ -38,6 +38,8 @@ export const api = {
   rollback: (id, to) => req(`/sites/${id}/rollback`, { method: "POST", body: to ? { to } : {}, auth: true }),
   takedown: (id) => req(`/sites/${id}`, { method: "DELETE", auth: true }),
 
+  media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
+
   adminOrders: (status) => req(`/admin/orders?status=${encodeURIComponent(status)}`, { auth: true }),
   adminRetry: (orderId) => req(`/admin/orders/${orderId}/retry`, { method: "POST", auth: true }),
 };
