@@ -39,6 +39,9 @@ export const api = {
   takedown: (id) => req(`/sites/${id}`, { method: "DELETE", auth: true }),
 
   media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
+  getDraft: () => req("/draft", { auth: true }),
+  putDraft: (draft) => req("/draft", { method: "PUT", body: { draft }, auth: true }),
+  duplicate: (id, body) => req(`/sites/${id}/duplicate`, { method: "POST", body, auth: true }),
 
   adminOrders: (status) => req(`/admin/orders?status=${encodeURIComponent(status)}`, { auth: true }),
   adminRetry: (orderId) => req(`/admin/orders/${orderId}/retry`, { method: "POST", auth: true }),
