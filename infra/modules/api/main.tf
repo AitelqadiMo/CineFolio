@@ -1,12 +1,20 @@
-# API — Lambda + API Gateway HTTP API with Cognito JWT authorizer
+# API — Lambda + API Gateway HTTP API with Cognito JWT authorizer.
+# Full P1/P2 route set; publish pointers flip via CloudFront KVS (fallback: S3 copy).
 variable "name_prefix" { type = string }
 variable "app_env" { type = string }
 variable "table_name" { type = string }
 variable "table_arn" { type = string }
 variable "assets_bucket" { type = string }
+variable "artifacts_bucket" { type = string }
+variable "published_bucket" { type = string }
 variable "kms_key_arn" { type = string }
 variable "cognito_issuer" { type = string }
 variable "cognito_client_id" { type = string }
+variable "orders_queue_url" { type = string }
+variable "orders_queue_arn" { type = string }
+variable "kvs_arn" { type = string }
+variable "distribution_id" { type = string }
+variable "cdn_domain" { type = string }
 variable "cors_allowed_origins" {
   type    = list(string)
   default = ["*"]
@@ -21,12 +29,40 @@ variable "tags" {
 }
 
 data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
 
-# ---------- package the handler ----------
+locals {
+  ssm_prefix = "/cinefolio/${var.app_env}"
+
+  # route_key => requires JWT
+  routes = {
+    "GET /health"               = false
+    "POST /waitlist"            = false
+    "GET /waitlist/count"       = false
+    "POST /contact"             = false
+    "POST /hit"                 = false
+    "POST /studio/generate"     = false # anonymous rough cut allowed in dev; JWT enforced for paid orders at GA
+    "GET /studio/status"        = false
+    "GET /studio/cut"           = false
+    "POST /callback"            = false # authenticated by X-CF-Secret (SSM) inside the handler
+    "GET /me"                   = true
+    "PUT /me"                   = true
+    "GET /admin/orders"         = true # + admin group check in-handler
+    "POST /sites"               = true
+    "GET /sites"                = true
+    "GET /sites/{id}"           = true
+    "POST /sites/{id}/publish"  = true
+    "POST /sites/{id}/rollback" = true
+    "DELETE /sites/{id}"        = true
+  }
+}
+
+# ---------- package the handler (tests excluded from the artifact) ----------
 data "archive_file" "api" {
   type        = "zip"
   source_dir  = "${path.module}/lambda"
   output_path = "${path.module}/.build/api.zip"
+  excludes    = ["test", "test/api.test.mjs"]
 }
 
 # ---------- execution role ----------
@@ -61,14 +97,38 @@ data "aws_iam_policy_document" "api" {
     resources = [var.table_arn, "${var.table_arn}/index/*"]
   }
   statement {
-    sid       = "Assets"
-    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
-    resources = ["arn:aws:s3:::${var.assets_bucket}/*"]
+    sid     = "Objects"
+    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+    resources = [
+      "arn:aws:s3:::${var.assets_bucket}/*",
+      "arn:aws:s3:::${var.artifacts_bucket}/*",
+      "arn:aws:s3:::${var.published_bucket}/*",
+    ]
   }
   statement {
     sid       = "Kms"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
     resources = [var.kms_key_arn]
+  }
+  statement {
+    sid       = "Secrets"
+    actions   = ["ssm:GetParameter", "ssm:GetParametersByPath"]
+    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}*"]
+  }
+  statement {
+    sid       = "Queue"
+    actions   = ["sqs:SendMessage"]
+    resources = [var.orders_queue_arn]
+  }
+  statement {
+    sid       = "KvsPointer"
+    actions   = ["cloudfront-keyvaluestore:DescribeKeyValueStore", "cloudfront-keyvaluestore:GetKey", "cloudfront-keyvaluestore:PutKey", "cloudfront-keyvaluestore:DeleteKey"]
+    resources = [var.kvs_arn]
+  }
+  statement {
+    sid       = "Invalidate"
+    actions   = ["cloudfront:CreateInvalidation"]
+    resources = ["arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${var.distribution_id}"]
   }
 }
 
@@ -91,14 +151,21 @@ resource "aws_lambda_function" "api" {
   handler          = "index.handler"
   filename         = data.archive_file.api.output_path
   source_code_hash = data.archive_file.api.output_base64sha256
-  timeout          = 15
+  timeout          = 20
   memory_size      = 256
 
   environment {
     variables = {
-      APP_ENV       = var.app_env
-      TABLE_NAME    = var.table_name
-      ASSETS_BUCKET = var.assets_bucket
+      APP_ENV          = var.app_env
+      TABLE_NAME       = var.table_name
+      ASSETS_BUCKET    = var.assets_bucket
+      ARTIFACTS_BUCKET = var.artifacts_bucket
+      PUBLISHED_BUCKET = var.published_bucket
+      KVS_ARN          = var.kvs_arn
+      DISTRIBUTION_ID  = var.distribution_id
+      CDN_DOMAIN       = var.cdn_domain
+      ORDERS_QUEUE_URL = var.orders_queue_url
+      SSM_PREFIX       = local.ssm_prefix
     }
   }
   depends_on = [aws_cloudwatch_log_group.api]
@@ -112,7 +179,7 @@ resource "aws_apigatewayv2_api" "http" {
   cors_configuration {
     allow_origins = var.cors_allowed_origins
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["authorization", "content-type"]
+    allow_headers = ["authorization", "content-type", "x-cf-secret", "x-cf-order"]
     max_age       = 3600
   }
   tags = var.tags
@@ -136,17 +203,17 @@ resource "aws_apigatewayv2_authorizer" "jwt" {
   }
 }
 
-# public health check
-resource "aws_apigatewayv2_route" "health" {
+resource "aws_apigatewayv2_route" "public" {
+  for_each  = { for k, jwt in local.routes : k => jwt if !jwt }
   api_id    = aws_apigatewayv2_api.http.id
-  route_key = "GET /health"
+  route_key = each.key
   target    = "integrations/${aws_apigatewayv2_integration.api.id}"
 }
 
-# authenticated route
-resource "aws_apigatewayv2_route" "me" {
+resource "aws_apigatewayv2_route" "jwt" {
+  for_each           = { for k, jwt in local.routes : k => jwt if jwt }
   api_id             = aws_apigatewayv2_api.http.id
-  route_key          = "GET /me"
+  route_key          = each.key
   target             = "integrations/${aws_apigatewayv2_integration.api.id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.jwt.id
@@ -156,6 +223,12 @@ resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.http.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_rate_limit  = 25
+    throttling_burst_limit = 50
+  }
+
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.apigw.arn
     format = jsonencode({
@@ -182,3 +255,4 @@ resource "aws_lambda_permission" "apigw" {
 
 output "api_endpoint" { value = aws_apigatewayv2_stage.default.invoke_url }
 output "function_name" { value = aws_lambda_function.api.function_name }
+output "route_count" { value = length(local.routes) }
