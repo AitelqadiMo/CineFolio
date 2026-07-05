@@ -64,6 +64,15 @@ export const kvs = {
   },
 };
 
+// ---- Step Functions task-token resume (callback -> pipeline)
+export const sfn = {
+  async sendTaskSuccess(taskToken, output) {
+    const { SFNClient, SendTaskSuccessCommand } = await import("@aws-sdk/client-sfn");
+    const c = new SFNClient({ region });
+    await c.send(new SendTaskSuccessCommand({ taskToken, output: JSON.stringify(output) }));
+  },
+};
+
 export const cdn = {
   invalidate: (distributionId, paths) =>
     cf.send(
