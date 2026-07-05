@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { signIn, signUp, confirm, resendCode } from "../cognito.js";
 
-export default function Login() {
+export default function Login({ onBack }) {
   const [tab, setTab] = useState("signin"); // signin | signup | confirm
   const [email, setEmail] = useState(localStorage.getItem("cf.email") || "");
   const [pw, setPw] = useState("");
@@ -28,6 +28,12 @@ export default function Login() {
   return (
     <div className="authwrap">
       <form className="authcard" onSubmit={submit}>
+        {onBack && (
+          <button type="button" className="mono" onClick={onBack}
+            style={{ background: "none", border: 0, color: "var(--dim)", cursor: "pointer", padding: 0, marginBottom: 26 }}>
+            ← BACK TO THE SITE
+          </button>
+        )}
         <div className="lenshero" />
         <div className="mono" style={{ marginBottom: 10 }}>CINEFOLIO — STUDIO CONSOLE</div>
         <h1>Your career,<br /><em>in cinema.</em></h1>
