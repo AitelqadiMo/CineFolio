@@ -3,7 +3,7 @@
 // Pointer: CloudFront KVS  slug -> "{siteId}/releases/{n}"   (atomic flip, no invalidation)
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, clampStr, uuid, now, slugify } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify } from "./lib.mjs";
 
 const relSK = (n) => `RELEASE#${String(n).padStart(5, "0")}`;
 
@@ -104,7 +104,26 @@ export async function publish(event, ctx) {
     throw e;
   });
 
-  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, url: `https://${ctx.config.cdnDomain}/`, slugUrl: `${site.slug}.<sites-domain-when-enabled>` });
+  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, url: previewUrl(ctx, site.slug) });
+}
+
+// GET /sites/{id}/source?release=n — download a release's HTML (owner/admin)
+export async function source(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  const n = Number(qs(event, "release") || site.liveRelease);
+  if (!Number.isInteger(n) || n < 1 || n > (site.releases || 0)) return bad("bad release");
+  const html = await ctx.s3.getObjectText(ctx.config.publishedBucket, `sites/${site.siteId}/releases/${n}/index.html`);
+  return {
+    statusCode: 200,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "content-disposition": `attachment; filename="${site.slug}-release-${n}.html"`,
+      "cache-control": "no-store",
+    },
+    body: html,
+  };
 }
 
 // POST /sites/{id}/rollback { to? } — default: previous release
@@ -160,9 +179,11 @@ async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix) {
   }
 }
 
+const previewUrl = (ctx, slug) => `https://${ctx.config.cdnDomain}/_preview/${slug}/`;
+
 const pub = (s, ctx) => ({
   siteId: s.siteId, slug: s.slug, title: s.title, status: s.status,
   releases: s.releases, liveRelease: s.liveRelease, pointerMode: s.pointerMode,
   createdAt: s.createdAt, publishedAt: s.publishedAt,
-  previewUrl: `https://${ctx.config.cdnDomain}/`,
+  previewUrl: previewUrl(ctx, s.slug),
 });
