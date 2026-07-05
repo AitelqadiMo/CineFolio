@@ -39,4 +39,5 @@ export const api = {
   takedown: (id) => req(`/sites/${id}`, { method: "DELETE", auth: true }),
 
   adminOrders: (status) => req(`/admin/orders?status=${encodeURIComponent(status)}`, { auth: true }),
+  adminRetry: (orderId) => req(`/admin/orders/${orderId}/retry`, { method: "POST", auth: true }),
 };
