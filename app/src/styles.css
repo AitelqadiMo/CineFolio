@@ -329,3 +329,15 @@ body::after {
 .stageempty .lensbig { width: 64px; height: 64px; border-radius: 50%; border: 8px solid var(--red); position: relative; margin: 0 auto; box-shadow: 0 0 60px rgba(200,16,46,.35); }
 .stageempty .lensbig::after { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--gold); }
 @media (prefers-reduced-motion: reduce) { .btn.marquee::after, .recdot { animation: none; } }
+
+/* ---------- ACT III: the work (case-study builder) ---------- */
+.projcard { border: 1px solid var(--faint); border-radius: 7px; margin-bottom: 8px; overflow: hidden; }
+.projcard.open { border-color: rgba(217,164,65,.5); }
+.projrow { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; cursor: pointer; }
+.projrow b { font-family: var(--disp); text-transform: uppercase; font-size: .85rem; }
+.projops { display: flex; gap: 4px; }
+.projops button { background: none; border: 1px solid var(--faint); color: var(--dim); border-radius: 4px; width: 24px; height: 22px; cursor: pointer; font-size: 11px; line-height: 1; }
+.projops button:hover { color: var(--gold); border-color: var(--gold); }
+.projbody { padding: 4px 12px 12px; border-top: 1px solid var(--faint); }
+.projbody input, .projbody textarea { margin-bottom: 7px; font-size: 12.5px; }
+.togglerow { display: flex; flex-wrap: wrap; gap: 6px; }
