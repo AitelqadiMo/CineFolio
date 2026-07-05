@@ -100,15 +100,18 @@ resource "aws_s3_bucket_versioning" "b" {
   versioning_configuration { status = "Enabled" }
 }
 
+# Encryption: PRIVATE buckets (assets, artifacts) use the CMK. The published-sites
+# bucket serves public websites through CloudFront OAC, which cannot decrypt
+# CMK-encrypted objects — public content gets SSE-S3 (AES256) by design.
 resource "aws_s3_bucket_server_side_encryption_configuration" "b" {
   for_each = aws_s3_bucket.b
   bucket   = each.value.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = var.kms_key_arn
+      sse_algorithm     = each.key == "published" ? "AES256" : "aws:kms"
+      kms_master_key_id = each.key == "published" ? null : var.kms_key_arn
     }
-    bucket_key_enabled = true
+    bucket_key_enabled = each.key == "published" ? null : true
   }
 }
 
