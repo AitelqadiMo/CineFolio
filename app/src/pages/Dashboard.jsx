@@ -95,6 +95,17 @@ export default function Dashboard() {
               <button className="btn ghost" onClick={() => (open?.site?.siteId === s.siteId ? setOpen(null) : details(s))}>
                 {open?.site?.siteId === s.siteId ? "Close reel" : "Open reel"}
               </button>
+              {s.liveRelease && s.status === "live" && (
+                <button className="btn ghost" disabled={busyId === s.siteId}
+                  onClick={() => { const slug = window.prompt("Slug for the new cut (e.g. nadia-ux):", `${s.slug}-cut`); if (slug) act(s.siteId, () => api.duplicate(s.siteId, { slug, title: `${s.title} — Cut` })); }}>
+                  Duplicate
+                </button>
+              )}
+              {s.stagedRelease && (
+                <a className="btn ghost" href={s.stagedUrl} target="_blank" rel="noopener noreferrer" style={{ borderColor: "rgba(217,164,65,.5)", color: "var(--gold)" }}>
+                  Preview staged #{s.stagedRelease}
+                </a>
+              )}
               {s.status === "taken_down" && s.liveRelease && (
                 <button className="btn ghost" disabled={busyId === s.siteId} onClick={() => act(s.siteId, () => api.rollback(s.siteId, s.liveRelease))}>
                   Relight
@@ -112,11 +123,13 @@ export default function Dashboard() {
               <div className="filmstrip">
                 {open.releases.map((r) => (
                   <div key={r.n} className={`frame ${open.site.liveRelease === r.n ? "live" : ""}`}>
-                    <div className="n">#{r.n}{open.site.liveRelease === r.n && <span className="badge live" style={{ marginLeft: 6, fontSize: 8 }}>LIVE</span>}</div>
+                    <div className="n">#{r.n}{open.site.liveRelease === r.n && <span className="badge live" style={{ marginLeft: 6, fontSize: 8 }}>LIVE</span>}{open.site.stagedRelease === r.n && <span className="badge draft" style={{ marginLeft: 6, fontSize: 8 }}>STAGED</span>}</div>
                     <div className="d">{(r.createdAt || "").slice(5, 16).replace("T", " ")}</div>
                     <div className="acts">
-                      {open.site.liveRelease !== r.n && open.site.status === "live" && (
-                        <button disabled={busyId === s.siteId} onClick={() => act(s.siteId, () => api.rollback(s.siteId, r.n))}>Screen</button>
+                      {open.site.liveRelease !== r.n && (open.site.status === "live" || open.site.stagedRelease === r.n) && (
+                        <button disabled={busyId === s.siteId} onClick={() => act(s.siteId, () => api.rollback(s.siteId, r.n))}>
+                          {open.site.stagedRelease === r.n ? "Go live" : "Screen"}
+                        </button>
                       )}
                       <button onClick={() => download(s, r.n)}>Export</button>
                     </div>
