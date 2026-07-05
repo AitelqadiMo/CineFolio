@@ -119,10 +119,22 @@ const linkRow = (p, color) => {
 };
 const CREDIT = `<div style="text-align:center;padding:26px;font-family:monospace;font-size:9px;letter-spacing:.25em;opacity:.45;text-transform:uppercase">Directed with CineFolio Studios</div>`;
 
+// ---------- rich projects / case studies (shared logic, per-template skin) ----------
+const isCaseStudy = (pr) => !!(pr.problem || pr.process || pr.results || pr.role || pr.cover);
+const metaRow = (pr, cls) => {
+  const cells = [["ROLE", pr.role], ["TIMELINE", pr.timeline], ["TOOLS", pr.tools]].filter(([, v]) => v);
+  if (!cells.length) return "";
+  return `<div class="${cls}">${cells.map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("")}</div>`;
+};
+const csBlocks = (pr, cls) => ["problem", "process", "results"]
+  .filter((k) => pr[k])
+  .map((k) => `<div class="${cls}"><h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p></div>`)
+  .join("");
+
 /* ================================================================
    TEMPLATE 01 — THE MONOLITH (cinematic dark)
 ================================================================ */
-function monolith(p, pal) {
+function monolith(p, pal, sec) {
   const [bg, panel, accent, accent2, text] = pal.vars;
   const photo = p.photo || initialsAvatar(p.name, panel, accent2);
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -166,6 +178,24 @@ h2:before{content:"";display:inline-block;width:30px;height:3px;background:linea
 footer{text-align:center;padding:10vh 6vw 4vh}
 footer .big{font-family:'Instrument Serif',serif;font-style:italic;font-size:clamp(1.6rem,4.5vw,2.8rem)}
 footer .links{margin-top:20px}
+.cs{margin:0 0 8vh;border:1px solid ${text}1c;border-radius:18px;overflow:hidden;background:${panel}}
+.cs img.cover{width:100%;aspect-ratio:21/9;object-fit:cover;display:block}
+.cs .body{padding:clamp(1.4rem,3.5vw,2.6rem)}
+.cs h3{font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(1.3rem,3vw,1.9rem);text-transform:uppercase}
+.cs .sum{color:${text}bb;margin-top:8px;max-width:62ch}
+.csmeta{display:flex;gap:26px;flex-wrap:wrap;margin:18px 0 4px;padding:14px 0;border-top:1px solid ${text}1c;border-bottom:1px solid ${text}1c}
+.csmeta span{font-size:.85rem;color:${text}cc}
+.csmeta b{display:block;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.24em;color:${accent2};margin-bottom:3px}
+.csb{margin-top:22px}
+.csb h4{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:${accent2};margin-bottom:8px}
+.csb p{color:${text}cc;max-width:68ch}
+.svc{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.svc div{border:1px solid ${text}1c;border-radius:14px;padding:20px;background:${panel}}
+.svc b{font-family:'Bricolage Grotesque',sans-serif}
+.svc p{color:${text}aa;font-size:.9rem;margin-top:6px}
+.tst{border-left:3px solid ${accent2};padding:6px 0 6px 22px;margin-bottom:22px}
+.tst p{font-family:'Instrument Serif',serif;font-style:italic;font-size:1.25rem;line-height:1.55}
+.tst span{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;color:${text}99;text-transform:uppercase}
 </style></head><body>
 <header><img class="ph up" src="${photo}" alt="${esc(p.name)}">
 <div class="mono up" style="animation-delay:.1s;margin-bottom:14px">FEATURE PRESENTATION</div>
@@ -173,23 +203,27 @@ footer .links{margin-top:20px}
 <div class="mono head2 up" style="animation-delay:.3s">${esc(p.headline)}</div>
 <div class="links up" style="animation-delay:.4s">${linkRow(p, text)}</div></header>
 <div class="marq" aria-hidden="true"><div>${(p.skills.slice(0, 6).map((s) => esc(s.toUpperCase())).join(" ✦ ") + " ✦ ").repeat(3)}</div></div>
-${p.summary ? `<section><h2>The story</h2><p style="font-size:1.06rem;color:${text}dd;max-width:60ch">${esc(p.summary)}</p></section>` : ""}
-<section><h2>The craft</h2><div class="chips">${p.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div></section>
-<section><h2>Selected scenes</h2>${p.experience.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}</section>
-${p.projects.length ? `<section><h2>Productions</h2><div class="pr">${p.projects.map((pr) => `<div class="prc"><b>${esc(pr.name)}</b><p>${esc(pr.desc)}</p></div>`).join("")}</div></section>` : ""}
-${p.education.length ? `<section><h2>Training</h2><ul style="list-style:none">${p.education.map((e) => `<li style="padding:10px 0;border-bottom:1px solid ${text}18">${esc(e)}</li>`).join("")}</ul></section>` : ""}
-<footer><div class="mono">CLOSING CREDITS</div><div class="big">Let's make something worth watching.</div><div class="links">${linkRow(p, text)}</div></footer>
+${sec.about && p.summary ? `<section><h2>The story</h2><p style="font-size:1.06rem;color:${text}dd;max-width:60ch">${esc(p.summary)}</p></section>` : ""}
+${sec.skills && p.skills.length ? `<section><h2>The craft</h2><div class="chips">${p.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div></section>` : ""}
+${sec.experience && p.experience.length ? `<section><h2>Selected scenes</h2>${p.experience.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}</section>` : ""}
+${sec.projects && p.projects.length ? `<section><h2>Productions</h2>
+${p.projects.filter(isCaseStudy).map((pr, i) => `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}</div></div>`).join("")}
+${p.projects.filter((pr) => !isCaseStudy(pr)).length ? `<div class="pr">${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="prc"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</div>` : ""}</section>` : ""}
+${sec.services && (p.services || []).length ? `<section><h2>Services</h2><div class="svc">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</div></section>` : ""}
+${sec.testimonials && (p.testimonials || []).length ? `<section><h2>Word on set</h2>${p.testimonials.map((t) => `<div class="tst"><p>“${esc(t.quote)}”</p><span>— ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
+${sec.education && p.education.length ? `<section><h2>Training</h2><ul style="list-style:none">${p.education.map((e) => `<li style="padding:10px 0;border-bottom:1px solid ${text}18">${esc(e)}</li>`).join("")}</ul></section>` : ""}
+${sec.contact ? `<footer><div class="mono">CLOSING CREDITS</div><div class="big">Let's make something worth watching.</div><div class="links">${linkRow(p, text)}</div></footer>` : ""}
 ${CREDIT}</body></html>`;
 }
 
 /* ================================================================
    TEMPLATE 02 — THE EDITORIAL (light magazine)
 ================================================================ */
-function editorial(p, pal) {
+function editorial(p, pal, sec) {
   const [paper, ink, accent, soft] = pal.vars;
   const photo = p.photo || initialsAvatar(p.name, ink, paper);
   const n = (i) => String(i + 1).padStart(2, "0");
-  let sec = 0;
+  let ix = 0;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} — ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
@@ -222,25 +256,46 @@ h2{font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(1.6rem,3
 .pr b{font-weight:600}
 footer{padding:9vh 0;text-align:center}
 footer .big{font-family:'Instrument Serif',serif;font-style:italic;font-size:clamp(1.8rem,4.5vw,3rem)}
+.cs2{padding:26px 0;border-top:1px solid ${ink}22}
+.cs2 img.cover{width:100%;aspect-ratio:21/9;object-fit:cover;border-radius:2px;margin-bottom:18px}
+.cs2 h3{font-family:'Instrument Serif',serif;font-weight:400;font-size:1.6rem}
+.cs2 .sum{color:${ink}cc;margin-top:6px;max-width:64ch}
+.csmeta2{display:flex;gap:26px;flex-wrap:wrap;margin:16px 0;padding:12px 0;border-top:1px solid ${ink}22;border-bottom:1px solid ${ink}22}
+.csmeta2 span{font-size:.88rem}
+.csmeta2 b{display:block;font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.22em;color:${accent};margin-bottom:2px}
+.csb2{margin-top:18px}
+.csb2 h4{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:${accent};margin-bottom:6px}
+.csb2 p{color:${ink}cc;max-width:70ch}
+.svc2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 30px}
+.svc2 div{border-top:1.5px solid ${ink};padding:14px 0}
+.svc2 b{font-weight:600}
+.svc2 p{color:${soft};font-size:.9rem;margin-top:5px}
+.tst2{padding:18px 0;border-top:1px solid ${ink}22}
+.tst2 p{font-family:'Instrument Serif',serif;font-style:italic;font-size:1.3rem;line-height:1.55}
+.tst2 span{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;color:${soft};text-transform:uppercase}
 @media(max-width:640px){.xp,.pr{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
 <header><div class="mono">PORTFOLIO · VOL. I — ${new Date().getFullYear()}</div>
 <div class="masth" style="margin-top:22px"><h1>${esc(p.name.split(" ")[0])} <i>${esc(p.name.split(" ").slice(1).join(" "))}</i></h1><img class="ph" src="${photo}" alt="${esc(p.name)}"></div>
 <div class="headrow"><div style="font-weight:600">${esc(p.headline)}</div><div class="mono links">${linkRow(p, ink)}</div></div></header>
-${p.summary ? `<section><div class="sechead"><span class="no">${n(sec++)}</span><h2>In brief</h2></div><p class="lede">${esc(p.summary)}</p></section>` : ""}
-<section><div class="sechead"><span class="no">${n(sec++)}</span><h2>Experience</h2></div>
-${p.experience.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div></div>`).join("")}</section>
-<section><div class="sechead"><span class="no">${n(sec++)}</span><h2>Capabilities</h2></div><div class="chips">${p.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div></section>
-${p.projects.length ? `<section><div class="sechead"><span class="no">${n(sec++)}</span><h2>Selected work</h2></div>${p.projects.map((pr) => `<div class="pr"><b>${esc(pr.name)}</b><p>${esc(pr.desc)}</p></div>`).join("")}</section>` : ""}
-${p.education.length ? `<section><div class="sechead"><span class="no">${n(sec++)}</span><h2>Education</h2></div>${p.education.map((e) => `<p style="padding:6px 0">${esc(e)}</p>`).join("")}</section>` : ""}
-<footer><div class="mono">CORRESPONDENCE</div><div class="big">Start the conversation.</div><div class="mono links" style="margin-top:16px">${linkRow(p, ink)}</div></footer>
+${sec.about && p.summary ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>In brief</h2></div><p class="lede">${esc(p.summary)}</p></section>` : ""}
+${sec.experience && p.experience.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Experience</h2></div>
+${p.experience.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div></div>`).join("")}</section>` : ""}
+${sec.skills && p.skills.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Capabilities</h2></div><div class="chips">${p.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div></section>` : ""}
+${sec.projects && p.projects.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Selected work</h2></div>
+${p.projects.filter(isCaseStudy).map((pr) => `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}</div>`).join("")}
+${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="pr"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</section>` : ""}
+${sec.services && (p.services || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Services</h2></div><div class="svc2">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</section>` : ""}
+${sec.testimonials && (p.testimonials || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Kind words</h2></div>${p.testimonials.map((t) => `<div class="tst2"><p>“${esc(t.quote)}”</p><span>— ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
+${sec.education && p.education.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Education</h2></div>${p.education.map((e) => `<p style="padding:6px 0">${esc(e)}</p>`).join("")}</section>` : ""}
+${sec.contact ? `<footer><div class="mono">CORRESPONDENCE</div><div class="big">Start the conversation.</div><div class="mono links" style="margin-top:16px">${linkRow(p, ink)}</div></footer>` : ""}
 </div>${CREDIT}</body></html>`;
 }
 
 /* ================================================================
    TEMPLATE 03 — THE TERMINAL (engineer's console)
 ================================================================ */
-function terminal(p, pal) {
+function terminal(p, pal, sec) {
   const [bg, green, amber, dim] = pal.vars;
   const bar = (i) => { const f = 9 - (i % 4); return "█".repeat(f) + "░".repeat(10 - f); };
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -274,15 +329,17 @@ a{color:${amber};text-decoration:none;border-bottom:1px dashed ${amber}88}
 <div><span class="ps">➜ ~</span> <span class="cmd">whoami</span></div>
 <h1>${esc(p.name)}</h1>
 <div class="out">${esc(p.headline)}${p.phone ? " · " + esc(p.phone) : ""}<br>${linkRow(p, dim)}</div>
-${p.summary ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat README.md</span></div><div class="out">${esc(p.summary)}</div>` : ""}
-<div><span class="ps">➜ ~</span> <span class="cmd">./skills --graph</span></div>
-<div class="grid">${p.skills.map((s, i) => `<span class="sk"><b>${esc(s.toLowerCase().padEnd(2))}</b> ${bar(i)}</span>`).join("")}</div>
-<div><span class="ps">➜ ~</span> <span class="cmd">git log --career</span></div>
-${p.experience.map((x) => `<div class="xp"><div class="c">* ${esc(x.title)}${x.org ? ` @ ${esc(x.org)}` : ""}</div><div class="d">${esc(x.period)}</div><ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}
-${p.projects.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">ls projects/</span></div>${p.projects.map((pr) => `<div class="xp"><div class="c">${esc(pr.name)}/</div><div class="d">${esc(pr.desc)}</div></div>`).join("")}` : ""}
-${p.education.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat education.txt</span></div><div class="out">${p.education.map(esc).join("<br>")}</div>` : ""}
-<div><span class="ps">➜ ~</span> <span class="cmd">contact --now</span> <span class="cur"></span></div>
-<div class="out">${p.email ? `mail: <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : "reach out via the links above"}</div>
+${sec.about && p.summary ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat README.md</span></div><div class="out">${esc(p.summary)}</div>` : ""}
+${sec.skills && p.skills.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">./skills --graph</span></div>
+<div class="grid">${p.skills.map((s, i) => `<span class="sk"><b>${esc(s.toLowerCase().padEnd(2))}</b> ${bar(i)}</span>`).join("")}</div>` : ""}
+${sec.experience && p.experience.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">git log --career</span></div>
+${p.experience.map((x) => `<div class="xp"><div class="c">* ${esc(x.title)}${x.org ? ` @ ${esc(x.org)}` : ""}</div><div class="d">${esc(x.period)}</div><ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}` : ""}
+${sec.projects && p.projects.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">ls projects/</span></div>${p.projects.map((pr) => `<div class="xp"><div class="c">${esc(pr.name)}/${isCaseStudy(pr) ? " — case study" : ""}</div><div class="d">${esc(pr.summary || pr.desc)}</div>${pr.cover ? `<img src="${pr.cover}" alt="${esc(pr.name)}" style="max-width:100%;border:1px solid ${green}33;border-radius:6px;margin:8px 0">` : ""}${["role","timeline","tools"].filter((k)=>pr[k]).map((k)=>`<div class="d">${k}: ${esc(pr[k])}</div>`).join("")}${["problem","process","results"].filter((k)=>pr[k]).map((k)=>`<div class="d" style="margin-top:6px"><span style="color:${amber}"># ${k}</span><br>${esc(pr[k])}</div>`).join("")}</div>`).join("")}` : ""}
+${sec.services && (p.services || []).length ? `<div><span class="ps">➜ ~</span> <span class="cmd">./services --list</span></div>${p.services.map((sv) => `<div class="xp"><div class="c">${esc(sv.name)}</div><div class="d">${esc(sv.desc)}</div></div>`).join("")}` : ""}
+${sec.testimonials && (p.testimonials || []).length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat reviews.log</span></div>${p.testimonials.map((t) => `<div class="out">"${esc(t.quote)}" — ${esc(t.who)}</div>`).join("")}` : ""}
+${sec.education && p.education.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat education.txt</span></div><div class="out">${p.education.map(esc).join("<br>")}</div>` : ""}
+${sec.contact ? `<div><span class="ps">➜ ~</span> <span class="cmd">contact --now</span> <span class="cur"></span></div>
+<div class="out">${p.email ? `mail: <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : "reach out via the links above"}</div>` : ""}
 </main></div>${CREDIT}</body></html>`;
 }
 
@@ -317,8 +374,11 @@ export const TEMPLATES = [
   },
 ];
 
-export function compile(templateId, paletteId, profile) {
+export const DEFAULT_SECTIONS = { about: true, skills: true, experience: true, projects: true, education: true, services: false, testimonials: false, contact: true };
+
+export function compile(templateId, paletteId, profile, opts = {}) {
   const t = TEMPLATES.find((x) => x.id === templateId) || TEMPLATES[0];
   const pal = t.palettes.find((x) => x.id === paletteId) || t.palettes[0];
-  return t.compile(profile, pal);
+  const sections = { ...DEFAULT_SECTIONS, ...(opts.sections || {}) };
+  return t.compile(profile, pal, sections);
 }
