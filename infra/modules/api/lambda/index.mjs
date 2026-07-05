@@ -22,6 +22,7 @@ export const ROUTES = {
   "POST /sites": sites.createSite,
   "GET /sites": sites.listSites,
   "GET /sites/{id}": sites.getSite,
+  "GET /sites/{id}/source": sites.source,
   "POST /sites/{id}/publish": sites.publish,
   "POST /sites/{id}/rollback": sites.rollback,
   "DELETE /sites/{id}": sites.takedown,
