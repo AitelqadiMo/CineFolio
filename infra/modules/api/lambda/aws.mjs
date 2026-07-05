@@ -1,0 +1,97 @@
+// aws.mjs — ALL AWS SDK access lives here. index.mjs injects this as ctx into routes;
+// tests inject fakes instead, so nothing else in the codebase imports the SDK.
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
+import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
+import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
+
+const region = process.env.AWS_REGION || "eu-central-1";
+const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), {
+  marshallOptions: { removeUndefinedValues: true },
+});
+const s3c = new S3Client({ region });
+const sqs = new SQSClient({ region });
+const ssm = new SSMClient({ region });
+const cf = new CloudFrontClient({ region: "us-east-1" });
+
+const TABLE = process.env.TABLE_NAME;
+
+export const ddb = {
+  get: (Key) => doc.send(new GetCommand({ TableName: TABLE, Key })).then((r) => r.Item || null),
+  put: (Item, condition) =>
+    doc.send(new PutCommand({ TableName: TABLE, Item, ...(condition ? { ConditionExpression: condition } : {}) })),
+  update: (params) => doc.send(new UpdateCommand({ TableName: TABLE, ...params })).then((r) => r.Attributes),
+  del: (Key) => doc.send(new DeleteCommand({ TableName: TABLE, Key })),
+  query: (params) => doc.send(new QueryCommand({ TableName: TABLE, ...params })).then((r) => r.Items || []),
+};
+
+export const s3 = {
+  putObject: (Bucket, Key, Body, ContentType = "text/html; charset=utf-8") =>
+    s3c.send(new PutObjectCommand({ Bucket, Key, Body, ContentType })),
+  getObjectText: async (Bucket, Key) => {
+    const r = await s3c.send(new GetObjectCommand({ Bucket, Key }));
+    return r.Body.transformToString();
+  },
+  copyObject: (Bucket, fromKey, toKey) =>
+    s3c.send(new CopyObjectCommand({ Bucket, CopySource: `${Bucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
+};
+
+export const queue = {
+  send: (QueueUrl, payload) =>
+    sqs.send(new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify(payload) })),
+};
+
+// ---- CloudFront KVS (pointer flips). SigV4a support in the bundled SDK is the one
+// runtime unknown, so callers treat any throw here as "use the S3-copy fallback".
+export const kvs = {
+  async put(kvsArn, key, value) {
+    const { CloudFrontKeyValueStoreClient, DescribeKeyValueStoreCommand, PutKeyCommand } = await import(
+      "@aws-sdk/client-cloudfront-keyvaluestore"
+    );
+    const c = new CloudFrontKeyValueStoreClient({ region: "us-east-1" });
+    const d = await c.send(new DescribeKeyValueStoreCommand({ KvsARN: kvsArn }));
+    await c.send(new PutKeyCommand({ KvsARN: kvsArn, IfMatch: d.ETag, Key: key, Value: value }));
+  },
+  async del(kvsArn, key) {
+    const { CloudFrontKeyValueStoreClient, DescribeKeyValueStoreCommand, DeleteKeyCommand } = await import(
+      "@aws-sdk/client-cloudfront-keyvaluestore"
+    );
+    const c = new CloudFrontKeyValueStoreClient({ region: "us-east-1" });
+    const d = await c.send(new DescribeKeyValueStoreCommand({ KvsARN: kvsArn }));
+    await c.send(new DeleteKeyCommand({ KvsARN: kvsArn, IfMatch: d.ETag, Key: key }));
+  },
+};
+
+export const cdn = {
+  invalidate: (distributionId, paths) =>
+    cf.send(
+      new CreateInvalidationCommand({
+        DistributionId: distributionId,
+        InvalidationBatch: { CallerReference: `api-${Date.now()}`, Paths: { Quantity: paths.length, Items: paths } },
+      })
+    ),
+};
+
+// ---- secrets: read once per container from SSM /cinefolio/{env}/*
+let secretsCache = null;
+export async function secrets() {
+  if (secretsCache) return secretsCache;
+  const Path = process.env.SSM_PREFIX || "/cinefolio/dev";
+  const out = {};
+  try {
+    let NextToken;
+    do {
+      const r = await ssm.send(new GetParametersByPathCommand({ Path, WithDecryption: true, NextToken }));
+      for (const p of r.Parameters || []) out[p.Name.split("/").pop()] = p.Value;
+      NextToken = r.NextToken;
+    } while (NextToken);
+  } catch {
+    /* no secrets configured yet -> degraded mode, handlers cope */
+  }
+  secretsCache = out;
+  return out;
+}
+
+export const fetchFn = globalThis.fetch;
