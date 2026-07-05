@@ -38,6 +38,14 @@ export const s3 = {
     s3c.send(new CopyObjectCommand({ Bucket, CopySource: `${Bucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
 };
 
+export const presign = {
+  async put(Bucket, Key, ContentType) {
+    const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
+    const { PutObjectCommand: POC } = await import("@aws-sdk/client-s3");
+    return getSignedUrl(s3c, new POC({ Bucket, Key, ContentType }), { expiresIn: 900 });
+  },
+};
+
 export const queue = {
   send: (QueueUrl, payload) =>
     sqs.send(new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify(payload) })),
