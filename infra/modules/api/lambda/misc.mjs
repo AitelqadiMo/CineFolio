@@ -103,6 +103,21 @@ export async function hit(event, ctx) {
   return ok({ ok: true });
 }
 
+// POST /media { contentType, ext? } — presigned upload for project covers /
+// headshots. Media lives in the PUBLISHED bucket under media/{sub}/ and is
+// served through the sites CDN (router passes /media/* straight through).
+export async function mediaUpload(event, ctx) {
+  const claims = claimsOf(event);
+  const b = bodyOf(event);
+  if (!b) return bad("invalid json");
+  const ct = String(b.contentType || "");
+  const extMap = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+  if (!extMap[ct]) return bad("images only (jpeg, png, webp, gif)");
+  const key = `media/${claims.sub}/${uuid()}.${extMap[ct]}`;
+  const uploadUrl = await ctx.presign.put(ctx.config.publishedBucket, key, ct);
+  return ok({ ok: true, uploadUrl, publicUrl: `https://${ctx.config.cdnDomain}/${key}`, key, maxBytes: 4 * 1024 * 1024 });
+}
+
 // GET /admin/orders?status=queued — admin-only order queue (GSI2)
 export async function adminOrders(event, ctx) {
   const claims = claimsOf(event);
