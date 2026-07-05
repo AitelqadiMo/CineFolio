@@ -2,12 +2,19 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 
-const STATUSES = ["queued", "ready", "dispatch_failed"];
+const STATUSES = ["queued", "filming", "ready", "dispatch_failed", "human_review"];
 
 export default function Admin() {
   const [status, setStatus] = useState("queued");
   const [orders, setOrders] = useState(null);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(null);
+
+  const retry = async (orderId) => {
+    setBusy(orderId); setErr("");
+    try { await api.adminRetry(orderId); setOrders(orders.filter((o) => o.orderId !== orderId)); }
+    catch (e) { setErr(e.message); } finally { setBusy(null); }
+  };
 
   useEffect(() => {
     setOrders(null); setErr("");
@@ -36,7 +43,7 @@ export default function Admin() {
       {orders?.length > 0 && (
         <div className="panel" style={{ padding: 0, overflow: "auto" }}>
           <table>
-            <thead><tr><th>Order</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th></tr></thead>
+            <thead><tr><th>Order</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th></th></tr></thead>
             <tbody>
               {orders.map((o) => (
                 <tr key={o.orderId}>
@@ -46,6 +53,13 @@ export default function Admin() {
                   <td>{o.role}</td>
                   <td><span className={`badge ${o.status}`}>{o.status.replace("_", " ")}</span></td>
                   <td className="mono" style={{ textTransform: "none", letterSpacing: 0 }}>{(o.createdAt || "").slice(0, 16).replace("T", " ")}</td>
+                  <td style={{ textAlign: "right" }}>
+                    {["dispatch_failed", "human_review", "filming", "queued"].includes(o.status) && (
+                      <button className="btn ghost" style={{ padding: "6px 11px" }} disabled={busy === o.orderId} onClick={() => retry(o.orderId)}>
+                        {busy === o.orderId ? "…" : "Retry"}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
