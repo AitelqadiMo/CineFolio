@@ -2,7 +2,6 @@
 # Separate distribution from client sites: different cache policy, different blast radius.
 variable "name_prefix" { type = string }
 variable "account_id" { type = string }
-variable "kms_key_arn" { type = string }
 variable "tags" {
   type    = map(string)
   default = {}
@@ -26,14 +25,14 @@ resource "aws_s3_bucket_versioning" "app" {
   versioning_configuration { status = "Enabled" }
 }
 
+# SSE-S3: this bucket serves the public SPA through CloudFront OAC (OAC cannot
+# decrypt CMK-encrypted objects; the bundle is public content anyway).
 resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
   bucket = aws_s3_bucket.app.id
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm     = "aws:kms"
-      kms_master_key_id = var.kms_key_arn
+      sse_algorithm = "AES256"
     }
-    bucket_key_enabled = true
   }
 }
 
