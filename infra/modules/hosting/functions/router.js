@@ -1,18 +1,28 @@
-// CloudFront Function (viewer-request) — multi-tenant slug router.
-// Maps {slug}.cinefolio.site  ->  s3 origin path /sites/{slug}/...
-// In dev (native cloudfront.net domain) it simply serves /sites/_demo/ so the
-// distribution is testable before the slug KeyValueStore is wired in P2.
-function handler(event) {
+// CloudFront Function (viewer-request) — multi-tenant slug router with KVS pointers.
+// Pointer flow:   {slug}.cinefolio.site  --KVS-->  "{siteId}/releases/{n}"  -->  S3 prefix
+// KVS miss flow:  serve /sites/{slug}/... directly (legacy layout + s3copy fallback + _demo).
+import cf from 'cloudfront';
+
+const kvs = cf.kvs();
+
+async function handler(event) {
   var req = event.request;
   var host = (req.headers.host && req.headers.host.value) || "";
   var uri = req.uri;
 
-  // derive slug from subdomain; fall back to _demo for the raw cloudfront domain
+  // derive slug from subdomain; the raw cloudfront.net domain demos /sites/_demo/
   var slug = "_demo";
   var parts = host.split(".");
   if (parts.length > 2 && parts[0] !== "www" && host.indexOf("cloudfront.net") === -1) {
     slug = parts[0];
   }
+
+  // atomic pointer lookup; on miss serve the slug prefix as-is
+  var target = slug;
+  try {
+    var v = await kvs.get(slug);
+    if (v) target = v;
+  } catch (e) { /* no pointer for this slug */ }
 
   // directory requests -> index.html
   if (uri.endsWith("/")) {
@@ -21,6 +31,6 @@ function handler(event) {
     uri += "/index.html";
   }
 
-  req.uri = "/sites/" + slug + uri;
+  req.uri = "/sites/" + target + uri;
   return req;
 }
