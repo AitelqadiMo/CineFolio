@@ -82,6 +82,7 @@ export const handler = async (event) => {
       orderId,
       email: order.email, name: order.name, role: order.role, skills: order.skills || [],
       cvText: order.cvText || "",
+      brief: order.brief || null, // template/palette/customIdea from the Studio workspace
       instructions:
         "Produce a single-file cinematic portfolio HTML (CineFolio jersey brand: navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62). Max 900KB, self-contained, no external JS. POST it raw to deliver.url with deliver.headers within 25 minutes.",
       deliver: {
