@@ -27,7 +27,7 @@ export default function Account() {
 
   return (
     <>
-      <div className="pagehead">
+      <div className="pagehead" data-scene="SCENE 04 · THE MARQUEE">
         <SplitTitle text="Account" serif="settings" />
         <p className="sub">Who the studio is producing for.</p>
       </div>
