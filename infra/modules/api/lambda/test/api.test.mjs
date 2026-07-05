@@ -282,3 +282,55 @@ test("media: presigned upload for images only, keyed to the user", async () => {
   assert.match(r.body.publicUrl, /^https:\/\/cdn\.test\/media\/u9\//);
   assert.equal(parse(await h(ev("POST /media", { claims: "u9", body: { contentType: "application/pdf" } }))).code, 400);
 });
+
+test("w2: staged publish previews without flipping, go-live flips, duplicate copies, draft syncs", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const id = parse(await h(ev("POST /sites", { claims: "u1", body: { title: "Stage Site" } }))).body.site.siteId;
+
+  // live release 1
+  await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id }, body: { html: "<!doctype html><html>v1</html>" } }));
+  const flips1 = ctx.kvs.puts.length;
+
+  // staged release 2: no pointer flip, previewable at /_r/
+  const st = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id }, body: { html: "<!doctype html><html>v2</html>", stage: true } })));
+  assert.equal(st.body.staged, true);
+  assert.equal(st.body.release, 2);
+  assert.match(st.body.previewUrl, new RegExp(`/_r/${id}/2/$`));
+  assert.equal(ctx.kvs.puts.length, flips1); // pointer did NOT move
+  let meta = ctx.ddb._store.get(`SITE#${id}|META`);
+  assert.equal(meta.liveRelease, 1);
+  assert.equal(meta.stagedRelease, 2);
+
+  // go live on the staged release
+  const gl = parse(await h(ev("POST /sites/{id}/rollback", { claims: "u1", path: { id }, body: { to: 2 } })));
+  assert.equal(gl.body.liveRelease, 2);
+  assert.deepEqual(ctx.kvs.puts.at(-1), ["stage-site", `${id}/releases/2`]);
+  meta = ctx.ddb._store.get(`SITE#${id}|META`);
+  assert.equal(meta.stagedRelease, null);
+
+  // duplicate as audience version
+  const dup = parse(await h(ev("POST /sites/{id}/duplicate", { claims: "u1", path: { id }, body: { slug: "stage-site-ux", title: "Stage Site — UX cut" } })));
+  assert.equal(dup.code, 200);
+  assert.equal(dup.body.site.slug, "stage-site-ux");
+  assert.equal(dup.body.site.audienceOf, id);
+  assert.equal(dup.body.site.liveRelease, 1);
+  const nid = dup.body.site.siteId;
+  assert.equal(ctx.s3._store.get(`pub/sites/${nid}/releases/1/index.html`), "<!doctype html><html>v2</html>");
+  // slug conflict on second duplicate with same slug
+  assert.equal(parse(await h(ev("POST /sites/{id}/duplicate", { claims: "u1", path: { id }, body: { slug: "stage-site-ux" } }))).code, 409);
+
+  // staged-only site can go live directly
+  const id2 = parse(await h(ev("POST /sites", { claims: "u1", body: { title: "Fresh Stage" } }))).body.site.siteId;
+  await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: id2 }, body: { html: "<!doctype html><html>s1</html>", stage: true } }));
+  const gl2 = parse(await h(ev("POST /sites/{id}/rollback", { claims: "u1", path: { id: id2 }, body: {} })));
+  assert.equal(gl2.body.liveRelease, 1);
+  assert.equal(gl2.body.status, "live");
+
+  // draft sync round-trip
+  const put = parse(await h(ev("PUT /draft", { claims: "u1", body: { draft: { q: { name: "Nadia" }, tpl: "editorial" } } })));
+  assert.equal(put.code, 200);
+  const got = parse(await h(ev("GET /draft", { claims: "u1" })));
+  assert.equal(got.body.draft.q.name, "Nadia");
+  assert.equal(got.body.draft.tpl, "editorial");
+});
