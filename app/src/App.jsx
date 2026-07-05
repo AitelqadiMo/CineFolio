@@ -7,6 +7,8 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Studio from "./pages/Studio.jsx";
 import Admin from "./pages/Admin.jsx";
 import Account from "./pages/Account.jsx";
+import CmdK from "./CmdK.jsx";
+import { api } from "./api.js";
 
 export const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -39,6 +41,7 @@ export default function App() {
   const [user, setUser] = useState(getUser());
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState(path());
+  const [edge, setEdge] = useState(null); // { ms } — ambient status, platform-style
 
   useEffect(() => {
     restore().finally(() => setBooting(false));
@@ -47,6 +50,19 @@ export default function App() {
     window.addEventListener("popstate", onPop);
     return () => { off(); window.removeEventListener("popstate", onPop); };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const ping = async () => {
+      const t0 = performance.now();
+      try { await api.health(); if (alive) setEdge({ ms: Math.round(performance.now() - t0) }); }
+      catch { if (alive) setEdge({ ms: -1 }); }
+    };
+    ping();
+    const t = setInterval(ping, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [user]);
 
   const nav = (to) => {
     history.pushState({}, "", `/${to}`);
@@ -67,6 +83,8 @@ export default function App() {
   const Page = PAGES[route] || Dashboard;
   return (
     <AuthCtx.Provider value={{ user, nav }}>
+      <div className="aurora" aria-hidden="true" />
+      <CmdK nav={nav} admin={user.admin} />
       <header className="topbar">
         <div className="brand"><span className="lens" />CINEFOLIO <span className="mono" style={{ color: "var(--gold)" }}>STUDIO</span></div>
         <nav className="nav">
@@ -75,12 +93,18 @@ export default function App() {
           {user.admin && <button className={route === "admin" ? "on" : ""} onClick={() => nav("admin")}>Orders</button>}
           <button className={route === "account" ? "on" : ""} onClick={() => nav("account")}>Account</button>
           <button onClick={() => { signOut(); nav(""); }}>Sign out</button>
+          <span className="kbdhint mono" title="Command palette">⌘K</span>
         </nav>
       </header>
       <main className={route === "studio" ? "page pagewide" : "page"}><SetBoundary key={route}><Page /></SetBoundary></main>
       <footer className="footer">
         <span className="mono">CINEFOLIO STUDIOS — {CONFIG.env.toUpperCase()}</span>
-        <span className="mono">{user.email}</span>
+        <span className="mono">
+          {edge && (edge.ms >= 0
+            ? <><i className="edgedot ok" /> EDGE OK · {edge.ms}MS · EU-CENTRAL-1 · </>
+            : <><i className="edgedot bad" /> EDGE UNREACHABLE · </>)}
+          {user.email}
+        </span>
       </footer>
     </AuthCtx.Provider>
   );
