@@ -274,11 +274,14 @@ Awards: Design Sprint winner 2024`;
         const html = j.html.split("__PHOTO__").join(photo);
         const scr = $("#screen"); scr.innerHTML = "";
         const fr = document.createElement("iframe"); fr.setAttribute("sandbox", ""); fr.srcdoc = html; scr.appendChild(fr);
+        // demo -> signup handoff: remember this order so the Studio Console can
+        // adopt it right after the user creates an account ("Premiere this").
+        try { localStorage.setItem("cf.pendingOrder", JSON.stringify({ orderId: j.orderId, name: $("#stName").value, email })); } catch (e2) { /* private mode */ }
         if (j.production && j.orderId) {
-          msg.textContent = "🎬 Rough cut on screen. The director's cut is in production — this screen updates itself (2-6 min).";
+          msg.innerHTML = "🎬 Rough cut on screen. The director's cut is in production — this screen updates itself. Want to premiere it on a real URL? <a href='/login' style='color:var(--red);font-weight:600'>Enter the Studio →</a>";
           pollCut(j.orderId, fr, msg, photo);
         } else {
-          msg.textContent = "Rough cut rendered. The full production is where the film happens.";
+          msg.innerHTML = "Rough cut rendered. <a href='/login' style='color:var(--red);font-weight:600'>Enter the Studio</a> to premiere it on a real URL.";
         }
       } else { msg.textContent = "Something went sideways — try again."; }
     } catch { msg.textContent = "Network hiccup — try again."; }
