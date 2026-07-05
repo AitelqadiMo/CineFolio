@@ -108,6 +108,14 @@ export default function App() {
     <AuthCtx.Provider value={{ user, nav }}>
       <div className="aurora" aria-hidden="true" />
       <CmdK nav={nav} admin={user.admin} />
+      <div className="cinebar top" aria-hidden="true">
+        <span>CINEFOLIO STUDIOS · {CONFIG.env.toUpperCase()} SET</span>
+        <span className="rec">● REC</span>
+      </div>
+      <div className="cinebar bot" aria-hidden="true">
+        <span>{user.email.toUpperCase()}</span>
+        <span>{edge?.ms >= 0 ? `EDGE ${edge.ms}MS · EU-CENTRAL-1` : "OFFLINE"}</span>
+      </div>
       <div className="shell">
         <aside className="side">
           <div className="brand" style={{ padding: "18px 16px" }}><span className="lens" />CINEFOLIO</div>
@@ -144,6 +152,16 @@ export default function App() {
               : <span className="mono edgetag"><i className="edgedot bad" />OFFLINE</span>)}
             <span className="kbdhint mono" title="Command palette">⌘K</span>
           </header>
+          <div className="cinemarq" aria-hidden="true"><div className="cinemarq-t">
+            <span>NOW CASTING</span><span>✦</span><span className="r">YOUR COLORS, YOUR LIGHTING</span><span>✦</span>
+            <span className="g">IDENTITY-LOCKED AI FILM</span><span>✦</span><span>INTERACTIVE TERMINAL</span><span>✦</span>
+            <span className="gd">VERIFIED CREDENTIALS</span><span>✦</span><span>YOUR OWN DOMAIN</span><span>✦</span>
+            <span className="r">PREMIERE IN 24H</span><span>✦</span>
+            <span>NOW CASTING</span><span>✦</span><span className="r">YOUR COLORS, YOUR LIGHTING</span><span>✦</span>
+            <span className="g">IDENTITY-LOCKED AI FILM</span><span>✦</span><span>INTERACTIVE TERMINAL</span><span>✦</span>
+            <span className="gd">VERIFIED CREDENTIALS</span><span>✦</span><span>YOUR OWN DOMAIN</span><span>✦</span>
+            <span className="r">PREMIERE IN 24H</span><span>✦</span>
+          </div></div>
           <main className={route === "studio" ? "page pagewide" : "page"}><SetBoundary key={route}><Page /></SetBoundary></main>
         </div>
       </div>
