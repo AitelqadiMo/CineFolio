@@ -121,8 +121,11 @@ resource "aws_lambda_function" "worker" {
   source_code_hash = data.archive_file.worker.output_base64sha256
   timeout          = 30
   memory_size      = 256
-  # crude global build-concurrency cap until a Map-based scheduler is needed
-  reserved_concurrent_executions = 10
+  # NOTE: no reserved_concurrent_executions — small/new accounts have a total
+  # Lambda concurrency limit that a reservation would starve (must leave >= 10
+  # unreserved). Build concurrency is paced by the Pipe (batch 1) + SFN retries;
+  # when the account quota is raised (Service Quotas -> Lambda concurrent
+  # executions), a reservation can return here as a hard cap.
 
   environment {
     variables = {
