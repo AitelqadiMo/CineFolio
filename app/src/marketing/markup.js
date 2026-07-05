@@ -93,7 +93,43 @@ export const LANDING_HTML = `
     </div>
   </section>
 
-  <section id="wlwrap">
+  
+  <section id="platformwrap">
+    <div class="scene reveal">The platform underneath</div>
+    <h2 class="reveal">Built like infrastructure,<br><span class="serif">felt like cinema.</span></h2>
+    <div class="bento">
+      <div class="tile wide reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.35), rgba(10,21,48,.88)), url('https://pub.hyperagent.com/api/published/pbf01KWSRVRQD_0M8HZ70MCMA3Y4X7/50e7a154-67fa-478b-b4b7-74fe378b3dc4.png')">
+        <div class="tk">GLOBAL EDGE HOSTING</div>
+        <div class="tt">Your film premieres on our own CDN</div>
+        <div class="td">One atomic pointer flip publishes a release worldwide. Rolling back is the same flip, in reverse, in seconds.</div>
+        <div class="flip"><span>nadia-benali</span><span class="arr">→</span><span class="rel">releases/<b id="flipN">3</b></span></div>
+      </div>
+      <div class="tile reveal">
+        <div class="tk">THE GUEST LIST</div>
+        <div class="tbig" id="bentoCount">—</div>
+        <div class="td">founding members waiting for the cameras. Live from our database, right now.</div>
+      </div>
+      <div class="tile reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.3), rgba(10,21,48,.9)), url('https://pub.hyperagent.com/api/published/pbf01KWSRW0ED_ZR9N5ZQNE3HG4577/dde0b377-b779-4c7b-a448-88f1e8d57626.png')">
+        <div class="tk">THE ENGINE</div>
+        <div class="tt">0 LLM calls</div>
+        <div class="td">A deterministic engine cuts your site in milliseconds. Beautiful every single time — no AI roulette.</div>
+      </div>
+      <div class="tile reveal">
+        <div class="tk">VERSIONED LIKE SOFTWARE</div>
+        <div class="tt">Every release, kept</div>
+        <div class="td">Publish, stage, preview, go live, roll back, relight. Your portfolio gets the release discipline of production infrastructure.</div>
+        <div class="strip"><i></i><i class="on"></i><i></i><i></i></div>
+      </div>
+      <div class="tile reveal">
+        <div class="tk">THE PIPELINE</div>
+        <div class="tt">24h director's cut</div>
+        <div class="td">Orders travel a state machine that cannot lose them:</div>
+        <div class="states"><span>QUEUED</span><span class="s2">FILMING</span><span class="s3">PREMIERE</span></div>
+      </div>
+    </div>
+  </section>
+
+<section id="wlwrap">
     <div class="zellige"></div>
     <div class="wrap" id="waitlist">
       <div class="scene" style="justify-content:center">The guest list</div>
