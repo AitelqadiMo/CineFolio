@@ -80,9 +80,16 @@ module "api" {
   table_name           = module.data.table_name
   table_arn            = module.data.table_arn
   assets_bucket        = module.data.assets_bucket
+  artifacts_bucket     = module.data.artifacts_bucket
+  published_bucket     = module.data.published_bucket
   kms_key_arn          = module.kms.key_arn
   cognito_issuer       = module.identity.issuer
   cognito_client_id    = module.identity.client_id
+  orders_queue_url     = module.pipeline.orders_queue_url
+  orders_queue_arn     = module.pipeline.orders_queue_arn
+  kvs_arn              = module.hosting.kvs_arn
+  distribution_id      = module.hosting.distribution_id
+  cdn_domain           = module.hosting.distribution_domain
   cors_allowed_origins = var.app_origins
   tags                 = local.tags
 }
