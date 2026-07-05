@@ -5,11 +5,12 @@ import Login from "./pages/Login.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Studio from "./pages/Studio.jsx";
 import Admin from "./pages/Admin.jsx";
+import Account from "./pages/Account.jsx";
 
 export const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
-const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin };
+const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account };
 
 function path() {
   return location.pathname.replace(/^\/+|\/+$/g, "") || "dashboard";
@@ -47,6 +48,7 @@ export default function App() {
           <button className={route === "dashboard" ? "on" : ""} onClick={() => nav("dashboard")}>My Films</button>
           <button className={route === "studio" ? "on" : ""} onClick={() => nav("studio")}>New Film</button>
           {user.admin && <button className={route === "admin" ? "on" : ""} onClick={() => nav("admin")}>Orders</button>}
+          <button className={route === "account" ? "on" : ""} onClick={() => nav("account")}>Account</button>
           <button onClick={() => { signOut(); }}>Sign out</button>
         </nav>
       </header>
