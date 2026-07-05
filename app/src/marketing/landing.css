@@ -40,3 +40,25 @@ nav{position:fixed;top:4px;left:0;right:0;z-index:110;display:flex;justify-conte
 footer{border-top:1.5px solid var(--bone-faint);padding:3rem clamp(1.2rem,4.5vw,4rem) 3.4rem;text-align:center;font-family:var(--mono);font-size:.56rem;letter-spacing:.22em;color:var(--bone-dim);line-height:2.7;text-transform:uppercase;background:var(--navy3);position:relative;overflow:hidden}.mkt footer .zellige{opacity:.04}.mkt footer .big{font-family:var(--disp);font-weight:800;font-size:clamp(1.5rem,3.6vw,2.3rem);color:var(--bone);margin-bottom:.6rem;position:relative}.mkt footer .big i{font-style:normal;background:var(--jersey);-webkit-background-clip:text;background-clip:text;color:transparent}.mkt footer a{color:var(--gold-hi)}.mkt footer .statusline{position:relative}.mkt footer .statusline b{color:var(--green-hi)}.mkt /* modal */
 #modal{position:fixed;inset:0;z-index:260;display:none;align-items:center;justify-content:center;background:rgba(10,21,48,.7);backdrop-filter:blur(6px);padding:1.4rem}.mkt #modal.on{display:flex}.mkt #modal .box{background:var(--bone);color:var(--ink);border-radius:24px;max-width:430px;width:100%;padding:2.3rem;text-align:center;position:relative;box-shadow:0 30px 80px rgba(0,0,0,.4)}.mkt #modal .x{position:absolute;top:.8rem;right:1.1rem;background:none;border:none;color:var(--soft);font-size:1.25rem}.mkt #modal .k{font-family:var(--mono);font-size:.56rem;letter-spacing:.3em;color:var(--red);margin-bottom:1rem;text-transform:uppercase}.mkt #modal h3{font-family:var(--disp);font-weight:800;font-size:1.45rem;margin-bottom:.9rem}.mkt #modal p{color:var(--soft);font-size:.92rem;line-height:1.75;margin-bottom:1.6rem}.mkt #modal .btn{border-color:var(--ink);color:var(--ink)}.mkt #modal .btn.primary{background:var(--red);border-color:var(--red);color:#fff}
 
+
+/* ---- bento platform section (2030 pass) ---- */
+.mkt #platformwrap{max-width:1280px}
+.mkt .bento{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:1rem}
+.mkt .tile{position:relative;border:1.5px solid rgba(244,239,230,.14);border-radius:20px;padding:1.7rem;background:#0A1530 center/cover;min-height:230px;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;transition:transform .3s cubic-bezier(.22,1,.36,1),border-color .3s}
+.mkt .tile:hover{transform:translateY(-5px);border-color:rgba(217,164,65,.45)}
+.mkt .tile.wide{grid-column:span 2}
+.mkt .tk{font-family:'IBM Plex Mono',monospace;font-size:.56rem;letter-spacing:.3em;color:#F0BE62;margin-bottom:.7rem}
+.mkt .tt{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:1.35rem;color:#F4EFE6}
+.mkt .tbig{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:3.4rem;line-height:1;background:var(--jersey);-webkit-background-clip:text;background-clip:text;color:transparent}
+.mkt .td{margin-top:.5rem;font-size:.88rem;line-height:1.7;color:rgba(244,239,230,.62);max-width:46ch}
+.mkt .flip{margin-top:1rem;display:inline-flex;gap:.7rem;align-items:center;font-family:'IBM Plex Mono',monospace;font-size:.68rem;color:#F4EFE6;background:rgba(10,21,48,.75);border:1px solid rgba(244,239,230,.2);border-radius:99px;padding:.55rem 1rem;width:max-content}
+.mkt .flip .arr{color:#E63946}
+.mkt .flip .rel b{color:#F0BE62}
+.mkt .strip{display:flex;gap:6px;margin-top:1rem}
+.mkt .strip i{width:34px;height:22px;border:1.5px solid rgba(244,239,230,.3);border-radius:3px}
+.mkt .strip i.on{border-color:#17C784;box-shadow:0 0 14px rgba(23,199,132,.4)}
+.mkt .states{display:flex;gap:8px;margin-top:1rem;flex-wrap:wrap}
+.mkt .states span{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:.18em;padding:.45rem .8rem;border-radius:99px;border:1.5px solid rgba(244,239,230,.25);color:rgba(244,239,230,.65)}
+.mkt .states .s2{border-color:rgba(217,164,65,.6);color:#F0BE62;animation:pulse 1.6s ease-in-out infinite}
+.mkt .states .s3{border-color:rgba(23,199,132,.55);color:#17C784}
+@media(max-width:900px){.mkt .bento{grid-template-columns:1fr}.mkt .tile.wide{grid-column:span 1}}
