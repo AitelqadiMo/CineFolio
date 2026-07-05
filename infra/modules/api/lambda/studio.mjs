@@ -181,7 +181,7 @@ export async function status(event, ctx) {
   if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
   const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
   if (!order) return bad("unknown order", 404);
-  return ok({ ok: true, orderId, status: order.status, production: order.production });
+  return ok({ ok: true, orderId, status: order.status, production: order.production, failCause: order.failCause || null });
 }
 
 // GET /studio/cut?orderId=... — returns the director's cut HTML itself
