@@ -341,3 +341,27 @@ body::after {
 .projbody { padding: 4px 12px 12px; border-top: 1px solid var(--faint); }
 .projbody input, .projbody textarea { margin-bottom: 7px; font-size: 12.5px; }
 .togglerow { display: flex; flex-wrap: wrap; gap: 6px; }
+
+
+/* ================= 2030 pass: palette, aurora, ambient status ================= */
+.aurora { position: fixed; inset: -30%; z-index: 0; pointer-events: none; opacity: .5; filter: blur(90px);
+  background: conic-gradient(from 0deg at 50% 50%, rgba(200,16,46,.10), rgba(217,164,65,.08), rgba(14,158,98,.08), rgba(19,37,80,.12), rgba(200,16,46,.10));
+  animation: aurora 90s linear infinite; }
+@keyframes aurora { to { transform: rotate(360deg); } }
+.kbdhint { border: 1px solid var(--faint); border-radius: 4px; padding: 3px 7px; font-size: 9px; margin-left: 6px; color: var(--dim); }
+.edgedot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.edgedot.ok { background: #58e0a5; box-shadow: 0 0 8px rgba(14,158,98,.7); }
+.edgedot.bad { background: var(--red); }
+.page > * { animation: pagein .45s cubic-bezier(.22,1,.36,1); }
+@keyframes pagein { from { opacity: 0; transform: translateY(10px); } }
+
+.cmdk { position: fixed; inset: 0; z-index: 90; background: rgba(10,17,38,.6); backdrop-filter: blur(4px); display: grid; place-items: start center; padding-top: 14vh; }
+.cmdkbox { width: min(580px, 92vw); border-radius: 12px; overflow: hidden; box-shadow: 0 30px 90px rgba(0,0,0,.5); border: 1px solid rgba(217,164,65,.25); animation: pagein .18s cubic-bezier(.22,1,.36,1); }
+.cmdkbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--faint); }
+.cmdkbar input { background: none; border: 0; font-size: 15px; padding: 10px 0; }
+.cmdklist { max-height: 320px; overflow-y: auto; padding: 6px; }
+.cmdkitem { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; text-align: left;
+  background: none; border: 0; color: var(--bone); font: inherit; font-size: 13.5px; padding: 11px 12px; border-radius: 6px; cursor: pointer; }
+.cmdkitem.on { background: rgba(217,164,65,.12); color: var(--gold); }
+.cmdkfoot { padding: 9px 14px; border-top: 1px solid var(--faint); font-size: 8.5px; }
+@media (prefers-reduced-motion: reduce) { .aurora { animation: none; } .page > * { animation: none; } }
