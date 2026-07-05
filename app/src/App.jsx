@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext } from "react";
+import { useEffect, useState, createContext, useContext, Component } from "react";
 import { getUser, onAuthChange, restore, signOut } from "./cognito.js";
 import { CONFIG } from "./config.js";
 import Landing from "./marketing/Landing.jsx";
@@ -12,6 +12,24 @@ export const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
 const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account };
+
+// A page crash must never white-screen the console — kill the lights, not the set.
+class SetBoundary extends Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err) { console.error("set failure:", err); }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div className="authwrap"><div style={{ textAlign: "center", maxWidth: 460 }}>
+        <div className="mono" style={{ color: "var(--red)", marginBottom: 12 }}>⚡ THE SET LOST POWER</div>
+        <h2 style={{ marginBottom: 10 }}>A fuse blew on <em>this scene.</em></h2>
+        <p style={{ color: "var(--dim)", marginBottom: 18 }}>The rest of the studio is fine. Reload the floor — and if this repeats, the crew is already alarmed about it.</p>
+        <button className="btn primary" onClick={() => { this.setState({ err: null }); location.reload(); }}>Relight the set</button>
+      </div></div>
+    );
+  }
+}
 
 function path() {
   return location.pathname.replace(/^\/+|\/+$/g, "") || "";
@@ -59,7 +77,7 @@ export default function App() {
           <button onClick={() => { signOut(); nav(""); }}>Sign out</button>
         </nav>
       </header>
-      <main className="page"><Page /></main>
+      <main className={route === "studio" ? "page pagewide" : "page"}><SetBoundary key={route}><Page /></SetBoundary></main>
       <footer className="footer">
         <span className="mono">CINEFOLIO STUDIOS — {CONFIG.env.toUpperCase()}</span>
         <span className="mono">{user.email}</span>
