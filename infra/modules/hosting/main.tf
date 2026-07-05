@@ -30,11 +30,18 @@ resource "aws_cloudfront_origin_access_control" "sites" {
   signing_protocol                  = "sigv4"
 }
 
+# Pointer store: slug -> "{siteId}/releases/{n}". The API flips these atomically.
+resource "aws_cloudfront_key_value_store" "sites" {
+  name    = "${var.name_prefix}-sites"
+  comment = "slug to release-path pointers for multi-tenant hosting"
+}
+
 resource "aws_cloudfront_function" "router" {
-  name    = "${var.name_prefix}-slug-router"
-  runtime = "cloudfront-js-2.0"
-  code    = file("${path.module}/functions/router.js")
-  publish = true
+  name                         = "${var.name_prefix}-slug-router"
+  runtime                      = "cloudfront-js-2.0"
+  code                         = file("${path.module}/functions/router.js")
+  publish                      = true
+  key_value_store_associations = [aws_cloudfront_key_value_store.sites.arn]
 }
 
 resource "aws_cloudfront_distribution" "sites" {
@@ -119,3 +126,5 @@ resource "aws_s3_bucket_policy" "published" {
 output "distribution_id" { value = aws_cloudfront_distribution.sites.id }
 output "distribution_domain" { value = aws_cloudfront_distribution.sites.domain_name }
 output "distribution_arn" { value = aws_cloudfront_distribution.sites.arn }
+
+output "kvs_arn" { value = aws_cloudfront_key_value_store.sites.arn }
