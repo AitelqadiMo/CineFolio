@@ -15,6 +15,7 @@ export const ROUTES = {
   "POST /contact": misc.contact,
   "POST /hit": misc.hit,
   "GET /admin/orders": misc.adminOrders,
+  "POST /admin/orders/{id}/retry": studio.adminRetry,
   "POST /studio/generate": studio.generate,
   "GET /studio/status": studio.status,
   "GET /studio/cut": studio.cut,
@@ -33,7 +34,7 @@ async function buildCtx() {
   if (realCtx) return realCtx;
   const aws = await import("./aws.mjs");
   realCtx = {
-    ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue,
+    ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn,
     secrets: aws.secrets, fetchFn: aws.fetchFn,
     config: {
       appEnv: process.env.APP_ENV || "dev",
