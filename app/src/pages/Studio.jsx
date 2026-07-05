@@ -39,7 +39,19 @@ export default function Studio() {
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
-  // draft autosave — work survives reloads (localStorage; DDB sync is W2)
+  const applyDraft = (d) => {
+    if (!d) return;
+    if (d.cvRaw) setCvRaw(d.cvRaw);
+    if (d.q) setQ(d.q);
+    if (d.projects) setProjects(d.projects);
+    if (d.testimonials) setTestimonials(d.testimonials);
+    if (d.services) setServices(d.services);
+    if (d.sections) setSections({ ...DEFAULT_SECTIONS, ...d.sections });
+    if (d.tpl) setTpl(d.tpl);
+    if (d.pal) setPal(d.pal);
+  };
+
+  // draft autosave — local instantly, server-synced (newer copy wins on load)
   useEffect(() => {
     try {
       const d = JSON.parse(localStorage.getItem("cf.studioDraft") || "null");
@@ -54,13 +66,27 @@ export default function Studio() {
         if (d.pal) setPal(d.pal);
       }
     } catch { /* fresh start */ }
+    // then ask the server for a newer copy (cross-device continuity)
+    api.getDraft().then((r) => {
+      if (!r.draft) return;
+      const local = JSON.parse(localStorage.getItem("cf.studioDraft") || "null");
+      if (!local?.savedAt || (r.updatedAt && r.updatedAt > local.savedAt)) applyDraft(r.draft);
+    }).catch(() => { /* offline is fine */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
+    const draft = { cvRaw, q, projects, testimonials, services, sections, tpl, pal };
     const t = setTimeout(() => {
-      try { localStorage.setItem("cf.studioDraft", JSON.stringify({ cvRaw, q, projects, testimonials, services, sections, tpl, pal })); } catch { /* full */ }
+      try { localStorage.setItem("cf.studioDraft", JSON.stringify({ ...draft, savedAt: new Date().toISOString() })); } catch { /* full */ }
     }, 500);
-    return () => clearTimeout(t);
+    // server copy: strip bulky inline images (CDN URLs stay), 300KB item budget
+    const t2 = setTimeout(() => {
+      const slim = JSON.parse(JSON.stringify(draft));
+      if (String(slim.q?.photo || "").startsWith("data:")) delete slim.q.photo;
+      (slim.projects || []).forEach((p2) => { if (String(p2.cover || "").startsWith("data:")) delete p2.cover; });
+      api.putDraft(slim).catch(() => { /* silent — local copy is safe */ });
+    }, 2500);
+    return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal]);
 
   // debounce the heavy text; small fields stay live
@@ -175,15 +201,16 @@ export default function Studio() {
     if (url) setPhoto(url);
   };
 
-  // ---------- premiere ----------
+  // ---------- premiere (live) or stage (draft release, preview link, no flip) ----------
+  const [stageMode, setStageMode] = useState(false);
   const premiere = async () => {
     setErr(""); setPub({ ...pub, busy: true });
     try {
       const slug = pub.slug || (profile.name || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const site = await api.createSite({ slug, title: profile.name });
-      const r = await api.publish(site.site.siteId, { html });
-      setPub({ slug, busy: false, done: { ...r, slug: site.site.slug } });
-      setTimeout(() => confetti(premiereRef.current || undefined), 60);
+      const r = await api.publish(site.site.siteId, { html, ...(stageMode ? { stage: true } : {}) });
+      setPub({ slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });
+      if (!stageMode) setTimeout(() => confetti(premiereRef.current || undefined), 60);
     } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
   };
 
@@ -356,9 +383,13 @@ export default function Studio() {
           <div className="railsec act gold">
             <div className="acthead"><span className="actno">V</span><div><b>Premiere</b><span className="actsub">one click, on our infrastructure</span></div></div>
             <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
+            <label className="mono" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", cursor: "pointer", fontSize: 9.5 }}>
+              <input type="checkbox" checked={stageMode} onChange={(e) => setStageMode(e.target.checked)} style={{ width: "auto" }} />
+              STAGE AS DRAFT — PREVIEW LINK ONLY, GO LIVE FROM MY FILMS
+            </label>
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn marquee" disabled={!ready || pub.busy || !!pub.done} onClick={premiere}>
-                {pub.busy ? <span className="spin" /> : "◈ "}{pub.done ? "PREMIERED" : "PREMIERE THIS SITE"}
+                {pub.busy ? <span className="spin" /> : "◈ "}{pub.done ? (stageMode ? "STAGED" : "PREMIERED") : stageMode ? "STAGE THIS CUT" : "PREMIERE THIS SITE"}
               </button>
               <button className="btn ghost" disabled={!ready || !!order} onClick={directorsCut} title="Identity AI film scenes + bespoke build by the studio pipeline">
                 {order ? "DIRECTOR'S CUT ORDERED" : "+ DIRECTOR'S CUT"}
@@ -375,7 +406,7 @@ export default function Studio() {
             {err && <div className="err">{err}</div>}
             {pub.done && (
               <div className="premiere" style={{ marginTop: 12 }}>
-                <div className="mq">Now screening — <em>release #{pub.done.release}</em></div>
+                <div className="mq">{pub.done.staged ? <>In the can — <em>staged cut #{pub.done.release}</em></> : <>Now screening — <em>release #{pub.done.release}</em></>}</div>
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <a className="btn ghost" href={pub.done.url} target="_blank" rel="noopener noreferrer">Open live URL</a>
                   <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(pub.done.url)}>Copy link</button>
