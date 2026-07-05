@@ -219,7 +219,12 @@ export function initLanding(root, opts = {}) {
   /* ================= waitlist (AWS API) ================= */
   fetch(`${API}/waitlist/count`).then((r) => r.json()).then(({ count }) => {
     if (count && count > 4) $("#wlCount").textContent = count + " ON THE GUEST LIST · FOUNDING PRICING · NO SPAM";
-  }).catch(() => {});
+    const bc = $("#bentoCount");
+    if (bc) bc.textContent = String(Math.max(count || 0, 1));
+  }).catch(() => { const bc = $("#bentoCount"); if (bc) bc.textContent = "∞"; });
+  // bento pointer-flip tick: the release number advances like a live deploy
+  const flipN = $("#flipN");
+  if (flipN && !reduceMotion) { let fn = 3; timers.push(setInterval(() => { fn = fn >= 9 ? 2 : fn + 1; flipN.textContent = fn; }, 4000)); }
   $("#wl").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = $("#wlBtn"), out = $("#wlResult");
