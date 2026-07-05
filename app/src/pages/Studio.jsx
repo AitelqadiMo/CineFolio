@@ -26,6 +26,8 @@ export default function Studio() {
   const [services, setServices] = useState([]);
   const [sections, setSections] = useState({ ...DEFAULT_SECTIONS });
   const [openProj, setOpenProj] = useState(null);
+  const [railTab, setRailTab] = useState("content"); // content | design | publish
+  const [mobileMode, setMobileMode] = useState("edit"); // edit | preview (small screens)
   const [view, setView] = useState("desktop");
   const [pdfBusy, setPdfBusy] = useState(false);
   // premiere + director's cut
@@ -223,6 +225,9 @@ export default function Studio() {
         template: tpl, palette: pal, customIdea,
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
+      if (r.production) {
+        try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name: profile.name })); } catch { /* noop */ }
+      }
     } catch (e2) { setErr(friendly(e2.message)); }
   };
 
@@ -259,9 +264,19 @@ export default function Studio() {
         <div className="mono slamp">SET · <b style={{ color: "#58e0a5" }}>LIT</b></div>
       </div>
 
-      <div className="workspace">
+      <div className="mobiletoggle">
+        <button className={mobileMode === "edit" ? "on" : ""} onClick={() => setMobileMode("edit")}>EDIT</button>
+        <button className={mobileMode === "preview" ? "on" : ""} onClick={() => setMobileMode("preview")}>PREVIEW</button>
+      </div>
+      <div className={`workspace mm-${mobileMode}`}>
         {/* ---------------- casting rail ---------------- */}
         <aside className="rail">
+          <div className="railtabs">
+            <button className={railTab === "content" ? "on" : ""} onClick={() => setRailTab("content")}>Content</button>
+            <button className={railTab === "design" ? "on" : ""} onClick={() => setRailTab("design")}>Design</button>
+            <button className={railTab === "publish" ? "on" : ""} onClick={() => setRailTab("publish")}>Publish</button>
+          </div>
+          <div className={`railpanel ${railTab === "content" ? "" : "hid"}`}>
           <div className="railsec act">
             <div className="acthead"><span className="actno">I</span><div><b>The Cast</b><span className="actsub">who this film is about</span></div></div>
             <label className="uploadrow" htmlFor="cvUp">
@@ -288,7 +303,13 @@ export default function Studio() {
 
           <div className="railsec act">
             <div className="acthead"><span className="actno">III</span><div><b>The Work</b><span className="actsub">guided case studies, the story not just screenshots</span></div></div>
-            {projects.map((pr, i) => (
+            {projects.length === 0 && (
+            <div className="projempty" onClick={() => { setProjects([{}]); setOpenProj(0); }}>
+              <div className="mono" style={{ fontSize: 9, color: "var(--gold)" }}>NO SCENES YET</div>
+              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>Your best work deserves a case study. Add the first project — we'll guide the story.</div>
+            </div>
+          )}
+          {projects.map((pr, i) => (
               <div key={i} className={`projcard ${openProj === i ? "open" : ""}`}>
                 <div className="projrow" onClick={() => setOpenProj(openProj === i ? null : i)}>
                   <b>{pr.name || `Project ${i + 1}`}</b>
@@ -415,6 +436,7 @@ export default function Studio() {
               </div>
             )}
           </div>
+        </div>
         </aside>
 
         {/* ---------------- the monitor ---------------- */}
