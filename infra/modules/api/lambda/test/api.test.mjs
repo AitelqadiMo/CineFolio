@@ -202,3 +202,22 @@ test("unknown route 404s, handler errors map to 500 json", async () => {
   assert.equal(r.code, 500);
   assert.equal(r.body.error, "internal_error");
 });
+
+test("sites: source download serves release html to owner only; previewUrl uses /_preview/", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const created = parse(await h(ev("POST /sites", { claims: "u1", body: { title: "Dl Site" } })));
+  const id = created.body.site.siteId;
+  assert.match(created.body.site.previewUrl, /\/_preview\/dl-site\/$/);
+  const doc = "<!doctype html><html><body>v1 source</body></html>";
+  const p = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id }, body: { html: doc } })));
+  assert.match(p.body.url, /\/_preview\/dl-site\/$/);
+  const dl = await h(ev("GET /sites/{id}/source", { claims: "u1", path: { id } }));
+  assert.equal(dl.statusCode, 200);
+  assert.match(dl.headers["content-disposition"], /dl-site-release-1\.html/);
+  assert.match(dl.body, /v1 source/);
+  // stranger blocked
+  assert.equal(parse(await h(ev("GET /sites/{id}/source", { claims: "intruder", path: { id } }))).code, 403);
+  // bad release rejected
+  assert.equal(parse(await h(ev("GET /sites/{id}/source", { claims: "u1", path: { id }, qs: { release: "9" } }))).code, 400);
+});
