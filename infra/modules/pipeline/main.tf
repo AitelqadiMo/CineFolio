@@ -176,8 +176,16 @@ resource "aws_sfn_state_machine" "build" {
 
   definition = jsonencode({
     Comment = "CineFolio order build: validate -> dispatch (task token) -> finalize; failures page a human."
-    StartAt = "Validate"
+    StartAt = "Unwrap"
     States = {
+      # EventBridge Pipes delivers SQS batches as an ARRAY even at batch_size 1,
+      # so execution input is [{orderId}] — normalize it once here.
+      # (Manual test executions must also pass [{"orderId":"..."}].)
+      Unwrap = {
+        Type       = "Pass"
+        Parameters = { "orderId.$" = "$[0].orderId" }
+        Next       = "Validate"
+      }
       Validate = {
         Type       = "Task"
         Resource   = aws_lambda_function.worker.arn
