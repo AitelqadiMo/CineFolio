@@ -2,7 +2,7 @@
 // generate: create order (idempotent) -> fire agent webhook -> return instant rough cut
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
-import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf } from "./lib.mjs";
+import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin } from "./lib.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -85,36 +85,19 @@ export async function generate(event, ctx) {
       GSI1PK: `USER#${sub}`, GSI1SK: `ORDER#${now()}`,
       GSI2PK: "STATUS#queued", GSI2SK: now(),
       email, name: parsed.name, role: parsed.roleLabel, skills: parsed.skills,
+      cvText, // retained so the pipeline can (re)dispatch without the client
       status: "queued", production, createdAt: now(), updatedAt: now(),
     },
     "attribute_not_exists(PK)" // idempotency: uuid collision or client retry can't double-create
   );
 
   if (production) {
-    // Self-describing job for the agent. deliver.* tells it exactly how to return the cut.
-    // Derive our own base URL from the request (no circular TF dependency on the stage URL).
-    const callbackUrl = `https://${event.requestContext?.domainName || "api.invalid"}/callback`;
-    const payload = {
-      kind: "cinefolio.order", orderId, email,
-      name: parsed.name, role: parsed.roleLabel, skills: parsed.skills, cvText,
-      instructions:
-        "Produce a single-file cinematic portfolio HTML (CineFolio jersey brand: navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62). Max 900KB, self-contained, no external JS. POST it raw to deliver.url with deliver.headers within 6 minutes.",
-      deliver: { method: "POST", url: callbackUrl, headers: { "X-CF-Secret": secrets.CF_CALLBACK_SECRET, "X-CF-Order": orderId, "content-type": "text/html" } },
-    };
+    // Phase 3: the API only ENQUEUES. EventBridge Pipe -> Step Functions owns
+    // dispatch (task token), retries, timeout, and the human-review fallback.
     try {
-      const r = await ctx.fetchFn(secrets.AGENT_WEBHOOK_URL, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${secrets.AGENT_WEBHOOK_SECRET}`,
-          "x-webhook-secret": secrets.AGENT_WEBHOOK_SECRET, // some receivers expect this header form
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!r.ok) throw new Error(`webhook responded ${r.status}`); // 4xx/5xx = NOT dispatched
-      await ctx.queue.send(ctx.config.ordersQueueUrl, { orderId, dispatchedAt: now() }); // pipeline audit trail (P3 consumer)
+      await ctx.queue.send(ctx.config.ordersQueueUrl, { orderId });
     } catch (e) {
-      console.error(JSON.stringify({ level: "error", msg: "webhook dispatch failed", orderId, err: e?.message }));
+      console.error(JSON.stringify({ level: "error", msg: "enqueue failed", orderId, err: e?.message }));
       await setStatus(ctx, orderId, "dispatch_failed");
     }
   }
@@ -155,8 +138,36 @@ export async function callback(event, ctx) {
 
   const key = `orders/${orderId}/cut.html`;
   await ctx.s3.putObject(ctx.config.artifactsBucket, key, html);
+
+  if (order.taskToken) {
+    // Pipeline mode: resume the Step Functions execution; Finalize owns the
+    // status flip. If the token expired (build outlived the timeout), fall
+    // through to a direct flip — a delivered cut must never be lost.
+    try {
+      await ctx.sfn.sendTaskSuccess(order.taskToken, { orderId, cutKey: key });
+      return ok({ ok: true, orderId, stored: key, resumed: true });
+    } catch (e) {
+      console.error(JSON.stringify({ level: "error", msg: "task token resume failed, flipping directly", orderId, err: e?.message }));
+    }
+  }
   await setStatus(ctx, orderId, "ready", { cutKey: key });
   return ok({ ok: true, orderId, stored: key });
+}
+
+// POST /admin/orders/{id}/retry — re-enqueue a stuck order (admin only)
+export async function adminRetry(event, ctx) {
+  const claims = claimsOf(event);
+  if (!isAdmin(claims)) return json(403, { ok: false, error: "admin only" });
+  const orderId = event.pathParameters?.id;
+  if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
+  const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
+  if (!order) return bad("unknown order", 404);
+  if (!["dispatch_failed", "human_review", "filming", "queued"].includes(order.status)) {
+    return bad(`status ${order.status} is not retryable`, 409);
+  }
+  await setStatus(ctx, orderId, "queued", { taskToken: null });
+  await ctx.queue.send(ctx.config.ordersQueueUrl, { orderId });
+  return ok({ ok: true, orderId, status: "queued" });
 }
 
 // GET /studio/status?orderId=...
