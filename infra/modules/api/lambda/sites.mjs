@@ -89,7 +89,23 @@ export async function publish(event, ctx) {
   const n = (site.releases || 0) + 1;
   const releasePrefix = `sites/${site.siteId}/releases/${n}`;
   await ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/index.html`, html);
-  await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, by: claims.sub, createdAt: now() });
+  const staged = b.stage === true;
+  await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now() });
+
+  if (staged) {
+    // draft workflow: the release exists and is previewable, but the pointer
+    // (and therefore the live site) does not move until "go live" (rollback to n).
+    await ctx.ddb.update({
+      Key: { PK: site.PK, SK: "META" },
+      UpdateExpression: "SET releases = :n, stagedRelease = :n, updatedAt = :t",
+      ConditionExpression: "releases = :prev",
+      ExpressionAttributeValues: { ":n": n, ":t": now(), ":prev": site.releases || 0 },
+    }).catch((e) => {
+      if (e?.name === "ConditionalCheckFailedException") throw Object.assign(new Error("concurrent publish, retry"), { statusCode: 409 });
+      throw e;
+    });
+    return ok({ ok: true, siteId: site.siteId, release: n, staged: true, previewUrl: stagedUrl(ctx, site.siteId, n) });
+  }
 
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug);
   // optimistic lock: two concurrent publishes can't both claim release n
@@ -133,9 +149,10 @@ export async function rollback(event, ctx) {
   const claims = claimsOf(event);
   const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
   if (err) return err;
-  if (!site.liveRelease) return bad("nothing has premiered yet", 409);
+  if (!site.liveRelease && !site.stagedRelease) return bad("nothing has premiered yet", 409);
   const b = bodyOf(event) || {};
-  const target = Number(b.to || (site.status === "taken_down" ? site.liveRelease : site.liveRelease - 1));
+  const target = Number(b.to || (site.status === "taken_down" ? site.liveRelease
+    : site.liveRelease ? site.liveRelease - 1 : site.stagedRelease)); // first go-live of a staged-only site
   const relight = site.status === "taken_down" && target === site.liveRelease;
   if (!Number.isInteger(target) || target < 1 || target > site.releases || (target === site.liveRelease && !relight)) {
     return bad("bad target release");
@@ -144,11 +161,12 @@ export async function rollback(event, ctx) {
   if (!rel) return bad("release not found", 404);
 
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${target}`, site.slug);
+  const clearStage = site.stagedRelease === target;
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
-    UpdateExpression: "SET liveRelease = :n, updatedAt = :t, pointerMode = :pm, #s = :live",
+    UpdateExpression: `SET liveRelease = :n, updatedAt = :t, pointerMode = :pm, #s = :live${clearStage ? ", stagedRelease = :null" : ""}`,
     ExpressionAttributeNames: { "#s": "status" },
-    ExpressionAttributeValues: { ":n": target, ":t": now(), ":pm": flip.mode, ":live": "live" },
+    ExpressionAttributeValues: { ":n": target, ":t": now(), ":pm": flip.mode, ":live": "live", ...(clearStage ? { ":null": null } : {}) },
   });
   return ok({ ok: true, siteId: site.siteId, liveRelease: target, pointer: flip.mode, status: "live" });
 }
@@ -186,10 +204,52 @@ async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix) {
 }
 
 const previewUrl = (ctx, slug) => `https://${ctx.config.cdnDomain}/_preview/${slug}/`;
+const stagedUrl = (ctx, siteId, n) => `https://${ctx.config.cdnDomain}/_r/${siteId}/${n}/`;
 
 const pub = (s, ctx) => ({
   siteId: s.siteId, slug: s.slug, title: s.title, status: s.status,
-  releases: s.releases, liveRelease: s.liveRelease, pointerMode: s.pointerMode,
+  releases: s.releases, liveRelease: s.liveRelease, stagedRelease: s.stagedRelease ?? null,
+  audienceOf: s.audienceOf || null, pointerMode: s.pointerMode,
   createdAt: s.createdAt, publishedAt: s.publishedAt,
   previewUrl: previewUrl(ctx, s.slug),
+  ...(s.stagedRelease ? { stagedUrl: stagedUrl(ctx, s.siteId, s.stagedRelease) } : {}),
 });
+
+// POST /sites/{id}/duplicate { slug?, title? } — audience versions: same film,
+// a different cut for a different crowd (UX cut, frontend cut, consulting cut…).
+// Copies the LIVE release into a brand-new site and premieres it.
+export async function duplicate(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  if (!site.liveRelease) return bad("premiere the original first", 409);
+  const b = bodyOf(event) || {};
+  const newId = uuid().slice(0, 8);
+  const slug = slugify(b.slug || `${site.slug}-cut`);
+  if (["www", "app", "api", "admin", "mail", "_demo"].includes(slug)) return bad("reserved slug");
+  try {
+    await ctx.ddb.put(
+      { PK: `SLUG#${slug}`, SK: "CLAIM", type: "slugclaim", siteId: newId, GSI1PK: `SLUG#${slug}`, GSI1SK: "SITE" },
+      "attribute_not_exists(PK)"
+    );
+  } catch (e) {
+    if (e?.name === "ConditionalCheckFailedException") return bad("slug taken", 409);
+    throw e;
+  }
+  await ctx.s3.copyObject(
+    ctx.config.publishedBucket,
+    `sites/${site.siteId}/releases/${site.liveRelease}/index.html`,
+    `sites/${newId}/releases/1/index.html`
+  );
+  await ctx.ddb.put({ PK: `SITE#${newId}`, SK: relSK(1), type: "release", n: 1, source: `duplicate:${site.siteId}`, by: claims.sub, createdAt: now() });
+  const flip = await flipPointer(ctx, slug, `${newId}/releases/1`, slug);
+  const newSite = {
+    PK: `SITE#${newId}`, SK: "META", type: "site", siteId: newId, slug,
+    title: clampStr(b.title, 120) || `${site.title} — Cut`, owner: claims.sub,
+    audienceOf: site.siteId, status: "live", releases: 1, liveRelease: 1,
+    pointerMode: flip.mode, createdAt: now(), publishedAt: now(), updatedAt: now(),
+    GSI1PK: `USER#${claims.sub}`, GSI1SK: `SITE#${now()}`,
+  };
+  await ctx.ddb.put(newSite, "attribute_not_exists(PK)");
+  return ok({ ok: true, site: pub(newSite, ctx) });
+}
