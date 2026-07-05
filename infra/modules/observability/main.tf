@@ -5,7 +5,12 @@ variable "monthly_budget_usd" {
   type    = number
   default = 50
 }
-# phase-3 wiring (pass "" to skip alarm creation during bootstrap ordering)
+# Master switch for alarms + dashboard. A plain bool (known at plan time) —
+# counts must never depend on apply-time resource attributes.
+variable "enabled" {
+  type    = bool
+  default = true
+}
 variable "api_id" {
   type    = string
   default = ""
@@ -72,13 +77,9 @@ resource "aws_budgets_budget" "monthly" {
 }
 
 # ---------- the alarms that matter ----------
-locals {
-  wired = var.dlq_name != "" && var.api_id != "" && var.state_machine_arn != ""
-}
-
 # A dead-lettered order is a lost customer promise. Zero tolerance.
 resource "aws_cloudwatch_metric_alarm" "dlq" {
-  count               = local.wired ? 1 : 0
+  count               = var.enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-orders-dlq-not-empty"
   alarm_description   = "An order hit the dead-letter queue. Someone's premiere is stuck."
   namespace           = "AWS/SQS"
@@ -96,7 +97,7 @@ resource "aws_cloudwatch_metric_alarm" "dlq" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_5xx" {
-  count               = local.wired ? 1 : 0
+  count               = var.enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-api-5xx"
   alarm_description   = "API 5xx spike (>=5 in 5 minutes)."
   namespace           = "AWS/ApiGateway"
@@ -113,7 +114,7 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "sfn_failed" {
-  count               = local.wired ? 1 : 0
+  count               = var.enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-build-executions-failed"
   alarm_description   = "A build state machine execution FAILED outright (should end in human_review instead)."
   namespace           = "AWS/States"
@@ -130,7 +131,7 @@ resource "aws_cloudwatch_metric_alarm" "sfn_failed" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "api_errors" {
-  count               = local.wired ? 1 : 0
+  count               = var.enabled ? 1 : 0
   alarm_name          = "${var.name_prefix}-api-lambda-errors"
   alarm_description   = "API Lambda threw (>=5 errors in 5 minutes)."
   namespace           = "AWS/Lambda"
@@ -148,7 +149,7 @@ resource "aws_cloudwatch_metric_alarm" "api_errors" {
 
 # ---------- ops dashboard ----------
 resource "aws_cloudwatch_dashboard" "ops" {
-  count          = local.wired ? 1 : 0
+  count          = var.enabled ? 1 : 0
   dashboard_name = "${var.name_prefix}-ops"
   dashboard_body = jsonencode({
     widgets = [
@@ -209,4 +210,4 @@ resource "aws_cloudwatch_dashboard" "ops" {
 }
 
 output "alarms_topic_arn" { value = aws_sns_topic.alarms.arn }
-output "dashboard_name" { value = local.wired ? aws_cloudwatch_dashboard.ops[0].dashboard_name : "" }
+output "dashboard_name" { value = var.enabled ? aws_cloudwatch_dashboard.ops[0].dashboard_name : "" }
