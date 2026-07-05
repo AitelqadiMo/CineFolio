@@ -48,6 +48,8 @@ locals {
     "GET /me"                       = true
     "PUT /me"                       = true
     "POST /media"                   = true
+    "GET /draft"                    = true
+    "PUT /draft"                    = true
     "GET /admin/orders"             = true # + admin group check in-handler
     "POST /admin/orders/{id}/retry" = true # + admin group check in-handler
     "POST /sites"                   = true
@@ -56,6 +58,7 @@ locals {
     "GET /sites/{id}/source"        = true
     "POST /sites/{id}/publish"      = true
     "POST /sites/{id}/rollback"     = true
+    "POST /sites/{id}/duplicate"    = true
     "DELETE /sites/{id}"            = true
   }
 }
