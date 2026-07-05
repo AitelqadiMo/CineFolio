@@ -50,11 +50,18 @@ export default function Studio() {
     return () => clearInterval(t);
   }, [order, status]);
 
+  const AVATAR = "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#132550"/><circle cx="50" cy="38" r="16" fill="#C8102E"/><rect x="26" y="60" width="48" height="30" rx="14" fill="#D9A441"/></svg>');
+
   const publish = async () => {
     setErr(""); setPub({ ...pub, busy: true });
     try {
       const site = await api.createSite({ slug: pub.slug, title: form.name || pub.slug, orderId: order.orderId });
-      const r = await api.publish(site.site.siteId, { orderId: order.orderId });
+      // Director's cut ready -> publish the stored cut by orderId.
+      // Otherwise premiere the rough cut itself (webhook down must never block a premiere).
+      const body = status === "ready" && cutHtml
+        ? { orderId: order.orderId }
+        : { html: (cutHtml || order.html).split("__PHOTO__").join(AVATAR) };
+      const r = await api.publish(site.site.siteId, body);
       setPub({ ...pub, busy: false, done: { ...r, slug: site.site.slug } });
     } catch (e2) { setErr(e2.message); setPub({ ...pub, busy: false }); }
   };
