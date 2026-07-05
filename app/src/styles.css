@@ -125,3 +125,5 @@ tr:hover td { background: rgba(244, 239, 230, .025); }
 .footer { padding: 20px 28px; border-top: 1px solid var(--faint); display: flex; justify-content: space-between; }
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--faint); border-top-color: var(--gold); border-radius: 50%; animation: rot .7s linear infinite; }
 @keyframes rot { to { transform: rotate(360deg); } }
+.badge.filming { color: var(--gold); border-color: rgba(217, 164, 65, .45); animation: pulse 1.4s ease-in-out infinite; }
+.badge.human_review { color: #ff8d96; border-color: rgba(230, 57, 70, .5); }
