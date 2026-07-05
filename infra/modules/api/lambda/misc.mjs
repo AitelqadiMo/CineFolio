@@ -103,6 +103,23 @@ export async function hit(event, ctx) {
   return ok({ ok: true });
 }
 
+// GET /draft + PUT /draft — the Studio brief follows the user across devices.
+// One item per user; the client strips bulky inline images before sending.
+export async function getDraft(event, ctx) {
+  const claims = claimsOf(event);
+  const item = await ctx.ddb.get({ PK: `USER#${claims.sub}`, SK: "DRAFT" });
+  return ok({ ok: true, draft: item?.data || null, updatedAt: item?.updatedAt || null });
+}
+
+export async function putDraft(event, ctx) {
+  const claims = claimsOf(event);
+  if (!event.body || Buffer.byteLength(event.body, "utf8") > 300 * 1024) return bad("draft too large", 413);
+  const b = bodyOf(event);
+  if (!b || typeof b.draft !== "object") return bad("invalid draft");
+  await ctx.ddb.put({ PK: `USER#${claims.sub}`, SK: "DRAFT", type: "draft", data: b.draft, updatedAt: now() });
+  return ok({ ok: true, updatedAt: now() });
+}
+
 // POST /media { contentType, ext? } — presigned upload for project covers /
 // headshots. Media lives in the PUBLISHED bucket under media/{sub}/ and is
 // served through the sites CDN (router passes /media/* straight through).
