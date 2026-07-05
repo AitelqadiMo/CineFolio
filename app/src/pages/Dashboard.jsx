@@ -1,7 +1,10 @@
-// Dashboard — the client's films: live links, release history, rollback, source export.
+// Dashboard v2 — "My Films" as a studio floor: hero metrics, live poster
+// previews (scaled sandboxed iframes of the real releases), film-strip release
+// timelines with rollback-to-frame, source export, takedown.
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
+import { SplitTitle, Skeleton, friendly } from "../ui.jsx";
 
 export default function Dashboard() {
   const { user, nav } = useAuth();
@@ -10,7 +13,7 @@ export default function Dashboard() {
   const [busyId, setBusyId] = useState(null);
   const [open, setOpen] = useState(null); // { site, releases }
 
-  const load = () => api.sites().then((r) => setSites(r.sites)).catch((e) => setErr(e.message));
+  const load = () => api.sites().then((r) => setSites(r.sites)).catch((e) => setErr(friendly(e.message)));
   useEffect(() => { load(); }, []);
 
   const act = async (id, fn) => {
@@ -18,14 +21,17 @@ export default function Dashboard() {
     try {
       await fn();
       await load();
-      if (open?.site?.siteId === id) await details({ siteId: id });
-    } catch (e) { setErr(e.message); } finally { setBusyId(null); }
+      if (open?.site?.siteId === id) {
+        const r = await api.site(id);
+        setOpen({ site: r.site, releases: r.releases });
+      }
+    } catch (e) { setErr(friendly(e.message)); } finally { setBusyId(null); }
   };
 
   const details = async (s) => {
     setErr("");
     try { const r = await api.site(s.siteId); setOpen({ site: r.site, releases: r.releases }); }
-    catch (e) { setErr(e.message); }
+    catch (e) { setErr(friendly(e.message)); }
   };
 
   const download = async (s, n) => {
@@ -36,30 +42,45 @@ export default function Dashboard() {
       const a = Object.assign(document.createElement("a"), { href: url, download: `${s.slug}-release-${n}.html` });
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-    } catch (e) { setErr(e.message); }
+    } catch (e) { setErr(friendly(e.message)); }
   };
+
+  const live = sites?.filter((s) => s.status === "live").length ?? 0;
+  const releases = sites?.reduce((a, s) => a + (s.releases || 0), 0) ?? 0;
 
   return (
     <>
       <div className="pagehead">
-        <h1>My <em>films</em></h1>
-        <p className="sub">Every portfolio is a versioned release on the CineFolio platform. Publishing flips an atomic pointer; rolling back flips it back in seconds.</p>
+        <SplitTitle text="My" serif="films" />
+        <p className="sub">Every portfolio is a versioned release. Publishing flips an atomic pointer; rolling back flips it back in seconds.</p>
+      </div>
+
+      <div className="metrics">
+        <div className="metric"><b>{sites ? sites.length : "–"}</b><span>Films in the vault</span></div>
+        <div className="metric"><b>{sites ? releases : "–"}</b><span>Releases cut</span></div>
+        <div className="metric"><b>{sites ? live : "–"}</b><span>Now screening</span></div>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
-      {sites === null && <div className="mono"><span className="spin" style={{ marginRight: 10 }} />LOADING…</div>}
+      {sites === null && <div className="grid two"><Skeleton h={220} /><Skeleton h={220} /></div>}
 
       {sites?.length === 0 && (
-        <div className="panel" style={{ textAlign: "center", padding: 48 }}>
-          <div className="mono" style={{ marginBottom: 10 }}>NOTHING IN PRODUCTION YET</div>
+        <div className="panel glass" style={{ textAlign: "center", padding: 52 }}>
+          <div className="mono" style={{ marginBottom: 10 }}>NOTHING IN PRODUCTION — THE FLOOR IS QUIET</div>
           <h2 style={{ marginBottom: 18 }}>Your first film awaits, {user.email.split("@")[0]}.</h2>
-          <button className="btn primary" onClick={() => nav("studio")}>Start a new film</button>
+          <button className="btn primary" onClick={() => nav("studio")}>Roll camera on film one</button>
         </div>
       )}
 
       <div className="grid two">
         {sites?.map((s) => (
           <div key={s.siteId} className="panel sitecard">
+            {s.status === "live" && (
+              <div className="poster">
+                <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} />
+                <div className="veil" />
+              </div>
+            )}
             <div className="row1">
               <h3>{s.title}</h3>
               <span className={`badge ${s.status}`}>{s.status.replace("_", " ")}</span>
@@ -69,43 +90,33 @@ export default function Dashboard() {
             </div>
             <div className="btnrow" style={{ marginTop: 8 }}>
               {s.status === "live" && (
-                <a className="btn ghost" href={s.previewUrl} target="_blank" rel="noopener noreferrer">View live</a>
+                <a className="btn ghost" href={s.previewUrl} target="_blank" rel="noopener noreferrer">Watch live</a>
               )}
               <button className="btn ghost" onClick={() => (open?.site?.siteId === s.siteId ? setOpen(null) : details(s))}>
-                {open?.site?.siteId === s.siteId ? "Hide details" : "Details"}
+                {open?.site?.siteId === s.siteId ? "Close reel" : "Open reel"}
               </button>
               {s.status !== "taken_down" && (
-                <button className="btn danger" disabled={busyId === s.siteId} onClick={() => { if (window.confirm(`Take down ${s.slug}? Releases are kept.`)) act(s.siteId, () => api.takedown(s.siteId)); }}>
+                <button className="btn danger" disabled={busyId === s.siteId}
+                  onClick={() => { if (window.confirm(`Take ${s.slug} off the marquee? Releases stay in the vault.`)) act(s.siteId, () => api.takedown(s.siteId)); }}>
                   Take down
                 </button>
               )}
             </div>
 
             {open?.site?.siteId === s.siteId && (
-              <div style={{ marginTop: 14, borderTop: "1px solid var(--faint)", paddingTop: 6 }}>
-                <table>
-                  <thead><tr><th>Release</th><th>Published</th><th></th></tr></thead>
-                  <tbody>
-                    {open.releases.map((r) => (
-                      <tr key={r.n}>
-                        <td>
-                          #{r.n}{" "}
-                          {open.site.liveRelease === r.n && <span className="badge live" style={{ marginLeft: 6 }}>LIVE</span>}
-                        </td>
-                        <td className="mono" style={{ textTransform: "none", letterSpacing: 0 }}>{(r.createdAt || "").slice(0, 16).replace("T", " ")}</td>
-                        <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                          {open.site.liveRelease !== r.n && open.site.status === "live" && (
-                            <button className="btn ghost" style={{ padding: "7px 12px" }} disabled={busyId === s.siteId}
-                              onClick={() => act(s.siteId, () => api.rollback(s.siteId, r.n))}>
-                              Make live
-                            </button>
-                          )}{" "}
-                          <button className="btn ghost" style={{ padding: "7px 12px" }} onClick={() => download(s, r.n)}>Source</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="filmstrip">
+                {open.releases.map((r) => (
+                  <div key={r.n} className={`frame ${open.site.liveRelease === r.n ? "live" : ""}`}>
+                    <div className="n">#{r.n}{open.site.liveRelease === r.n && <span className="badge live" style={{ marginLeft: 6, fontSize: 8 }}>LIVE</span>}</div>
+                    <div className="d">{(r.createdAt || "").slice(5, 16).replace("T", " ")}</div>
+                    <div className="acts">
+                      {open.site.liveRelease !== r.n && open.site.status === "live" && (
+                        <button disabled={busyId === s.siteId} onClick={() => act(s.siteId, () => api.rollback(s.siteId, r.n))}>Screen</button>
+                      )}
+                      <button onClick={() => download(s, r.n)}>Export</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
