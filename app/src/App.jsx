@@ -42,6 +42,7 @@ export default function App() {
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState(path());
   const [edge, setEdge] = useState(null); // { ms } — ambient status, platform-style
+  const [prod, setProd] = useState(null); // global director's-cut tracking (survives navigation)
 
   useEffect(() => {
     restore().finally(() => setBooting(false));
@@ -61,6 +62,28 @@ export default function App() {
     };
     ping();
     const t = setInterval(ping, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [user]);
+
+  // global production tracker: Studio stores cf.activeOrder; the shell owns polling
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const tick = async () => {
+      let o = null;
+      try { o = JSON.parse(localStorage.getItem("cf.activeOrder") || "null"); } catch { /* noop */ }
+      if (!o) { if (alive) setProd(null); return; }
+      try {
+        const st = await api.orderStatus(o.orderId);
+        if (!alive) return;
+        setProd({ ...o, status: st.status, failCause: st.failCause });
+        if (["ready", "human_review", "dispatch_failed"].includes(st.status)) {
+          setTimeout(() => { localStorage.removeItem("cf.activeOrder"); }, 120000); // linger 2 min then clear
+        }
+      } catch { /* transient */ }
+    };
+    tick();
+    const t = setInterval(tick, 10000);
     return () => { alive = false; clearInterval(t); };
   }, [user]);
 
@@ -85,27 +108,45 @@ export default function App() {
     <AuthCtx.Provider value={{ user, nav }}>
       <div className="aurora" aria-hidden="true" />
       <CmdK nav={nav} admin={user.admin} />
-      <header className="topbar">
-        <div className="brand"><span className="lens" />CINEFOLIO <span className="mono" style={{ color: "var(--gold)" }}>STUDIO</span></div>
-        <nav className="nav">
-          <button className={route === "dashboard" ? "on" : ""} onClick={() => nav("dashboard")}>My Films</button>
-          <button className={route === "studio" ? "on" : ""} onClick={() => nav("studio")}>New Film</button>
-          {user.admin && <button className={route === "admin" ? "on" : ""} onClick={() => nav("admin")}>Orders</button>}
-          <button className={route === "account" ? "on" : ""} onClick={() => nav("account")}>Account</button>
-          <button onClick={() => { signOut(); nav(""); }}>Sign out</button>
-          <span className="kbdhint mono" title="Command palette">⌘K</span>
-        </nav>
-      </header>
-      <main className={route === "studio" ? "page pagewide" : "page"}><SetBoundary key={route}><Page /></SetBoundary></main>
-      <footer className="footer">
-        <span className="mono">CINEFOLIO STUDIOS — {CONFIG.env.toUpperCase()}</span>
-        <span className="mono">
-          {edge && (edge.ms >= 0
-            ? <><i className="edgedot ok" /> EDGE OK · {edge.ms}MS · EU-CENTRAL-1 · </>
-            : <><i className="edgedot bad" /> EDGE UNREACHABLE · </>)}
-          {user.email}
-        </span>
-      </footer>
+      <div className="shell">
+        <aside className="side">
+          <div className="brand" style={{ padding: "18px 16px" }}><span className="lens" />CINEFOLIO</div>
+          <nav className="sidenav">
+            <div className="mono sidelabel">PRODUCTION</div>
+            <button className={route === "dashboard" || route === "" ? "on" : ""} onClick={() => nav("dashboard")}><i>▦</i> My Films</button>
+            <button className={route === "studio" ? "on" : ""} onClick={() => nav("studio")}><i>◉</i> The Set</button>
+            {user.admin && (<>
+              <div className="mono sidelabel">OPERATIONS</div>
+              <button className={route === "admin" ? "on" : ""} onClick={() => nav("admin")}><i>⛬</i> Floor</button>
+            </>)}
+            <div className="mono sidelabel">STUDIO</div>
+            <button className={route === "account" ? "on" : ""} onClick={() => nav("account")}><i>✦</i> Account</button>
+          </nav>
+          <div className="sideuser">
+            <div className="mono" style={{ textTransform: "none", letterSpacing: ".04em", overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
+            <button className="mono sideout" onClick={() => { signOut(); nav(""); }}>SIGN OUT</button>
+          </div>
+        </aside>
+        <div className="shellmain">
+          <header className="shellhead">
+            <span className="mono crumb">{route === "studio" ? "THE SET" : route === "admin" ? "PRODUCTION FLOOR" : route === "account" ? "ACCOUNT" : "MY FILMS"}</span>
+            <span style={{ flex: 1 }} />
+            {prod && (
+              <button className={`prodchip mono ${prod.status}`} onClick={() => nav("studio")} title="Director's cut production">
+                {prod.status === "ready" ? "🎬 CUT READY" :
+                 ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" :
+                 <><i className="recdot" />{prod.status === "filming" ? "CAMERAS ROLLING" : "IN THE QUEUE"}</>}
+              </button>
+            )}
+            <span className="mono envbadge">{CONFIG.env.toUpperCase()}</span>
+            {edge && (edge.ms >= 0
+              ? <span className="mono edgetag"><i className="edgedot ok" />{edge.ms}MS</span>
+              : <span className="mono edgetag"><i className="edgedot bad" />OFFLINE</span>)}
+            <span className="kbdhint mono" title="Command palette">⌘K</span>
+          </header>
+          <main className={route === "studio" ? "page pagewide" : "page"}><SetBoundary key={route}><Page /></SetBoundary></main>
+        </div>
+      </div>
     </AuthCtx.Provider>
   );
 }
