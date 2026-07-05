@@ -11,6 +11,8 @@ export const ROUTES = {
   "GET /me": misc.getMe,
   "PUT /me": misc.putMe,
   "POST /media": misc.mediaUpload,
+  "GET /draft": misc.getDraft,
+  "PUT /draft": misc.putDraft,
   "POST /waitlist": misc.joinWaitlist,
   "GET /waitlist/count": misc.waitlistCount,
   "POST /contact": misc.contact,
@@ -27,6 +29,7 @@ export const ROUTES = {
   "GET /sites/{id}/source": sites.source,
   "POST /sites/{id}/publish": sites.publish,
   "POST /sites/{id}/rollback": sites.rollback,
+  "POST /sites/{id}/duplicate": sites.duplicate,
   "DELETE /sites/{id}": sites.takedown,
 };
 
