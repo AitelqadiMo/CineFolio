@@ -113,9 +113,15 @@ module "appshell" {
 }
 
 module "pipeline" {
-  source      = "../../modules/pipeline"
-  name_prefix = local.name_prefix
-  tags        = local.tags
+  source          = "../../modules/pipeline"
+  name_prefix     = local.name_prefix
+  app_env         = var.env
+  table_name      = module.data.table_name
+  table_arn       = module.data.table_arn
+  kms_key_arn     = module.kms.key_arn
+  api_domain      = trimsuffix(trimprefix(module.api.api_endpoint, "https://"), "/")
+  alarm_topic_arn = module.observability.alarms_topic_arn
+  tags            = local.tags
 }
 
 module "cicd" {
@@ -127,11 +133,17 @@ module "cicd" {
 }
 
 module "observability" {
-  source             = "../../modules/observability"
-  name_prefix        = local.name_prefix
-  alarm_email        = var.alarm_email
-  monthly_budget_usd = var.monthly_budget_usd
-  tags               = local.tags
+  source                 = "../../modules/observability"
+  name_prefix            = local.name_prefix
+  alarm_email            = var.alarm_email
+  monthly_budget_usd     = var.monthly_budget_usd
+  api_id                 = module.api.api_id
+  api_function_name      = module.api.function_name
+  pipeline_function_name = module.pipeline.worker_function_name
+  orders_queue_name      = module.pipeline.orders_queue_name
+  dlq_name               = module.pipeline.dlq_name
+  state_machine_arn      = module.pipeline.state_machine_arn
+  tags                   = local.tags
 }
 
 # ---------- outputs ----------
@@ -148,3 +160,5 @@ output "assets_bucket" { value = module.data.assets_bucket }
 output "published_bucket" { value = module.data.published_bucket }
 output "orders_queue_url" { value = module.pipeline.orders_queue_url }
 output "github_deploy_role_arn" { value = module.cicd.deploy_role_arn }
+output "state_machine_arn" { value = module.pipeline.state_machine_arn }
+output "ops_dashboard" { value = module.observability.dashboard_name }
