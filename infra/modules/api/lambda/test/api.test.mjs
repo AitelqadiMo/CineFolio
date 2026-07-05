@@ -254,3 +254,19 @@ test("pipeline: callback resumes task token instead of flipping status; retry re
   ctx.ddb._store.get(`ORDER#${orderId}|META`).status = "ready";
   assert.equal(parse(await h(ev("POST /admin/orders/{id}/retry", { claims: "op", groups: ["admin"], path: { id: orderId } }))).code, 409);
 });
+
+test("sites: takedown then relight restores pointer and live status", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const id = parse(await h(ev("POST /sites", { claims: "u1", body: { title: "Cycle Site" } }))).body.site.siteId;
+  await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id }, body: { html: "<!doctype html><html>v1</html>" } }));
+  const td = parse(await h(ev("DELETE /sites/{id}", { claims: "u1", path: { id } })));
+  assert.equal(td.body.status, "taken_down");
+  // relight (no target -> defaults to current liveRelease when taken down)
+  const rl = parse(await h(ev("POST /sites/{id}/rollback", { claims: "u1", path: { id }, body: {} })));
+  assert.equal(rl.body.status, "live");
+  assert.equal(rl.body.liveRelease, 1);
+  assert.deepEqual(ctx.kvs.puts.at(-1), ["cycle-site", `${id}/releases/1`]);
+  // single-release live site still refuses a no-op rollback
+  assert.equal(parse(await h(ev("POST /sites/{id}/rollback", { claims: "u1", path: { id }, body: {} }))).code, 400);
+});
