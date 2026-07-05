@@ -22,8 +22,10 @@ export function parseProfile(text, overrides = {}) {
   const links = {
     github: (raw.match(/github\.com\/[\w.-]+/i) || [""])[0],
     linkedin: (raw.match(/linkedin\.com\/in\/[\w.-]+/i) || [""])[0],
+    // NOTE: no lookbehind — Safari < 16.4 throws SyntaxError at parse time and
+    // takes the whole bundle down. Group-match with a leading boundary instead.
     website: (raw.match(/\bhttps?:\/\/(?!\S*(github|linkedin))[\w.-]+\.[a-z]{2,}\S*/i) || [""])[0] ||
-             (raw.match(/(?<![@\w.])[\w-]+\.(dev|me|site|design|studio)\b/i) || [""])[0],
+             ((raw.match(/(^|[\s|,;(])([\w-]+\.(dev|me|site|design|studio))\b/im) || [])[2] || ""),
   };
 
   // sectionize
