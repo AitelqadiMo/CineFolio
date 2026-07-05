@@ -127,3 +127,99 @@ tr:hover td { background: rgba(244, 239, 230, .025); }
 @keyframes rot { to { transform: rotate(360deg); } }
 .badge.filming { color: var(--gold); border-color: rgba(217, 164, 65, .45); animation: pulse 1.4s ease-in-out infinite; }
 .badge.human_review { color: #ff8d96; border-color: rgba(230, 57, 70, .5); }
+
+/* ================= STUDIO FLOOR v2 (Pillar B) ================= */
+/* zellige texture on the console, 4% — same motif as the landing */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='84' height='84' viewBox='0 0 84 84'%3E%3Cg fill='none' stroke='%23F4EFE6' stroke-width='1'%3E%3Cpath d='M42 6l10 26h28L57 48l9 27-24-17-24 17 9-27L4 32h28z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 84px;
+}
+.glass { background: rgba(19, 37, 80, .55); backdrop-filter: blur(12px); border: 1px solid rgba(244, 239, 230, .1); }
+
+/* split-char page titles */
+.pagehead h1 .chx { display: inline-block; transform: translateY(1.05em); opacity: 0; animation: chin .8s cubic-bezier(.22,1,.36,1) forwards; }
+@keyframes chin { to { transform: none; opacity: 1; } }
+
+/* hero metric strip */
+.metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 26px; }
+.metric { padding: 16px 18px; border-radius: 8px; border: 1px solid var(--faint); background: var(--navy-2); position: relative; overflow: hidden; }
+.metric::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.metric:nth-child(1)::before { background: var(--red); }
+.metric:nth-child(2)::before { background: var(--gold); }
+.metric:nth-child(3)::before { background: var(--green); }
+.metric b { font-family: var(--disp); font-weight: 800; font-size: 1.9rem; display: block; line-height: 1.1; }
+.metric span { font-family: var(--mono); font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+
+/* film-poster cards */
+.poster { position: relative; aspect-ratio: 16/10; border-radius: 6px; overflow: hidden; border: 1px solid var(--faint); background: #0a1126; margin-bottom: 6px; }
+.poster iframe { width: 400%; height: 400%; transform: scale(.25); transform-origin: 0 0; border: 0; pointer-events: none; }
+.poster .veil { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, rgba(10,17,38,.85)); }
+.sitecard { transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s; }
+.sitecard:hover { transform: translateY(-4px); box-shadow: 0 18px 44px rgba(0,0,0,.35); }
+
+/* film-strip release timeline */
+.filmstrip { display: flex; gap: 8px; overflow-x: auto; padding: 14px 6px; margin-top: 12px;
+  background: repeating-linear-gradient(90deg, transparent 0 10px, rgba(244,239,230,.05) 10px 12px);
+  border-top: 1px dashed var(--faint); border-bottom: 1px dashed var(--faint); }
+.frame { flex: 0 0 auto; min-width: 118px; padding: 10px 12px; border-radius: 4px; border: 1px solid var(--faint); background: var(--navy-2); position: relative; }
+.frame::before, .frame::after { content: "◦ ◦ ◦"; display: block; font-size: 7px; color: var(--dim); letter-spacing: 6px; text-align: center; }
+.frame.live { border-color: rgba(14,158,98,.6); box-shadow: 0 0 18px rgba(14,158,98,.15); }
+.frame .n { font-family: var(--disp); font-weight: 800; font-size: 1.05rem; }
+.frame .d { font-family: var(--mono); font-size: 8.5px; color: var(--dim); letter-spacing: .08em; }
+.frame .acts { display: flex; gap: 6px; margin-top: 7px; }
+.frame .acts button { font-family: var(--mono); font-size: 8.5px; letter-spacing: .1em; background: none; border: 1px solid var(--faint); color: var(--bone); border-radius: 3px; padding: 4px 8px; cursor: pointer; text-transform: uppercase; }
+.frame .acts button:hover { border-color: var(--gold); color: var(--gold); }
+
+/* production tracker */
+.tracker { display: flex; align-items: flex-start; margin: 6px 0 26px; }
+.tstep { flex: 1; text-align: center; position: relative; }
+.tstep .dot2 { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--faint); background: var(--navy); margin: 0 auto 8px; position: relative; z-index: 2; transition: all .25s; }
+.tstep .bar { position: absolute; top: 6px; left: -50%; width: 100%; height: 2px; background: var(--faint); z-index: 1; }
+.tstep:first-child .bar { display: none; }
+.tstep .lbl2 { font-family: var(--mono); font-size: 8.5px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
+.tstep.done .dot2 { background: var(--green); border-color: var(--green); }
+.tstep.done .bar { background: var(--green); }
+.tstep.on .dot2 { border-color: var(--gold); box-shadow: 0 0 14px rgba(217,164,65,.5); animation: pulse 1.4s ease-in-out infinite; }
+.tstep.on .lbl2 { color: var(--gold); }
+.tstep.fail .dot2 { background: var(--red); border-color: var(--red); }
+.tstep.fail .lbl2 { color: #ff8d96; }
+
+/* premiere moment */
+.premiere { position: relative; overflow: hidden; border: 1px solid rgba(217,164,65,.5); border-radius: 8px; padding: 22px; margin-top: 16px; background: linear-gradient(135deg, rgba(217,164,65,.1), rgba(200,16,46,.08)); }
+.premiere .mq { font-family: var(--disp); font-weight: 800; text-transform: uppercase; font-size: 1.25rem; letter-spacing: .02em; }
+.premiere .mq em { font-family: 'Instrument Serif', serif; font-style: italic; text-transform: none; background: linear-gradient(90deg, #C8102E, #D9A441, #0E9E62); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.confetti { position: absolute; top: -10px; width: 7px; height: 12px; opacity: .95; animation: fall 1.9s cubic-bezier(.2,.6,.4,1) forwards; }
+@keyframes fall { to { transform: translateY(120vh) rotate(720deg); opacity: 0; } }
+
+/* kanban production floor */
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(180px, 1fr)); gap: 12px; overflow-x: auto; align-items: start; }
+.kcol { border: 1px solid var(--faint); border-radius: 8px; background: rgba(19,37,80,.4); min-height: 120px; }
+.kcol h4 { font-family: var(--mono); font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); padding: 11px 12px; border-bottom: 1px solid var(--faint); display: flex; justify-content: space-between; }
+.kcol h4 b { color: var(--bone); }
+.kcard { margin: 9px; padding: 11px 12px; border-radius: 6px; border: 1px solid var(--faint); background: var(--navy-2); font-size: 12.5px; animation: kin .25s cubic-bezier(.22,1,.36,1); }
+@keyframes kin { from { opacity: 0; transform: translateY(6px); } }
+.kcard .who { font-weight: 600; }
+.kcard .meta2 { font-family: var(--mono); font-size: 8.5px; color: var(--dim); letter-spacing: .06em; margin-top: 3px; }
+.kcard .acts { margin-top: 8px; }
+@media (max-width: 980px) { .kanban { grid-template-columns: 1fr; } }
+
+/* ticket-stub account card */
+.ticket { max-width: 560px; border-radius: 10px; overflow: hidden; border: 1px solid var(--faint); }
+.ticket .tophalf { background: linear-gradient(135deg, var(--navy-2), var(--navy-3)); padding: 22px 24px; border-bottom: 2px dashed rgba(244,239,230,.25); position: relative; }
+.ticket .tophalf::before, .ticket .tophalf::after { content: ""; position: absolute; bottom: -11px; width: 20px; height: 20px; border-radius: 50%; background: var(--navy); border: 1px solid var(--faint); }
+.ticket .tophalf::before { left: -11px; } .ticket .tophalf::after { right: -11px; }
+.ticket .admit { font-family: var(--mono); font-size: 8.5px; letter-spacing: .3em; color: var(--gold); text-transform: uppercase; }
+.ticket .name { font-family: var(--disp); font-weight: 800; font-size: 1.5rem; text-transform: uppercase; margin-top: 6px; }
+.ticket .bothalf { background: var(--navy-2); padding: 20px 24px; }
+
+/* skeletons */
+.skel { border-radius: 6px; background: linear-gradient(90deg, rgba(244,239,230,.05) 25%, rgba(244,239,230,.11) 50%, rgba(244,239,230,.05) 75%); background-size: 200% 100%; animation: shimmer 1.3s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pagehead h1 .chx { animation: none; transform: none; opacity: 1; }
+  .confetti { display: none; }
+  .skel, .tstep.on .dot2, .badge.filming { animation: none; }
+  .sitecard:hover { transform: none; }
+}
