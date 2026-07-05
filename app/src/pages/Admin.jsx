@@ -37,7 +37,7 @@ export default function Admin() {
 
   return (
     <>
-      <div className="pagehead">
+      <div className="pagehead" data-scene="SCENE 03 · THE FLOOR">
         <SplitTitle text="Production" serif="floor" />
         <p className="sub">Live pipeline state from the status index. Retry re-enqueues an order through the full state machine.</p>
       </div>
