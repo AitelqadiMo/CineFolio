@@ -95,6 +95,11 @@ export default function Dashboard() {
               <button className="btn ghost" onClick={() => (open?.site?.siteId === s.siteId ? setOpen(null) : details(s))}>
                 {open?.site?.siteId === s.siteId ? "Close reel" : "Open reel"}
               </button>
+              {s.status === "taken_down" && s.liveRelease && (
+                <button className="btn ghost" disabled={busyId === s.siteId} onClick={() => act(s.siteId, () => api.rollback(s.siteId, s.liveRelease))}>
+                  Relight
+                </button>
+              )}
               {s.status !== "taken_down" && (
                 <button className="btn danger" disabled={busyId === s.siteId}
                   onClick={() => { if (window.confirm(`Take ${s.slug} off the marquee? Releases stay in the vault.`)) act(s.siteId, () => api.takedown(s.siteId)); }}>
