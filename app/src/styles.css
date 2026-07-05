@@ -433,3 +433,75 @@ body::after {
   .workspace.mm-preview .stageframe { height: calc(100vh - 220px); }
 }
 @media (prefers-reduced-motion: reduce) { .grid.two > *, .metrics > *, .projbody { animation: none; } }
+
+
+/* ================= CINEMATIC LANGUAGE (console inherits the landing) ================= */
+/* signature bars, top + bottom, on every authed page — same tell as the landing */
+.cinebar{position:fixed;left:0;right:0;height:30px;background:rgba(10,17,38,.95);z-index:40;display:flex;
+  align-items:center;justify-content:space-between;padding:0 22px;font-family:var(--mono);font-size:9px;letter-spacing:.24em;
+  color:var(--dim);backdrop-filter:blur(8px);pointer-events:none}
+.cinebar.top{top:0;border-bottom:1px solid var(--faint)}
+.cinebar.bot{bottom:0;border-top:1px solid var(--faint)}
+.cinebar .rec{color:var(--red);animation:blink 1.2s steps(2) infinite}
+@keyframes blink{50%{opacity:.2}}
+
+/* shell pushes down so cinebars don't cover it */
+.shell{padding-top:30px;padding-bottom:30px;min-height:100vh}
+.side{top:30px;height:calc(100vh - 60px)}
+.shellhead{top:30px}
+/* the shell head gets the jersey ribbon (same signature as the SDLC + slate) */
+.shellhead{position:relative}
+.shellhead::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--jersey,linear-gradient(90deg,#C8102E,#D9A441,#0E9E62))}
+
+/* velocity marquee under the header — the landing's calling card */
+.cinemarq{overflow:hidden;background:var(--bone);border-bottom:1px solid rgba(0,0,0,.06)}
+.cinemarq-t{display:flex;gap:2.4rem;width:max-content;font-family:var(--disp);font-weight:800;font-size:14px;
+  letter-spacing:.06em;color:var(--navy);text-transform:uppercase;padding:9px 0;animation:cinemq 42s linear infinite}
+.cinemarq-t .r{color:var(--red-deep,#C8102E)} .cinemarq-t .g{color:var(--green,#0E9E62)} .cinemarq-t .gd{color:#B98A2C}
+@keyframes cinemq{to{transform:translateX(-50%)}}
+@media(prefers-reduced-motion:reduce){.cinemarq-t{animation:none}.cinebar .rec{animation:none}}
+
+/* scene-numbered page heads — matching the landing's "scene ✦ Section title" pattern */
+.pagehead{position:relative;padding-top:6px}
+.pagehead::before{content:attr(data-scene);position:absolute;top:-2px;left:0;font-family:var(--mono);font-size:10px;
+  letter-spacing:.4em;color:var(--gold);display:flex;align-items:center;gap:12px}
+.pagehead[data-scene]::before{padding-left:34px}
+.pagehead[data-scene]::after{content:"";position:absolute;top:5px;left:0;width:24px;height:2.5px;
+  background:var(--jersey,linear-gradient(90deg,#C8102E,#D9A441,#0E9E62));border-radius:2px}
+.pagehead h1{margin-top:14px}
+
+/* section markers (scene labels) for card sections + subgroups */
+.scene-hd{font-family:var(--mono);font-size:10px;letter-spacing:.4em;color:var(--gold);text-transform:uppercase;
+  display:flex;align-items:center;gap:12px;margin:26px 0 12px}
+.scene-hd::before{content:"";width:24px;height:2.5px;background:var(--jersey,linear-gradient(90deg,#C8102E,#D9A441,#0E9E62));border-radius:2px}
+
+/* metrics: numbered like scenes */
+.metrics{counter-reset:sc}
+.metric{counter-increment:sc}
+.metric::before{background:var(--jersey,linear-gradient(90deg,#C8102E,#D9A441,#0E9E62))!important}
+.metric span::before{content:"0" counter(sc) " · ";font-family:var(--mono);color:var(--gold);opacity:.85}
+
+/* poster cards get the landing's .cutp treatment */
+.sitecard .poster{border-radius:22px;border:1.5px solid var(--faint);overflow:hidden;position:relative;
+  aspect-ratio:16/10}
+.sitecard .poster iframe{width:400%;height:400%;transform:scale(.25);transform-origin:0 0;border:0;pointer-events:none}
+.sitecard .poster .veil{position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(10,17,38,.85))}
+.sitecard{border-radius:14px;transition:transform .35s cubic-bezier(.22,1,.36,1),box-shadow .35s}
+.sitecard:hover{transform:translateY(-6px);box-shadow:0 18px 44px rgba(0,0,0,.4)}
+
+/* kanban cards + film strip inherit cinematic spacing */
+.kcol{border-radius:14px}
+.kcol h4{background:linear-gradient(90deg,rgba(217,164,65,.08),transparent);padding-left:14px;position:relative}
+.kcol h4::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--gold);border-radius:2px}
+.frame{border-radius:6px}
+.filmstrip{padding:16px 8px;border-radius:8px}
+
+/* Studio slate + tab bar align with the marquee ribbon */
+.slate{border-top:0;border-radius:0 0 14px 14px}
+.railtabs button.on{background:var(--gold);color:var(--navy);box-shadow:0 4px 14px rgba(217,164,65,.35)}
+.railsec{border-radius:14px}
+.railsec.act{background:linear-gradient(180deg,rgba(19,37,80,.95),rgba(19,37,80,.75))}
+.railsec.act.gold{background:linear-gradient(135deg,rgba(217,164,65,.10),rgba(200,16,46,.06)),rgba(19,37,80,.9)}
+
+/* subtle bone accent under the shell header on desktop */
+@media(min-width:901px){.shellhead{background:rgba(10,17,38,.85)}}
