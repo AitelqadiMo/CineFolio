@@ -50,7 +50,7 @@ export default function Dashboard() {
 
   return (
     <>
-      <div className="pagehead">
+      <div className="pagehead" data-scene="SCENE 01 · THE VAULT">
         <SplitTitle text="My" serif="films" />
         <p className="sub">Every portfolio is a versioned release. Publishing flips an atomic pointer; rolling back flips it back in seconds.</p>
       </div>
