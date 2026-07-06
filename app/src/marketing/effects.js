@@ -248,7 +248,7 @@ Awards: Design Sprint winner 2024`;
     $("#stCV").value = SAMPLE;
     if (!$("#stName").value) $("#stName").value = "Ada Kovacs";
     if (!$("#stRole").value || $("#stRole").value === "engineer") $("#stRole").value = "designer";
-    $("#stMsg").textContent = "Sample loaded — add your email and roll camera.";
+    $("#stMsg").textContent = "Sample loaded. Add your email and roll camera.";
   });
   $("#cvFileBtn").addEventListener("click", () => $("#cvFile").click());
   $("#cvFile").addEventListener("change", (e) => {
@@ -283,7 +283,7 @@ Awards: Design Sprint winner 2024`;
         // adopt it right after the user creates an account ("Premiere this").
         try { localStorage.setItem("cf.pendingOrder", JSON.stringify({ orderId: j.orderId, name: $("#stName").value, email })); } catch (e2) { /* private mode */ }
         if (j.production && j.orderId) {
-          msg.innerHTML = "🎬 Rough cut on screen. The director's cut is in production — this screen updates itself. Want to premiere it on a real URL? <a href='/login' style='color:var(--red);font-weight:600'>Enter the Studio →</a>";
+          msg.innerHTML = "🎬 Rough cut on screen. <b>Claim this film:</b> premiere it live on your own URL in about a minute. <a href='/login' style='color:var(--red);font-weight:600'>Claim it in the Studio →</a>";
           pollCut(j.orderId, fr, msg, photo);
         } else {
           msg.innerHTML = "Rough cut rendered. <a href='/login' style='color:var(--red);font-weight:600'>Enter the Studio</a> to premiere it on a real URL.";
