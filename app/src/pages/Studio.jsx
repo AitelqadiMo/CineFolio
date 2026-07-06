@@ -9,7 +9,7 @@ import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 import { confetti, friendly, ConfirmDialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
-import { parseProfile, compile, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
+import { parseProfile, compile, compileBundle, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
 
 const POLL_MS = 8000, POLL_MAX = 220;
 
@@ -91,6 +91,26 @@ export default function Studio() {
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal]);
 
+  // the dossier (My Profile) is the casting source of truth: prefill once, never clobber
+  const [dossier, setDossier] = useState(null);
+  useEffect(() => {
+    api.getProfile().then((r) => {
+      if (!r.profile) return;
+      setDossier(r.profile);
+      const idn = r.profile.identity || {};
+      setQ((q0) => ({
+        ...q0,
+        name: q0.name || idn.name || "",
+        headline: q0.headline || idn.headline || "",
+        email: q0.email || idn.email || "",
+        website: q0.website || r.profile.links?.website || "",
+        focus: q0.focus || r.profile.story || "",
+      }));
+      setProjects((p0) => (p0.length ? p0 : (r.profile.projects || []).slice(0, 8)));
+    }).catch(() => { /* the dossier is optional; the set works without it */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
 
@@ -108,9 +128,13 @@ export default function Studio() {
 
   const fullProfile = useMemo(() => ({
     ...profile,
+    ...(dossier?.certifications?.length ? { certifications: dossier.certifications } : {}),
+    ...(dossier?.education?.length ? { education: dossier.education } : {}),
+    ...(dossier?.languages?.length ? { languages: dossier.languages } : {}),
+    ...(dossier?.experience?.length ? { experience: dossier.experience } : {}),
     ...(projects.length ? { projects } : {}),
     testimonials, services,
-  }), [profile, projects, testimonials, services]);
+  }), [profile, projects, testimonials, services, dossier]);
 
   const html = useMemo(() => {
     try { return compile(tpl, pal, fullProfile, { sections }); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error, adjust the brief</body></html>"; }
@@ -199,7 +223,9 @@ export default function Studio() {
     try {
       const slug = pub.slug || (profile.name || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const site = await api.createSite({ slug, title: profile.name });
-      const r = await api.publish(site.site.siteId, { html, ...(stageMode ? { stage: true } : {}) });
+      // a premiere ships the whole web app: index plus case-study pages
+      const bundle = compileBundle(tpl, pal, fullProfile, { sections });
+      const r = await api.publish(site.site.siteId, { files: bundle.files, ...(stageMode ? { stage: true } : {}) });
       setPub({ slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });
       if (!stageMode) setTimeout(() => confetti(premiereRef.current || undefined), 60);
     } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
@@ -279,6 +305,7 @@ export default function Studio() {
               <input id="phUp" type="file" accept="image/*" onChange={onPhoto} hidden />
             </label>
             <textarea value={cvRaw} onChange={(e) => setCvRaw(e.target.value)} placeholder="…or paste the CV. The engine reads sections, years, links and skills on its own." style={{ minHeight: 84, marginTop: 8 }} />
+            {dossier && <div className="mono" style={{ marginTop: 8, fontSize: 9, color: "var(--gold)" }}>CAST FROM YOUR PROFILE ✓ · KEEP IT CURRENT IN MY PROFILE</div>}
           </div>
 
           <div className="railsec act">
