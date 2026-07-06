@@ -417,6 +417,7 @@ export default function Studio() {
               <li>Bespoke art direction, built scene by scene for your story</li>
               <li>Identity-locked AI film sequences, yours alone</li>
               <li>Premieres within 24 hours as a new release</li>
+              <li>Hosted by the studio for 12 months, included</li>
               <li>One revision included</li>
             </ul>
             <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the studio: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />

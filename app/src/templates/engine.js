@@ -117,7 +117,7 @@ const linkRow = (p, color) => {
   if (p.email) L.push(`<a href="mailto:${esc(p.email)}">Email</a>`);
   return L.join(`<span style="opacity:.4;color:${color}"> / </span>`);
 };
-const CREDIT = `<div style="text-align:center;padding:26px;font-family:monospace;font-size:9px;letter-spacing:.25em;opacity:.45;text-transform:uppercase">Directed with CineFolio Studios</div>`;
+const CREDIT = `<div style="text-align:center;padding:26px;font-family:monospace;font-size:9px;letter-spacing:.25em;opacity:.55;text-transform:uppercase"><a href="https://cine-folio.vercel.app/?ref=film-badge" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">◈ Cut with CineFolio Studios · Get this look</a></div>`;
 
 // ---------- rich projects / case studies (shared logic, per-template skin) ----------
 const isCaseStudy = (pr) => !!(pr.problem || pr.process || pr.results || pr.role || pr.cover);

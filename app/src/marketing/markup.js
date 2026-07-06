@@ -234,7 +234,7 @@ export const LANDING_HTML = `
             <button class="lockbtn" data-feature="Export the source">EXPORT SOURCE 🔒</button>
             <button class="lockbtn" data-feature="AI film scenes of you">RENDER AI FILM SCENES 🔒</button>
           </div>
-          <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING — JOIN THE GUEST LIST →</a>
+          <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING · JOIN THE GUEST LIST →</a>
         </div>
       </div>
     </div>
