@@ -2,7 +2,7 @@
 // tests inject fakes instead, so nothing else in the codebase imports the SDK.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
@@ -36,6 +36,7 @@ export const s3 = {
   },
   copyObject: (Bucket, fromKey, toKey) =>
     s3c.send(new CopyObjectCommand({ Bucket, CopySource: `${Bucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
+  deleteObject: (Bucket, Key) => s3c.send(new DeleteObjectCommand({ Bucket, Key })),
 };
 
 export const presign = {

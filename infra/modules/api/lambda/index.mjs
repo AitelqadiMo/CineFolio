@@ -38,6 +38,7 @@ export const ROUTES = {
   "POST /sites/{id}/rollback": sites.rollback,
   "POST /sites/{id}/duplicate": sites.duplicate,
   "DELETE /sites/{id}": sites.takedown,
+  "POST /sites/{id}/delete": sites.deleteSite,
 };
 
 let realCtx = null;

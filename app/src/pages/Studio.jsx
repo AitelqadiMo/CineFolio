@@ -39,6 +39,7 @@ export default function Studio() {
   const [err, setErr] = useState("");
   const [confirmCut, setConfirmCut] = useState(false);
   const [lookOpen, setLookOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState(null); // { siteId, slug, title } re-premiere target from My Films
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
@@ -110,6 +111,14 @@ export default function Studio() {
       setProjects((p0) => (p0.length ? p0 : (r.profile.projects || []).slice(0, 8)));
     }).catch(() => { /* the dossier is optional; the set works without it */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // arriving from My Films with a film to edit: premieres target it as a new release
+  useEffect(() => {
+    try {
+      const t = JSON.parse(sessionStorage.getItem("cf.editSite") || "null");
+      if (t?.siteId) { setEditTarget(t); sessionStorage.removeItem("cf.editSite"); }
+    } catch { /* noop */ }
   }, []);
 
   // debounce the heavy text; small fields stay live
@@ -226,11 +235,14 @@ export default function Studio() {
     setErr(""); setPub({ ...pub, busy: true });
     try {
       const slug = pub.slug || (profile.name || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-      const site = await api.createSite({ slug, title: profile.name });
+      // editing an existing film publishes the next release on it; otherwise a new site premieres
+      const site = editTarget
+        ? { site: { siteId: editTarget.siteId, slug: editTarget.slug } }
+        : await api.createSite({ slug, title: profile.name });
       // a premiere ships the whole web app: index plus case-study pages
       const bundle = compileBundle(tpl, pal, fullProfile, { sections });
       const r = await api.publish(site.site.siteId, { files: bundle.files, ...(stageMode ? { stage: true } : {}) });
-      setPub({ slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });
+      setPub({ slug: site.site.slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });
       if (!stageMode) setTimeout(() => confetti(premiereRef.current || undefined), 60);
     } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
   };
@@ -421,8 +433,15 @@ export default function Studio() {
           </div>
 
           <div className="railsec act gold">
-            <div className="acthead"><span className="actno">V</span><div><b>Premiere the free take</b><span className="actsub">included: one click, live on our infrastructure</span></div></div>
-            <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
+            <div className="acthead"><span className="actno">V</span><div><b>{editTarget ? "Premiere the next release" : "Premiere the free take"}</b><span className="actsub">{editTarget ? "this cut lands on your existing film" : "included: one click, live on our infrastructure"}</span></div></div>
+            {editTarget ? (
+              <div className="mono" style={{ margin: "2px 0 6px", fontSize: 9.5, color: "var(--gold)" }}>
+                NEW RELEASE ON {editTarget.slug.toUpperCase()}.CINEFOLIO.SITE ·{" "}
+                <button type="button" onClick={() => setEditTarget(null)} style={{ background: "none", border: 0, color: "var(--red-lit)", cursor: "pointer", font: "inherit", letterSpacing: "inherit", textTransform: "inherit" }}>DETACH</button>
+              </div>
+            ) : (
+              <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
+            )}
             <label className="mono" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", cursor: "pointer", fontSize: 9.5 }}>
               <input type="checkbox" checked={stageMode} onChange={(e) => setStageMode(e.target.checked)} style={{ width: "auto" }} />
               STAGE AS DRAFT · PREVIEW LINK ONLY, GO LIVE FROM MY FILMS

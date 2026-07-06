@@ -197,6 +197,32 @@ export async function takedown(event, ctx) {
   return ok({ ok: true, siteId: site.siteId, status: "taken_down" });
 }
 
+// POST /sites/{id}/delete: the real delete. Two-step by design: only a
+// taken-down site can be deleted, so the pointer is already dark and a wrong
+// click can never kill a live premiere. Releases, rows, and the slug claim
+// all burn; the slug becomes reusable.
+export async function deleteSite(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  if (site.status !== "taken_down") return bad("take the site down first, then delete", 409);
+  const releases = await ctx.ddb.query({
+    KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+    ExpressionAttributeValues: { ":p": site.PK, ":s": "RELEASE#" },
+  });
+  for (const rel of releases) {
+    const paths = rel.filePaths?.length ? rel.filePaths : ["index.html"];
+    await Promise.all(paths.map((p) =>
+      ctx.s3.deleteObject(ctx.config.publishedBucket, `sites/${site.siteId}/releases/${rel.n}/${p}`).catch(() => { /* already gone */ })
+    ));
+    await ctx.ddb.del({ PK: site.PK, SK: relSK(rel.n) });
+  }
+  try { await ctx.kvs.del(ctx.config.kvsArn, site.slug); } catch { /* already dark */ }
+  await ctx.ddb.del({ PK: `SLUG#${site.slug}`, SK: "CLAIM" });
+  await ctx.ddb.del({ PK: site.PK, SK: "META" });
+  return ok({ ok: true, deleted: site.siteId, slug: site.slug });
+}
+
 // Pointer flip: KVS first (atomic, zero invalidation). If the KVS data plane is
 // unavailable in this runtime, degrade to S3 copy + targeted invalidation.
 async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix) {
