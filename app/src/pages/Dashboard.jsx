@@ -25,6 +25,9 @@ export default function Dashboard() {
   const [sharing, setSharing] = useState(null); // site | null
   const [confirmDown, setConfirmDown] = useState(null); // site | null
   const [duping, setDuping] = useState(null);   // site | null
+  const [premiereCut, setPremiereCut] = useState(null); // ready order awaiting its premiere
+  const [cutSlug, setCutSlug] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(null); // taken-down site | null
   const [copied, setCopied] = useState("");
   const cheered = useRef(false);
   const [firstRun, setFirstRun] = useState({ dossier: false, draft: hasDraft() });
@@ -41,6 +44,15 @@ export default function Dashboard() {
 
   useEffect(() => {
     api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => {});
+    // arriving from Account with a cut to premiere
+    try {
+      const oid = sessionStorage.getItem("cf.premiereCut");
+      if (oid) {
+        sessionStorage.removeItem("cf.premiereCut");
+        const o = ledger.list().find((x) => x.orderId === oid);
+        if (o) setPremiereCut(o);
+      }
+    } catch { /* noop */ }
   }, []);
 
   useEffect(() => {
@@ -65,6 +77,28 @@ export default function Dashboard() {
     catch (e) { setErr(friendly(e.message)); }
   };
 
+  const premiereCutTo = async (siteId) => {
+    const o = premiereCut; setBusyId(siteId); setErr("");
+    try {
+      await api.publish(siteId, { orderId: o.orderId });
+      ledger.acknowledge(o.orderId);
+      setPremiereCut(null); setDelivery(null);
+      confetti(); await load();
+    } catch (e) { setErr(friendly(e.message)); } finally { setBusyId(null); }
+  };
+  const premiereCutNew = async () => {
+    const o = premiereCut;
+    const s = (cutSlug || (o.name || "film")).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    setBusyId("new"); setErr("");
+    try {
+      const site = await api.createSite({ slug: s, title: o.name || s, orderId: o.orderId });
+      await api.publish(site.site.siteId, { orderId: o.orderId });
+      ledger.acknowledge(o.orderId);
+      setPremiereCut(null); setDelivery(null); setCutSlug("");
+      confetti(); await load();
+    } catch (e) { setErr(friendly(e.message)); } finally { setBusyId(null); }
+  };
+
   const copy = (what, text) => {
     navigator.clipboard?.writeText(text);
     setCopied(what); setTimeout(() => setCopied(""), 1600);
@@ -86,11 +120,11 @@ export default function Dashboard() {
         <div className="premiere delivery" role="status">
           <div className="mq">Your Director's Cut <em>is ready.</em></div>
           <p className="dlgtext" style={{ marginTop: 6 }}>
-            Order {delivery.orderId.slice(0, 8).toUpperCase()} premiered as a new release on your film below. One revision is included whenever you want it.
+            Order {delivery.orderId.slice(0, 8).toUpperCase()} is delivered. Choose where it premieres: onto one of your films as the next release, or as a brand new film. One revision is included whenever you want it.
           </p>
           <div className="btnrow" style={{ marginTop: 12 }}>
-            <button className="btn primary" onClick={() => { ledger.acknowledge(delivery.orderId); setDelivery(null); }}>Take a bow</button>
-            <button className="btn ghost" onClick={() => nav("account")}>View order</button>
+            <button className="btn primary" onClick={() => setPremiereCut(delivery)}>Premiere this cut</button>
+            <button className="btn ghost" onClick={() => { ledger.acknowledge(delivery.orderId); setDelivery(null); }}>Later</button>
           </div>
         </div>
       )}
@@ -153,6 +187,11 @@ export default function Dashboard() {
               <button className="btn ghost" onClick={() => (open?.site?.siteId === s.siteId ? setOpen(null) : details(s))}>
                 {open?.site?.siteId === s.siteId ? "Close reel" : "Open reel"}
               </button>
+              {s.status === "live" && (
+                <button className="btn ghost" onClick={() => { try { sessionStorage.setItem("cf.editSite", JSON.stringify({ siteId: s.siteId, slug: s.slug, title: s.title })); } catch { /* noop */ } nav("studio"); }}>
+                  Edit in the Set
+                </button>
+              )}
               {s.liveRelease && s.status === "live" && (
                 <button className="btn ghost" disabled={busyId === s.siteId} onClick={() => setDuping(s)}>Duplicate</button>
               )}
@@ -167,7 +206,10 @@ export default function Dashboard() {
                 </button>
               )}
               {s.status !== "taken_down" && (
-                <button className="btn danger" disabled={busyId === s.siteId} onClick={() => setConfirmDown(s)}>Take down</button>
+                <button className="btn danger" disabled={busyId === s.siteId} title="Unpublish: the site goes dark, every release stays" onClick={() => setConfirmDown(s)}>Take down</button>
+              )}
+              {s.status === "taken_down" && (
+                <button className="btn danger" disabled={busyId === s.siteId} onClick={() => setConfirmDelete(s)}>Delete forever</button>
               )}
             </div>
 
@@ -207,6 +249,42 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* ---------- premiere the director's cut ---------- */}
+      <Dialog open={!!premiereCut} title="Premiere your Director's Cut" kicker={premiereCut ? `CUT · ${premiereCut.orderId.slice(0, 8).toUpperCase()}` : ""} onClose={() => setPremiereCut(null)} width={520}>
+        {premiereCut && (
+          <>
+            <div className="dlgtext">Choose where this cut premieres. Onto an existing film it becomes the next release, and rolling back is one click if you change your mind.</div>
+            {(sites || []).map((s) => (
+              <div key={s.siteId} className="orderrow">
+                <div>
+                  <b className="ordid">{s.slug}.cinefolio.site</b>
+                  <span className="mono ordmeta">{s.status === "live" ? `live · release ${s.liveRelease}/${s.releases}` : s.status.replace("_", " ")}</span>
+                </div>
+                <button type="button" className="btn ghost ordbtn" disabled={busyId === s.siteId} onClick={() => premiereCutTo(s.siteId)}>
+                  {busyId === s.siteId ? <span className="spin" /> : null}Premiere here
+                </button>
+              </div>
+            ))}
+            <label className="mono" htmlFor="cutSlug">{sites?.length ? "Or as a new film" : "Premiere name"}</label>
+            <input id="cutSlug" value={cutSlug} onChange={(e) => setCutSlug(e.target.value)} placeholder={(premiereCut.name || "your-name").toLowerCase().replace(/[^a-z0-9]+/g, "-")} />
+            <div className="btnrow" style={{ marginTop: 12 }}>
+              <button type="button" className="btn primary" disabled={busyId === "new"} onClick={premiereCutNew}>
+                {busyId === "new" ? <span className="spin" /> : null}Premiere as a new film
+              </button>
+            </div>
+          </>
+        )}
+      </Dialog>
+
+      {/* ---------- delete forever ---------- */}
+      <ConfirmDialog
+        open={!!confirmDelete} danger kicker="NO WAY BACK" title={confirmDelete ? `Delete ${confirmDelete.slug} forever?` : ""}
+        body="Every release and its history burns with it. This cannot be undone; export the source from Account first if you want a copy."
+        confirmLabel="Delete forever" busy={busyId === confirmDelete?.siteId}
+        onConfirm={() => { const s = confirmDelete; setConfirmDelete(null); act(s.siteId, () => api.deleteSite(s.siteId)); }}
+        onClose={() => setConfirmDelete(null)}
+      />
 
       {/* ---------- share kit ---------- */}
       <Dialog open={!!sharing} title="Share your film" kicker="THE MARQUEE" onClose={() => { setSharing(null); setCopied(""); }} width={520}>
