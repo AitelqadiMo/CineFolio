@@ -482,3 +482,7 @@ textarea { min-height: 130px; resize: vertical; font-family: var(--mono); font-s
   .sitecard:hover, .posterpick:hover .posterframe { transform: none; }
   .page > *, .grid.two > *, .metrics > *, .projbody, .kcard, .dlgbox, .cmdkbox { animation: none; }
 }
+
+/* studio credits chip (the usage meter's shell presence) */
+.credchip { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid rgba(217, 164, 65, .6); color: var(--gold); background: rgba(217, 164, 65, .08); border-radius: 99px; padding: 6px 12px; font-size: 8.5px; cursor: pointer; }
+.credchip:hover { border-color: var(--gold-g); }
