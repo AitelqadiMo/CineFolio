@@ -15,7 +15,7 @@ export const useAuth = () => useContext(AuthCtx);
 
 const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account };
 
-// A page crash must never white-screen the console — kill the lights, not the set.
+// A page crash must never white-screen the console: kill the lights, not the set.
 class SetBoundary extends Component {
   constructor(p) { super(p); this.state = { err: null }; }
   static getDerivedStateFromError(err) { return { err }; }
@@ -26,7 +26,7 @@ class SetBoundary extends Component {
       <div className="authwrap"><div style={{ textAlign: "center", maxWidth: 460 }}>
         <div className="mono" style={{ color: "var(--red)", marginBottom: 12 }}>⚡ THE SET LOST POWER</div>
         <h2 style={{ marginBottom: 10 }}>A fuse blew on <em>this scene.</em></h2>
-        <p style={{ color: "var(--dim)", marginBottom: 18 }}>The rest of the studio is fine. Reload the floor — and if this repeats, the crew is already alarmed about it.</p>
+        <p style={{ color: "var(--dim)", marginBottom: 18 }}>The rest of the studio is fine. Relight the floor, and if this repeats, the crew is already alarmed about it.</p>
         <button className="btn primary" onClick={() => { this.setState({ err: null }); location.reload(); }}>Relight the set</button>
       </div></div>
     );
@@ -41,7 +41,7 @@ export default function App() {
   const [user, setUser] = useState(getUser());
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState(path());
-  const [edge, setEdge] = useState(null); // { ms } — ambient status, platform-style
+  const [edge, setEdge] = useState(null); // { ms } ambient status, platform-style
   const [prod, setProd] = useState(null); // global director's-cut tracking (survives navigation)
 
   useEffect(() => {
@@ -109,26 +109,26 @@ export default function App() {
       <div className="aurora" aria-hidden="true" />
       <CmdK nav={nav} admin={user.admin} />
       <div className="cinebar top" aria-hidden="true">
-        <span>CINEFOLIO STUDIOS · {CONFIG.env.toUpperCase()} SET</span>
+        <span className="cinetrunc">CINEFOLIO STUDIOS · {CONFIG.env.toUpperCase()} SET</span>
         <span className="rec">● REC</span>
       </div>
       <div className="cinebar bot" aria-hidden="true">
-        <span>{user.email.toUpperCase()}</span>
-        <span>{edge?.ms >= 0 ? `EDGE ${edge.ms}MS · EU-CENTRAL-1` : "OFFLINE"}</span>
+        <span className="cinetrunc">{user.email.toUpperCase()}</span>
+        <span className="cinetrunc cine-edge">{edge?.ms >= 0 ? `EDGE ${edge.ms}MS · EU-CENTRAL-1` : "OFFLINE"}</span>
       </div>
       <div className="shell">
         <aside className="side">
           <div className="brand" style={{ padding: "18px 16px" }}><span className="lens" />CINEFOLIO</div>
-          <nav className="sidenav">
+          <nav className="sidenav" aria-label="Primary">
             <div className="mono sidelabel">PRODUCTION</div>
-            <button className={route === "dashboard" || route === "" ? "on" : ""} onClick={() => nav("dashboard")}><i>▦</i> My Films</button>
-            <button className={route === "studio" ? "on" : ""} onClick={() => nav("studio")}><i>◉</i> The Set</button>
+            <button className={route === "dashboard" || route === "" ? "on" : ""} aria-current={route === "dashboard" || route === "" ? "page" : undefined} onClick={() => nav("dashboard")}><i>▦</i> My Films</button>
+            <button className={route === "studio" ? "on" : ""} aria-current={route === "studio" ? "page" : undefined} onClick={() => nav("studio")}><i>◉</i> The Set</button>
             {user.admin && (<>
               <div className="mono sidelabel">OPERATIONS</div>
-              <button className={route === "admin" ? "on" : ""} onClick={() => nav("admin")}><i>⛬</i> Floor</button>
+              <button className={route === "admin" ? "on" : ""} aria-current={route === "admin" ? "page" : undefined} onClick={() => nav("admin")}><i>⛬</i> Floor</button>
             </>)}
             <div className="mono sidelabel">STUDIO</div>
-            <button className={route === "account" ? "on" : ""} onClick={() => nav("account")}><i>✦</i> Account</button>
+            <button className={route === "account" ? "on" : ""} aria-current={route === "account" ? "page" : undefined} onClick={() => nav("account")}><i>✦</i> Account</button>
           </nav>
           <div className="sideuser">
             <div className="mono" style={{ textTransform: "none", letterSpacing: ".04em", overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
@@ -151,6 +151,7 @@ export default function App() {
               ? <span className="mono edgetag"><i className="edgedot ok" />{edge.ms}MS</span>
               : <span className="mono edgetag"><i className="edgedot bad" />OFFLINE</span>)}
             <span className="kbdhint mono" title="Command palette">⌘K</span>
+            <button className="mono headout" onClick={() => { signOut(); nav(""); }} aria-label="Sign out">SIGN OUT</button>
           </header>
           <div className="cinemarq" aria-hidden="true"><div className="cinemarq-t">
             <span>NOW CASTING</span><span>✦</span><span className="r">YOUR COLORS, YOUR LIGHTING</span><span>✦</span>
