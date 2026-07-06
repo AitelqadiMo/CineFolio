@@ -38,6 +38,7 @@ export default function CmdK({ nav, admin }) {
     const base = [
       { k: "nav", label: "My Films", hint: "G then F", run: () => nav("dashboard") },
       { k: "nav", label: "New Film · roll camera", hint: "G then N", run: () => nav("studio") },
+      { k: "nav", label: "My Profile · the dossier", run: () => nav("profile") },
       { k: "nav", label: "Account settings", run: () => nav("account") },
       ...(admin ? [{ k: "nav", label: "Production floor (admin)", run: () => nav("admin") }] : []),
       ...sites.map((s) => ({ k: "site", label: `Watch live · ${s.title}`, hint: s.slug, run: () => window.open(s.previewUrl, "_blank", "noopener") })),
