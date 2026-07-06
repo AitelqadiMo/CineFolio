@@ -5,6 +5,7 @@
 // run through branded dialogs; no native prompts anywhere.
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
+import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly, confetti, Dialog, ConfirmDialog, PromptDialog, slugProblem } from "../ui.jsx";
 import { ledger } from "../orders.js";
@@ -124,6 +125,7 @@ export default function Dashboard() {
           </p>
           <div className="btnrow" style={{ marginTop: 12 }}>
             <button className="btn primary" onClick={() => setPremiereCut(delivery)}>Premiere this cut</button>
+            <a className="btn ghost" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(delivery.orderId)}`} target="_blank" rel="noopener noreferrer" title="Preview the delivered cut; case-study pages activate at premiere">Watch the cut</a>
             <button className="btn ghost" onClick={() => { ledger.acknowledge(delivery.orderId); setDelivery(null); }}>Later</button>
           </div>
         </div>
@@ -255,6 +257,10 @@ export default function Dashboard() {
         {premiereCut && (
           <>
             <div className="dlgtext">Choose where this cut premieres. Onto an existing film it becomes the next release, and rolling back is one click if you change your mind.</div>
+            <div className="btnrow" style={{ marginTop: 10 }}>
+              <a className="btn ghost ordbtn" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(premiereCut.orderId)}`} target="_blank" rel="noopener noreferrer">Watch the cut first ↗</a>
+              <span className="mono finehint" style={{ alignSelf: "center", marginTop: 0 }}>case-study pages activate at premiere</span>
+            </div>
             {(sites || []).map((s) => (
               <div key={s.siteId} className="orderrow">
                 <div>
