@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import Studio from "./pages/Studio.jsx";
 import Admin from "./pages/Admin.jsx";
 import Account from "./pages/Account.jsx";
+import Profile from "./pages/Profile.jsx";
 import CmdK from "./CmdK.jsx";
 import { api } from "./api.js";
 import { ledger } from "./orders.js";
@@ -14,7 +15,7 @@ import { ledger } from "./orders.js";
 export const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
-const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account };
+const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account, profile: Profile };
 
 // A page crash must never white-screen the console: kill the lights, not the set.
 class SetBoundary extends Component {
@@ -44,6 +45,7 @@ export default function App() {
   const [route, setRoute] = useState(path());
   const [edge, setEdge] = useState(null); // { ms } ambient status, platform-style
   const [prod, setProd] = useState(null); // global director's-cut tracking (survives navigation)
+  const [credits, setCredits] = useState(() => ledger.credits());
 
   useEffect(() => {
     restore().finally(() => setBooting(false));
@@ -87,6 +89,8 @@ export default function App() {
     return () => { alive = false; clearInterval(t); };
   }, [user]);
 
+  useEffect(() => { setCredits(ledger.credits()); }, [route, prod]);
+
   const nav = (to) => {
     history.pushState({}, "", `/${to}`);
     setRoute(to);
@@ -114,6 +118,7 @@ export default function App() {
             <div className="mono sidelabel">PRODUCTION</div>
             <button className={route === "dashboard" || route === "" ? "on" : ""} aria-current={route === "dashboard" || route === "" ? "page" : undefined} onClick={() => nav("dashboard")}><i>▦</i> My Films</button>
             <button className={route === "studio" ? "on" : ""} aria-current={route === "studio" ? "page" : undefined} onClick={() => nav("studio")}><i>◉</i> The Set</button>
+            <button className={route === "profile" ? "on" : ""} aria-current={route === "profile" ? "page" : undefined} onClick={() => nav("profile")}><i>▣</i> My Profile</button>
             {user.admin && (<>
               <div className="mono sidelabel">OPERATIONS</div>
               <button className={route === "admin" ? "on" : ""} aria-current={route === "admin" ? "page" : undefined} onClick={() => nav("admin")}><i>⛬</i> Floor</button>
@@ -129,13 +134,18 @@ export default function App() {
         </aside>
         <div className="shellmain">
           <header className="shellhead">
-            <span className="mono crumb">{route === "studio" ? "THE SET" : route === "admin" ? "PRODUCTION FLOOR" : route === "account" ? "ACCOUNT" : "MY FILMS"}</span>
+            <span className="mono crumb">{route === "studio" ? "THE SET" : route === "admin" ? "PRODUCTION FLOOR" : route === "account" ? "ACCOUNT" : route === "profile" ? "THE DOSSIER" : "MY FILMS"}</span>
             <span style={{ flex: 1 }} />
             {prod && (
               <button className={`prodchip mono ${prod.status}`} onClick={() => nav(prod.status === "ready" ? "dashboard" : "account")} title="Director's cut order status">
                 {prod.status === "ready" ? "🎬 CUT READY" :
                  ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" :
                  <><i className="recdot" />{prod.status === "filming" ? "CAMERAS ROLLING" : "IN THE QUEUE"}</>}
+              </button>
+            )}
+            {credits.cuts > 0 && (
+              <button className="mono credchip" onClick={() => nav("account")} title="Studio credits">
+                ◈ {credits.revisions} REVISION{credits.revisions === 1 ? "" : "S"} LEFT
               </button>
             )}
             <span className="mono envbadge">{CONFIG.env.toUpperCase()}</span>
