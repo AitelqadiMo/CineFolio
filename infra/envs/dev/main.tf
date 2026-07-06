@@ -73,6 +73,18 @@ module "identity" {
   tags          = local.tags
 }
 
+# Transactional email sender: empty until an SES identity is verified in the
+# account (then set to something like studio@cinefolio.site, or a verified
+# personal address while SES is sandboxed).
+variable "ses_from" {
+  type    = string
+  default = ""
+}
+variable "app_origin" {
+  type    = string
+  default = "https://d2f6618tf0eldv.cloudfront.net"
+}
+
 module "api" {
   source               = "../../modules/api"
   name_prefix          = local.name_prefix
@@ -91,6 +103,8 @@ module "api" {
   distribution_id      = module.hosting.distribution_id
   cdn_domain           = module.hosting.distribution_domain
   cors_allowed_origins = var.api_cors_origins # "*" in dev: app CF domain is minted after first apply. Pin in prod.
+  ses_from             = var.ses_from
+  app_origin           = var.app_origin
   tags                 = local.tags
 }
 
@@ -121,6 +135,8 @@ module "pipeline" {
   kms_key_arn     = module.kms.key_arn
   api_domain      = trimsuffix(trimprefix(module.api.api_endpoint, "https://"), "/")
   alarm_topic_arn = module.observability.alarms_topic_arn
+  ses_from        = var.ses_from
+  app_origin      = var.app_origin
   tags            = local.tags
 }
 

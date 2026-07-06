@@ -165,7 +165,9 @@ test("sites: create -> publish n1 (kvs flip) -> publish n2 -> rollback -> takedo
   assert.equal(p1.body.release, 1);
   assert.equal(p1.body.pointer, "kvs");
   assert.deepEqual(ctx.kvs.puts.at(-1), ["nadia-benali", `${id}/releases/1`]);
-  assert.equal(ctx.s3._store.get(`pub/sites/${id}/releases/1/index.html`), doc);
+  const stored1 = ctx.s3._store.get(`pub/sites/${id}/releases/1/index.html`);
+  assert.ok(stored1.startsWith("<!doctype html"), "release stored");
+  assert.match(stored1, /data-cf-beacon/); // every release carries the audience beacon
 
   const p2 = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id }, body: { html: doc.replace("v1", "v2") } })));
   assert.equal(p2.body.release, 2);
@@ -316,7 +318,7 @@ test("w2: staged publish previews without flipping, go-live flips, duplicate cop
   assert.equal(dup.body.site.audienceOf, id);
   assert.equal(dup.body.site.liveRelease, 1);
   const nid = dup.body.site.siteId;
-  assert.equal(ctx.s3._store.get(`pub/sites/${nid}/releases/1/index.html`), "<!doctype html><html>v2</html>");
+  assert.match(ctx.s3._store.get(`pub/sites/${nid}/releases/1/index.html`), /^<!doctype html><html>v2<\/html>/);
   // slug conflict on second duplicate with same slug
   assert.equal(parse(await h(ev("POST /sites/{id}/duplicate", { claims: "u1", path: { id }, body: { slug: "stage-site-ux" } }))).code, 409);
 
@@ -333,4 +335,94 @@ test("w2: staged publish previews without flipping, go-live flips, duplicate cop
   const got = parse(await h(ev("GET /draft", { claims: "u1" })));
   assert.equal(got.body.draft.q.name, "Nadia");
   assert.equal(got.body.draft.tpl, "editorial");
+});
+
+// ---------- ZWIN pass 04: buyer backend ----------
+
+test("orders: buyer sees own orders; revision spends the single credit and requeues", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/generate", { claims: "u1", body: { email: "u1@x.io", name: "Dora Szabo", role: "designer", cvText: "2022 Accounts at Acme" } })));
+  const orderId = gen.body.orderId;
+
+  // the buyer sees it; a stranger does not
+  const mine = parse(await h(ev("GET /orders", { claims: "u1" })));
+  assert.equal(mine.code, 200);
+  assert.equal(mine.body.orders.length, 1);
+  assert.equal(mine.body.orders[0].orderId, orderId);
+  assert.equal(mine.body.orders[0].price, 149);
+  assert.equal(parse(await h(ev("GET /orders", { claims: "u2" }))).body.orders.length, 0);
+
+  // not revisable before delivery
+  assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "warmer light" } }))).code, 409);
+
+  // deliver it, then a stranger still cannot touch it
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  meta.status = "ready";
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, meta);
+  assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u2", path: { id: orderId }, body: { notes: "steal it" } }))).code, 403);
+
+  // notes required
+  assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "" } }))).code, 400);
+
+  // happy path: one credit, order re-enters the queue with notes riding on it
+  const sentBefore = ctx.queue.sent.length;
+  const rev = parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "warmer light, bolder hero" } })));
+  assert.equal(rev.code, 200);
+  assert.equal(rev.body.status, "queued");
+  assert.equal(ctx.queue.sent.length, sentBefore + 1);
+  const after = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  assert.equal(after.revisionRequested, true);
+  assert.match(after.revisionNotes, /warmer light/);
+
+  // the credit is spent, even after the revised cut delivers
+  after.status = "ready";
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, after);
+  assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "again please" } }))).code, 409);
+});
+
+test("stats: sums the film's daily hit counters for the owner only", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "dora", title: "Dora" } }))).body.site;
+  await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { html: "<!doctype html><html><body>x</body></html>" } }));
+
+  // two views today through the public beacon route, one seeded three days ago
+  await h(ev("POST /hit", { body: { page: "s/dora" } }));
+  await h(ev("POST /hit", { body: { page: "s/dora" } }));
+  const d3 = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+  ctx.ddb._store.set(`HIT#${d3}|s/dora`, { PK: `HIT#${d3}`, SK: "s/dora", count: 5 });
+
+  const st = parse(await h(ev("GET /sites/{id}/stats", { claims: "u1", path: { id: site.siteId } })));
+  assert.equal(st.code, 200);
+  assert.equal(st.body.views, 7);
+  assert.equal(st.body.week, 7);
+  assert.equal(st.body.daily.length, 30);
+  assert.equal(parse(await h(ev("GET /sites/{id}/stats", { claims: "intruder", path: { id: site.siteId } }))).code, 403);
+});
+
+test("domain: validates, records intent, and surfaces it on the site", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "tomas", title: "Tomas" } }))).body.site;
+  assert.equal(parse(await h(ev("POST /sites/{id}/domain", { claims: "u1", path: { id: site.siteId }, body: { domain: "not a domain" } }))).code, 400);
+  const okd = parse(await h(ev("POST /sites/{id}/domain", { claims: "u1", path: { id: site.siteId }, body: { domain: "Tomas.Design" } })));
+  assert.equal(okd.code, 200);
+  assert.equal(okd.body.domain, "tomas.design");
+  assert.equal(okd.body.domainStatus, "pending_dns");
+  assert.equal(okd.body.target, "cdn.test");
+  const got = parse(await h(ev("GET /sites/{id}", { claims: "u1", path: { id: site.siteId } })));
+  assert.equal(got.body.site.customDomain, "tomas.design");
+  assert.equal(got.body.site.domainStatus, "pending_dns");
+});
+
+test("publish injects the audience beacon before the closing body tag", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "lena", title: "Lena" } }))).body.site;
+  await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { html: "<!doctype html><html><body>film</body></html>" } }));
+  const stored = ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/index.html`);
+  assert.match(stored, /data-cf-beacon/);
+  assert.match(stored, /s\/lena/);
+  assert.ok(stored.indexOf("data-cf-beacon") < stored.indexOf("</body>"), "beacon sits inside body");
 });

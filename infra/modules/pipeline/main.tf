@@ -13,6 +13,14 @@ variable "api_domain" {
   description = "API host (no scheme) the agent calls back, e.g. 81ik4yem44.execute-api.eu-central-1.amazonaws.com"
 }
 variable "alarm_topic_arn" { type = string }
+variable "ses_from" {
+  type    = string
+  default = ""
+}
+variable "app_origin" {
+  type    = string
+  default = ""
+}
 variable "log_retention_days" {
   type    = number
   default = 14
@@ -94,6 +102,11 @@ data "aws_iam_policy_document" "worker" {
     resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}*"]
   }
   statement {
+    sid       = "Email"
+    actions   = ["ses:SendEmail"]
+    resources = ["*"]
+  }
+  statement {
     sid       = "Page"
     actions   = ["sns:Publish"]
     resources = [var.alarm_topic_arn]
@@ -133,6 +146,8 @@ resource "aws_lambda_function" "worker" {
       SSM_PREFIX      = local.ssm_prefix
       API_DOMAIN      = var.api_domain
       ALARM_TOPIC_ARN = var.alarm_topic_arn
+      SES_FROM        = var.ses_from
+      APP_ORIGIN      = var.app_origin
     }
   }
   depends_on = [aws_cloudwatch_log_group.worker]

@@ -5,6 +5,8 @@
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
 import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify } from "./lib.mjs";
 
+const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
+
 const relSK = (n) => `RELEASE#${String(n).padStart(5, "0")}`;
 
 async function ownedSite(ctx, siteId, claims) {
@@ -85,6 +87,7 @@ export async function publish(event, ctx) {
   }
   if (!html || !html.trimStart().toLowerCase().startsWith("<!doctype html")) return bad("html document required");
   if (Buffer.byteLength(html, "utf8") > 2 * 1024 * 1024) return bad("bundle too large", 413);
+  html = withBeacon(html, apiBaseOf(event, ctx), site.slug); // every release carries the audience beacon
 
   const n = (site.releases || 0) + 1;
   const releasePrefix = `sites/${site.siteId}/releases/${n}`;
@@ -203,6 +206,52 @@ async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix) {
   }
 }
 
+// GET /sites/{id}/stats — the film's audience, read from the daily hit counters
+export async function stats(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  const days = 30;
+  const keys = [...Array(days)].map((_, i) => new Date(Date.now() - i * 86400000).toISOString().slice(0, 10));
+  const rows = await Promise.all(keys.map((d) => ctx.ddb.get({ PK: `HIT#${d}`, SK: `s/${site.slug}` })));
+  const daily = keys.map((date, i) => ({ date, count: rows[i]?.count || 0 })).reverse();
+  const views = daily.reduce((a, x) => a + x.count, 0);
+  const week = daily.slice(-7).reduce((a, x) => a + x.count, 0);
+  return ok({ ok: true, siteId: site.siteId, slug: site.slug, views, week, daily });
+}
+
+// POST /sites/{id}/domain { domain } — records domain intent; DNS guidance is
+// client-side and the TLS handshake finishes operator-side (dev scope).
+export async function connectDomain(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  const b = bodyOf(event);
+  if (!b) return bad("invalid json");
+  const domain = String(b.domain || "").trim().toLowerCase();
+  if (!DOMAIN_RE.test(domain) || domain.length > 253) return bad("valid domain required (like yourname.com)");
+  await ctx.ddb.update({
+    Key: { PK: site.PK, SK: "META" },
+    UpdateExpression: "SET customDomain = :d, domainStatus = :s, domainRequestedAt = :t, updatedAt = :t",
+    ExpressionAttributeValues: { ":d": domain, ":s": "pending_dns", ":t": now() },
+    ConditionExpression: "attribute_exists(PK)",
+  });
+  return ok({ ok: true, siteId: site.siteId, domain, domainStatus: "pending_dns", target: ctx.config.cdnDomain });
+}
+
+// the audience beacon: one POST /hit per view, keyed s/{slug}, injected into
+// every published release so free takes and director's cuts count alike.
+// The API base comes from the live request (no config cycle), env as fallback.
+const apiBaseOf = (event, ctx) => {
+  const d = event?.requestContext?.domainName;
+  return d ? `https://${d}` : ctx.config.apiBase || "";
+};
+function withBeacon(html, base, slug) {
+  if (!base || html.includes("data-cf-beacon")) return html;
+  const s = `<script data-cf-beacon>try{fetch("${base}/hit",{method:"POST",mode:"cors",keepalive:!0,headers:{"content-type":"application/json"},body:JSON.stringify({page:"s/${slug}"})})}catch(e){}</script>`;
+  return html.includes("</body>") ? html.replace("</body>", `${s}</body>`) : html + s;
+}
+
 const previewUrl = (ctx, slug) => `https://${ctx.config.cdnDomain}/_preview/${slug}/`;
 const stagedUrl = (ctx, siteId, n) => `https://${ctx.config.cdnDomain}/_r/${siteId}/${n}/`;
 
@@ -210,6 +259,7 @@ const pub = (s, ctx) => ({
   siteId: s.siteId, slug: s.slug, title: s.title, status: s.status,
   releases: s.releases, liveRelease: s.liveRelease, stagedRelease: s.stagedRelease ?? null,
   audienceOf: s.audienceOf || null, pointerMode: s.pointerMode,
+  customDomain: s.customDomain || null, domainStatus: s.domainStatus || null,
   createdAt: s.createdAt, publishedAt: s.publishedAt,
   previewUrl: previewUrl(ctx, s.slug),
   ...(s.stagedRelease ? { stagedUrl: stagedUrl(ctx, s.siteId, s.stagedRelease) } : {}),
@@ -245,7 +295,7 @@ export async function duplicate(event, ctx) {
   const flip = await flipPointer(ctx, slug, `${newId}/releases/1`, slug);
   const newSite = {
     PK: `SITE#${newId}`, SK: "META", type: "site", siteId: newId, slug,
-    title: clampStr(b.title, 120) || `${site.title} — Cut`, owner: claims.sub,
+    title: clampStr(b.title, 120) || `${site.title} Cut`, owner: claims.sub,
     audienceOf: site.siteId, status: "live", releases: 1, liveRelease: 1,
     pointerMode: flip.mode, createdAt: now(), publishedAt: now(), updatedAt: now(),
     GSI1PK: `USER#${claims.sub}`, GSI1SK: `SITE#${now()}`,
