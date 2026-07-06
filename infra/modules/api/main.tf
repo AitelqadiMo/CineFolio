@@ -71,6 +71,7 @@ locals {
     "POST /sites/{id}/rollback"     = true
     "POST /sites/{id}/duplicate"    = true
     "POST /sites/{id}/domain"       = true
+    "POST /sites/{id}/delete"       = true
     "DELETE /sites/{id}"            = true
     "GET /orders"                   = true
     "POST /orders/{id}/revision"    = true
