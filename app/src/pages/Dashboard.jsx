@@ -1,4 +1,4 @@
-// Dashboard v2 — "My Films" as a studio floor: hero metrics, live poster
+// Dashboard v2: "My Films" as a studio floor. Hero metrics, live poster
 // previews (scaled sandboxed iframes of the real releases), film-strip release
 // timelines with rollback-to-frame, source export, takedown.
 import { useEffect, useState } from "react";
@@ -56,9 +56,9 @@ export default function Dashboard() {
       </div>
 
       <div className="metrics">
-        <div className="metric"><b>{sites ? sites.length : "–"}</b><span>Films in the vault</span></div>
-        <div className="metric"><b>{sites ? releases : "–"}</b><span>Releases cut</span></div>
-        <div className="metric"><b>{sites ? live : "–"}</b><span>Now screening</span></div>
+        <div className="metric"><b>{sites ? sites.length : "···"}</b><span>Films in the vault</span></div>
+        <div className="metric"><b>{sites ? releases : "···"}</b><span>Releases cut</span></div>
+        <div className="metric"><b>{sites ? live : "···"}</b><span>Now screening</span></div>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
@@ -66,7 +66,7 @@ export default function Dashboard() {
 
       {sites?.length === 0 && (
         <div className="panel glass" style={{ textAlign: "center", padding: 52 }}>
-          <div className="mono" style={{ marginBottom: 10 }}>NOTHING IN PRODUCTION — THE FLOOR IS QUIET</div>
+          <div className="mono" style={{ marginBottom: 10 }}>NOTHING IN PRODUCTION · THE FLOOR IS QUIET</div>
           <h2 style={{ marginBottom: 18 }}>Your first film awaits, {user.email.split("@")[0]}.</h2>
           <button className="btn primary" onClick={() => nav("studio")}>Roll camera on film one</button>
         </div>
@@ -77,7 +77,7 @@ export default function Dashboard() {
           <div key={s.siteId} className="panel sitecard">
             {s.status === "live" && (
               <div className="poster">
-                <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} />
+                <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} aria-hidden="true" />
                 <div className="veil" />
               </div>
             )}
@@ -86,7 +86,7 @@ export default function Dashboard() {
               <span className={`badge ${s.status}`}>{s.status.replace("_", " ")}</span>
             </div>
             <div className="mono" style={{ textTransform: "none", letterSpacing: ".06em" }}>
-              {s.slug} · release {s.liveRelease ?? "—"}/{s.releases}{s.pointerMode ? ` · ${s.pointerMode}` : ""}
+              {s.slug} · release {s.liveRelease ?? "·"}/{s.releases}{s.pointerMode ? ` · ${s.pointerMode}` : ""}
             </div>
             <div className="btnrow" style={{ marginTop: 8 }}>
               {s.status === "live" && (
@@ -97,7 +97,7 @@ export default function Dashboard() {
               </button>
               {s.liveRelease && s.status === "live" && (
                 <button className="btn ghost" disabled={busyId === s.siteId}
-                  onClick={() => { const slug = window.prompt("Slug for the new cut (e.g. nadia-ux):", `${s.slug}-cut`); if (slug) act(s.siteId, () => api.duplicate(s.siteId, { slug, title: `${s.title} — Cut` })); }}>
+                  onClick={() => { const slug = window.prompt("Slug for the new cut (e.g. nadia-ux):", `${s.slug}-cut`); if (slug) act(s.siteId, () => api.duplicate(s.siteId, { slug, title: `${s.title} Cut` })); }}>
                   Duplicate
                 </button>
               )}
@@ -123,7 +123,7 @@ export default function Dashboard() {
               <div className="filmstrip">
                 {open.releases.map((r) => (
                   <div key={r.n} className={`frame ${open.site.liveRelease === r.n ? "live" : ""}`}>
-                    <div className="n">#{r.n}{open.site.liveRelease === r.n && <span className="badge live" style={{ marginLeft: 6, fontSize: 8 }}>LIVE</span>}{open.site.stagedRelease === r.n && <span className="badge draft" style={{ marginLeft: 6, fontSize: 8 }}>STAGED</span>}</div>
+                    <div className="n">#{r.n}{open.site.liveRelease === r.n && <span className="badge live mini" style={{ marginLeft: 6 }}>LIVE</span>}{open.site.stagedRelease === r.n && <span className="badge draft mini" style={{ marginLeft: 6 }}>STAGED</span>}</div>
                     <div className="d">{(r.createdAt || "").slice(5, 16).replace("T", " ")}</div>
                     <div className="acts">
                       {open.site.liveRelease !== r.n && (open.site.status === "live" || open.site.stagedRelease === r.n) && (
