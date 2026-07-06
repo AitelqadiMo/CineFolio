@@ -166,6 +166,19 @@ export default function Account() {
                     <li>Your film stays yours: export any time</li>
                   </> : <li>The Director's Cut ($149, one time) adds a bespoke AI film pass with one revision included</li>}
                 </ul>
+                {(() => {
+                  const paid = orders.filter((o) => o.production && o.status !== "preview_only");
+                  const revLeft = paid.filter((o) => o.status === "ready" && !o.revisionRequested).length;
+                  if (!paid.length) return null;
+                  return (
+                    <div style={{ marginTop: 16 }}>
+                      <div className="mono" style={{ fontSize: 9 }}>STUDIO CREDITS · {paid.length} CUT{paid.length === 1 ? "" : "S"} OWNED · {revLeft} REVISION{revLeft === 1 ? "" : "S"} AVAILABLE</div>
+                      <div style={{ height: 6, borderRadius: 3, background: "rgba(14,28,63,.12)", marginTop: 7, overflow: "hidden" }} aria-hidden="true">
+                        <div style={{ width: `${Math.round((revLeft / paid.length) * 100)}%`, height: "100%", background: "linear-gradient(90deg,#C8102E,#D9A441,#0E9E62)" }} />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </section>
 
