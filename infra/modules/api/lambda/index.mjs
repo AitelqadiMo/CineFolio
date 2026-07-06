@@ -14,6 +14,8 @@ export const ROUTES = {
   "POST /media": misc.mediaUpload,
   "GET /draft": misc.getDraft,
   "PUT /draft": misc.putDraft,
+  "GET /profile": misc.getProfile,
+  "PUT /profile": misc.putProfile,
   "POST /waitlist": misc.joinWaitlist,
   "GET /waitlist/count": misc.waitlistCount,
   "POST /contact": misc.contact,
