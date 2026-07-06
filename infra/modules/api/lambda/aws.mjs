@@ -72,6 +72,19 @@ export const kvs = {
   },
 };
 
+// ---- SES v2 (transactional email; dynamic import keeps cold starts lean)
+export const ses = {
+  async send(from, to, subject, html) {
+    const { SESv2Client, SendEmailCommand } = await import("@aws-sdk/client-sesv2");
+    const c = new SESv2Client({ region });
+    await c.send(new SendEmailCommand({
+      FromEmailAddress: from,
+      Destination: { ToAddresses: [to] },
+      Content: { Simple: { Subject: { Data: subject }, Body: { Html: { Data: html } } } },
+    }));
+  },
+};
+
 // ---- Step Functions task-token resume (callback -> pipeline)
 export const sfn = {
   async sendTaskSuccess(taskToken, output) {
