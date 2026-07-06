@@ -1,15 +1,18 @@
-// engine.js — CineFolio's deterministic portfolio engine. No LLM anywhere:
+// engine.js · CineFolio's deterministic portfolio engine. No LLM anywhere:
 // a parsed profile + a hand-built template + a palette = a finished site, in
 // milliseconds, every time. The AI film pipeline is the premium layer ABOVE this.
 // Compiled client-side for instant preview; published through the normal
 // immutable-release pipeline, so the server never needs to run this code.
+// compile() emits one self-contained page (inline case-study expanders, used by
+// the Studio live preview). compileBundle() emits a multi-page site: an index
+// whose case-study cards link out, plus one standalone page per case study.
 
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export const SKILL_BANK = ["aws","azure","gcp","kubernetes","docker","terraform","terragrunt","ansible","jenkins","github actions","gitlab","ci/cd","python","javascript","typescript","react","node","java","go","rust","sql","figma","photoshop","illustrator","after effects","premiere","blender","ui","ux","product design","branding","marketing","seo","sales","copywriting","analytics","excel","notion","prometheus","grafana","linux","agile","scrum","machine learning","ai","data","mongodb","postgres","redis","graphql","next.js","vue","angular","swift","kotlin","flutter","devops","sre","security","photography","film","editing","helm","spark","tableau","salesforce"];
 
 const SECTION_RE = /^(experience|work experience|employment|professional experience|education|skills|technical skills|projects|selected projects|languages|certifications?|awards|summary|profile|about)\s*:?\s*$/i;
-const PERIOD_RE = /((19|20)\d{2})\s*(?:[-–—]|to)\s*((19|20)\d{2}|present|now|current|ongoing)/i;
+const PERIOD_RE = /((19|20)\d{2})\s*(?:[-\u2013\u2014]|to)\s*((19|20)\d{2}|present|now|current|ongoing)/i;
 
 // ---------- resume text -> structured profile ----------
 export function parseProfile(text, overrides = {}) {
@@ -22,7 +25,7 @@ export function parseProfile(text, overrides = {}) {
   const links = {
     github: (raw.match(/github\.com\/[\w.-]+/i) || [""])[0],
     linkedin: (raw.match(/linkedin\.com\/in\/[\w.-]+/i) || [""])[0],
-    // NOTE: no lookbehind — Safari < 16.4 throws SyntaxError at parse time and
+    // NOTE: no lookbehind. Safari < 16.4 throws SyntaxError at parse time and
     // takes the whole bundle down. Group-match with a leading boundary instead.
     website: (raw.match(/\bhttps?:\/\/(?!\S*(github|linkedin))[\w.-]+\.[a-z]{2,}\S*/i) || [""])[0] ||
              ((raw.match(/(^|[\s|,;(])([\w-]+\.(dev|me|site|design|studio))\b/im) || [])[2] || ""),
@@ -56,7 +59,7 @@ export function parseProfile(text, overrides = {}) {
     (sections.summary || [])[0]?.slice(0, 90) || "Professional";
 
   // skills: explicit section + bank scan
-  const sectionSkills = (sections.skills || []).join(" ").split(/[,•|·/]+/).map((s) => s.trim().replace(/^[-–—:]\s*/, "")).filter((s) => s && s.length < 28 && !/^skills?$/i.test(s));
+  const sectionSkills = (sections.skills || []).join(" ").split(/[,•|·/]+/).map((s) => s.trim().replace(/^[-\u2013\u2014:]\s*/, "")).filter((s) => s && s.length < 28 && !/^skills?$/i.test(s));
   const bankSkills = SKILL_BANK.filter((s) => lower.includes(s));
   const skills = [...new Set([...sectionSkills, ...bankSkills.map(cap)])].slice(0, 14);
 
@@ -69,7 +72,7 @@ export function parseProfile(text, overrides = {}) {
       if (entry) experience.push(entry);
       const rest = l.replace(PERIOD_RE, "").replace(/^[\s,|·@-]+|[\s,|·-]+$/g, "");
       entry = { period: pm[0].replace(/\s+/g, " "), title: rest.slice(0, 90) || "Role", org: "", points: [] };
-      const at = rest.match(/^(.*?)\s+(?:at|@|,|·|\||—|-)\s+(.{2,60})$/i);
+      const at = rest.match(/^(.*?)\s+(?:at|@|,|·|\||\u2014|-)\s+(.{2,60})$/i);
       if (at) { entry.title = at[1].trim(); entry.org = at[2].trim(); }
     } else if (entry) {
       const b = l.replace(/^[-•*▪◦→]\s*/, "");
@@ -110,14 +113,52 @@ const initialsAvatar = (name, bg, fg) => {
   );
 };
 const linkRow = (p, color) => {
+  const links = p.links || {};
   const L = [];
-  if (p.links.github) L.push(`<a href="https://${p.links.github.replace(/^https?:\/\//, "")}" target="_blank" rel="noopener noreferrer">GitHub</a>`);
-  if (p.links.linkedin) L.push(`<a href="https://${p.links.linkedin.replace(/^https?:\/\//, "")}" target="_blank" rel="noopener noreferrer">LinkedIn</a>`);
-  if (p.links.website) L.push(`<a href="${/^http/.test(p.links.website) ? p.links.website : "https://" + p.links.website}" target="_blank" rel="noopener noreferrer">Website</a>`);
+  if (links.github) L.push(`<a href="https://${links.github.replace(/^https?:\/\//, "")}" target="_blank" rel="noopener noreferrer">GitHub</a>`);
+  if (links.linkedin) L.push(`<a href="https://${links.linkedin.replace(/^https?:\/\//, "")}" target="_blank" rel="noopener noreferrer">LinkedIn</a>`);
+  if (links.website) L.push(`<a href="${/^http/.test(links.website) ? links.website : "https://" + links.website}" target="_blank" rel="noopener noreferrer">Website</a>`);
   if (p.email) L.push(`<a href="mailto:${esc(p.email)}">Email</a>`);
   return L.join(`<span style="opacity:.4;color:${color}"> / </span>`);
 };
 const CREDIT = `<div style="text-align:center;padding:26px;font-family:monospace;font-size:9px;letter-spacing:.25em;opacity:.55;text-transform:uppercase"><a href="https://cine-folio.vercel.app/?ref=film-badge" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">◈ Cut with CineFolio Studios · Get this look</a></div>`;
+
+// ---------- normalizers: richer optional fields, both new and legacy shapes ----------
+// experience may arrive as parsed {period,title,org,points}, structured
+// {role,company,start,end,highlights[]}, or legacy expLines strings. Fold every
+// form into the internal {period,title,org,points} the templates already draw.
+const normExperience = (p) => {
+  const src = Array.isArray(p.experience) && p.experience.length ? p.experience
+    : Array.isArray(p.expLines) && p.expLines.length ? p.expLines : [];
+  return src.map((x) => {
+    if (typeof x === "string") return { period: "", title: x, org: "", points: [] };
+    if (x && (x.role || x.company || x.start || x.end || Array.isArray(x.highlights))) {
+      const period = [x.start, x.end].filter(Boolean).join(" · ");
+      return { period, title: x.role || x.title || "Role", org: x.company || x.org || "", points: Array.isArray(x.highlights) ? x.highlights.slice(0, 6) : (x.points || []) };
+    }
+    return { period: x.period || "", title: x.title || "Role", org: x.org || "", points: Array.isArray(x.points) ? x.points : [] };
+  });
+};
+const hasCerts = (p) => Array.isArray(p.certifications) && p.certifications.length;
+const hasEduObjs = (p) => Array.isArray(p.education) && p.education.some((e) => e && typeof e === "object");
+const hasLangObjs = (p) => Array.isArray(p.languages) && p.languages.some((l) => l && typeof l === "object");
+const eduLabel = (e) => typeof e === "string" ? e : [e.degree, e.school, e.years].filter(Boolean).join(", ");
+const langLabel = (l) => typeof l === "string" ? l : [l.name, l.level].filter(Boolean).join(": ");
+
+// ---------- slugs ----------
+const slugify = (name, seen) => {
+  let base = String(name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!base) base = "project";
+  let slug = base, n = 2;
+  while (seen && seen.has(slug)) { slug = base + "-" + n; n++; }
+  if (seen) seen.add(slug);
+  return slug;
+};
+// build the ordered list of case-study projects (capped at 12) with stable slugs
+const caseStudyList = (projects) => {
+  const seen = new Set();
+  return (projects || []).filter(isCaseStudy).slice(0, 12).map((pr) => ({ pr, slug: slugify(pr.name, seen) }));
+};
 
 // ---------- rich projects / case studies (shared logic, per-template skin) ----------
 const isCaseStudy = (pr) => !!(pr.problem || pr.process || pr.results || pr.role || pr.cover);
@@ -131,14 +172,20 @@ const csBlocks = (pr, cls) => ["problem", "process", "results"]
   .map((k) => `<div class="${cls}"><h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p></div>`)
   .join("");
 
+// caseHref(pr): given a project, return the relative page path when a bundle is
+// being built, or "" for the single-page compile() (inline expanders stay).
+const noHref = () => "";
+
 /* ================================================================
-   TEMPLATE 01 — THE MONOLITH (cinematic dark)
+   TEMPLATE 01 · THE MONOLITH (cinematic dark)
 ================================================================ */
-function monolith(p, pal, sec) {
+function monolith(p, pal, sec, ctx = {}) {
   const [bg, panel, accent, accent2, text] = pal.vars;
+  const caseHref = ctx.caseHref || noHref;
+  const exp = normExperience(p);
   const photo = p.photo || initialsAvatar(p.name, panel, accent2);
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(p.name)} — ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+<title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Serif:ital@1&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -175,6 +222,8 @@ h2:before{content:"";display:inline-block;width:30px;height:3px;background:linea
 .prc:hover{transform:translateY(-5px)}
 .prc b{font-family:'Bricolage Grotesque',sans-serif;font-size:1.05rem}
 .prc p{color:${text}aa;font-size:.9rem;margin-top:7px}
+.prc a.more{display:inline-block;margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66}
+.prc.link{cursor:pointer}
 footer{text-align:center;padding:10vh 6vw 4vh}
 footer .big{font-family:'Instrument Serif',serif;font-style:italic;font-size:clamp(1.6rem,4.5vw,2.8rem)}
 footer .links{margin-top:20px}
@@ -196,6 +245,13 @@ footer .links{margin-top:20px}
 .tst{border-left:3px solid ${accent2};padding:6px 0 6px 22px;margin-bottom:22px}
 .tst p{font-family:'Instrument Serif',serif;font-style:italic;font-size:1.25rem;line-height:1.55}
 .tst span{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;color:${text}99;text-transform:uppercase}
+.rr{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.rr div{border:1px solid ${text}1c;border-radius:14px;padding:18px;background:${panel}}
+.rr b{font-family:'Bricolage Grotesque',sans-serif;font-size:1rem}
+.rr .m{color:${text}99;font-size:.85rem;margin-top:5px}
+.rr a{color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66}
+.lang{display:flex;flex-wrap:wrap;gap:10px}
+.lang span{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;padding:8px 14px;border:1px solid ${text}33;border-radius:99px}
 </style></head><body>
 <header><img class="ph up" src="${photo}" alt="${esc(p.name)}">
 <div class="mono up" style="animation-delay:.1s;margin-bottom:14px">FEATURE PRESENTATION</div>
@@ -205,27 +261,70 @@ footer .links{margin-top:20px}
 <div class="marq" aria-hidden="true"><div>${(p.skills.slice(0, 6).map((s) => esc(s.toUpperCase())).join(" ✦ ") + " ✦ ").repeat(3)}</div></div>
 ${sec.about && p.summary ? `<section><h2>The story</h2><p style="font-size:1.06rem;color:${text}dd;max-width:60ch">${esc(p.summary)}</p></section>` : ""}
 ${sec.skills && p.skills.length ? `<section><h2>The craft</h2><div class="chips">${p.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div></section>` : ""}
-${sec.experience && p.experience.length ? `<section><h2>Selected scenes</h2>${p.experience.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}</section>` : ""}
+${sec.experience && exp.length ? `<section><h2>Selected scenes</h2>${exp.map((x) => `<div class="xp">${x.period ? `<div class="per">${esc(x.period)}</div>` : ""}<h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}</section>` : ""}
 ${sec.projects && p.projects.length ? `<section><h2>Productions</h2>
-${p.projects.filter(isCaseStudy).map((pr, i) => `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}</div></div>`).join("")}
+${p.projects.filter(isCaseStudy).map((pr, i) => { const href = caseHref(pr); return href
+  ? `<div class="cs" id="cs${i}"><div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}<a class="prc-more" style="display:inline-block;margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66" href="${href}">View the full case study →</a></div></div>`
+  : `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}</div></div>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).length ? `<div class="pr">${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="prc"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</div>` : ""}</section>` : ""}
 ${sec.services && (p.services || []).length ? `<section><h2>Services</h2><div class="svc">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</div></section>` : ""}
-${sec.testimonials && (p.testimonials || []).length ? `<section><h2>Word on set</h2>${p.testimonials.map((t) => `<div class="tst"><p>“${esc(t.quote)}”</p><span>— ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
-${sec.education && p.education.length ? `<section><h2>Training</h2><ul style="list-style:none">${p.education.map((e) => `<li style="padding:10px 0;border-bottom:1px solid ${text}18">${esc(e)}</li>`).join("")}</ul></section>` : ""}
+${sec.testimonials && (p.testimonials || []).length ? `<section><h2>Word on set</h2>${p.testimonials.map((t) => `<div class="tst"><p>“${esc(t.quote)}”</p><span>· ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
+${sec.education && (p.education || []).length ? `<section><h2>Training</h2><ul style="list-style:none">${p.education.map((e) => `<li style="padding:10px 0;border-bottom:1px solid ${text}18">${esc(eduLabel(e))}</li>`).join("")}</ul></section>` : ""}
+${sec.certifications !== false && hasCerts(p) ? `<section><h2>Certifications</h2><div class="rr">${p.certifications.map((c) => `<div><b>${esc(c.name)}</b><div class="m">${[c.issuer, c.year].filter(Boolean).map(esc).join(" · ")}</div>${c.url ? `<div style="margin-top:8px"><a href="${/^http/.test(c.url) ? esc(c.url) : "https://" + esc(c.url)}" target="_blank" rel="noopener noreferrer">Credential ↗</a></div>` : ""}</div>`).join("")}</div></section>` : ""}
+${sec.languages !== false && hasLangObjs(p) ? `<section><h2>Languages</h2><div class="lang">${p.languages.map((l) => `<span>${esc(langLabel(l))}</span>`).join("")}</div></section>` : ""}
 ${sec.contact ? `<footer><div class="mono">CLOSING CREDITS</div><div class="big">Let's make something worth watching.</div><div class="links">${linkRow(p, text)}</div></footer>` : ""}
 ${CREDIT}</body></html>`;
 }
 
+// standalone case-study page in the Monolith skin
+function monolithCase(p, pal, pr, nav) {
+  const [bg, panel, accent, accent2, text] = pal.vars;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Serif:ital@1&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
+body{background:${bg};color:${text};font-family:Inter,sans-serif;line-height:1.65;overflow-x:hidden}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.32em;text-transform:uppercase;color:${accent2}}
+.wrap{max-width:920px;margin:0 auto;padding:0 6vw}
+.back{display:inline-block;margin:5vh 0 0;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66}
+.hero{padding:6vh 0 5vh;position:relative}
+.hero:before{content:"";position:absolute;inset:-6vh -6vw auto;height:60vh;background:radial-gradient(55% 60% at 30% 20%,${accent}22,transparent 70%);pointer-events:none}
+h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:clamp(2.2rem,7vw,4.6rem);line-height:1;text-transform:uppercase;letter-spacing:-.02em;position:relative}
+.sum{color:${text}cc;font-size:1.12rem;max-width:60ch;margin-top:16px;position:relative}
+.meta{display:flex;gap:34px;flex-wrap:wrap;margin:26px 0 0;padding:18px 0;border-top:1px solid ${text}1c;border-bottom:1px solid ${text}1c;position:relative}
+.meta span{font-size:.9rem;color:${text}dd}
+.meta b{display:block;font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.24em;color:${accent2};margin-bottom:4px}
+.cover{width:100%;aspect-ratio:21/9;object-fit:cover;border-radius:16px;margin:0 0 2vh;display:block;border:1px solid ${text}1c}
+.blk{padding:6vh 0;border-top:1px solid ${text}14}
+.blk:first-of-type{border-top:0}
+.blk h2{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:clamp(1.4rem,3.4vw,2.1rem);text-transform:uppercase;margin-bottom:18px}
+.blk h2:before{content:"";display:inline-block;width:30px;height:3px;background:linear-gradient(90deg,${accent},${accent2});margin-right:14px;vertical-align:middle;border-radius:2px}
+.blk p{color:${text}dd;font-size:1.06rem;max-width:70ch}
+.next{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:7vh 0 3vh;border-top:1px solid ${text}1c}
+.next a{color:${accent2};text-decoration:none;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;border-bottom:1px solid ${accent2}66}
+</style></head><body>
+<div class="wrap">
+<a class="back" href="../index.html">← Back to the film</a>
+<div class="hero"><div class="mono" style="margin-bottom:14px">CASE STUDY</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</div>
+${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
+${nav ? `<div class="next"><a href="../index.html">← All productions</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
+</div>${CREDIT}</body></html>`;
+}
+
 /* ================================================================
-   TEMPLATE 02 — THE EDITORIAL (light magazine)
+   TEMPLATE 02 · THE EDITORIAL (light magazine)
 ================================================================ */
-function editorial(p, pal, sec) {
+function editorial(p, pal, sec, ctx = {}) {
   const [paper, ink, accent, soft] = pal.vars;
+  const caseHref = ctx.caseHref || noHref;
+  const exp = normExperience(p);
   const photo = p.photo || initialsAvatar(p.name, ink, paper);
   const n = (i) => String(i + 1).padStart(2, "0");
   let ix = 0;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(p.name)} — ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+<title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -254,12 +353,15 @@ h2{font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(1.6rem,3
 .chip{font-size:.95rem;border-bottom:1.5px solid ${accent}66;padding-bottom:2px}
 .pr{padding:16px 0;border-top:1px solid ${ink}22;display:grid;grid-template-columns:1fr 2fr;gap:18px}
 .pr b{font-weight:600}
+.pr a{color:${accent};text-decoration:none;border-bottom:1px solid ${accent}}
 footer{padding:9vh 0;text-align:center}
 footer .big{font-family:'Instrument Serif',serif;font-style:italic;font-size:clamp(1.8rem,4.5vw,3rem)}
 .cs2{padding:26px 0;border-top:1px solid ${ink}22}
 .cs2 img.cover{width:100%;aspect-ratio:21/9;object-fit:cover;border-radius:2px;margin-bottom:18px}
 .cs2 h3{font-family:'Instrument Serif',serif;font-weight:400;font-size:1.6rem}
+.cs2 h3 a{color:inherit;text-decoration:none}
 .cs2 .sum{color:${ink}cc;margin-top:6px;max-width:64ch}
+.cs2 a.more{display:inline-block;margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:${accent};text-decoration:none;border-bottom:1px solid ${accent}}
 .csmeta2{display:flex;gap:26px;flex-wrap:wrap;margin:16px 0;padding:12px 0;border-top:1px solid ${ink}22;border-bottom:1px solid ${ink}22}
 .csmeta2 span{font-size:.88rem}
 .csmeta2 b{display:block;font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.22em;color:${accent};margin-bottom:2px}
@@ -273,33 +375,79 @@ footer .big{font-family:'Instrument Serif',serif;font-style:italic;font-size:cla
 .tst2{padding:18px 0;border-top:1px solid ${ink}22}
 .tst2 p{font-family:'Instrument Serif',serif;font-style:italic;font-size:1.3rem;line-height:1.55}
 .tst2 span{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.2em;color:${soft};text-transform:uppercase}
+.rr2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 30px}
+.rr2 div{border-top:1.5px solid ${ink};padding:14px 0}
+.rr2 b{font-weight:600}
+.rr2 .m{color:${soft};font-size:.88rem;margin-top:4px}
+.rr2 a{color:${accent};text-decoration:none;border-bottom:1px solid ${accent}}
+.lang2{display:flex;flex-wrap:wrap;gap:8px 24px}
+.lang2 span{font-size:.98rem;border-bottom:1.5px solid ${accent}66;padding-bottom:2px}
 @media(max-width:640px){.xp,.pr{grid-template-columns:1fr}}
 </style></head><body><div class="wrap">
-<header><div class="mono">PORTFOLIO · VOL. I — ${new Date().getFullYear()}</div>
+<header><div class="mono">PORTFOLIO · VOL. I · ${new Date().getFullYear()}</div>
 <div class="masth" style="margin-top:22px"><h1>${esc(p.name.split(" ")[0])} <i>${esc(p.name.split(" ").slice(1).join(" "))}</i></h1><img class="ph" src="${photo}" alt="${esc(p.name)}"></div>
 <div class="headrow"><div style="font-weight:600">${esc(p.headline)}</div><div class="mono links">${linkRow(p, ink)}</div></div></header>
 ${sec.about && p.summary ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>In brief</h2></div><p class="lede">${esc(p.summary)}</p></section>` : ""}
-${sec.experience && p.experience.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Experience</h2></div>
-${p.experience.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div></div>`).join("")}</section>` : ""}
+${sec.experience && exp.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Experience</h2></div>
+${exp.map((x) => `<div class="xp"><div class="per">${esc(x.period)}</div><div><h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div></div>`).join("")}</section>` : ""}
 ${sec.skills && p.skills.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Capabilities</h2></div><div class="chips">${p.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div></section>` : ""}
 ${sec.projects && p.projects.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Selected work</h2></div>
-${p.projects.filter(isCaseStudy).map((pr) => `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}</div>`).join("")}
+${p.projects.filter(isCaseStudy).map((pr) => { const href = caseHref(pr); return href
+  ? `<div class="cs2"><h3><a href="${href}">${esc(pr.name)}</a></h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}<a class="more" href="${href}">Read the case study →</a></div>`
+  : `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}</div>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="pr"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</section>` : ""}
 ${sec.services && (p.services || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Services</h2></div><div class="svc2">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</section>` : ""}
-${sec.testimonials && (p.testimonials || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Kind words</h2></div>${p.testimonials.map((t) => `<div class="tst2"><p>“${esc(t.quote)}”</p><span>— ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
-${sec.education && p.education.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Education</h2></div>${p.education.map((e) => `<p style="padding:6px 0">${esc(e)}</p>`).join("")}</section>` : ""}
+${sec.testimonials && (p.testimonials || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Kind words</h2></div>${p.testimonials.map((t) => `<div class="tst2"><p>“${esc(t.quote)}”</p><span>· ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
+${sec.education && (p.education || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Education</h2></div>${p.education.map((e) => `<p style="padding:6px 0">${esc(eduLabel(e))}</p>`).join("")}</section>` : ""}
+${sec.certifications !== false && hasCerts(p) ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Certifications</h2></div><div class="rr2">${p.certifications.map((c) => `<div><b>${esc(c.name)}</b><div class="m">${[c.issuer, c.year].filter(Boolean).map(esc).join(" · ")}</div>${c.url ? `<div style="margin-top:6px"><a href="${/^http/.test(c.url) ? esc(c.url) : "https://" + esc(c.url)}" target="_blank" rel="noopener noreferrer">Credential ↗</a></div>` : ""}</div>`).join("")}</div></section>` : ""}
+${sec.languages !== false && hasLangObjs(p) ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Languages</h2></div><div class="lang2">${p.languages.map((l) => `<span>${esc(langLabel(l))}</span>`).join("")}</div></section>` : ""}
 ${sec.contact ? `<footer><div class="mono">CORRESPONDENCE</div><div class="big">Start the conversation.</div><div class="mono links" style="margin-top:16px">${linkRow(p, ink)}</div></footer>` : ""}
 </div>${CREDIT}</body></html>`;
 }
 
+// standalone case-study page in the Editorial skin
+function editorialCase(p, pal, pr, nav) {
+  const [paper, ink, accent, soft] = pal.vars;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:${paper};color:${ink};font-family:Inter,sans-serif;line-height:1.7}
+.mono{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.3em;text-transform:uppercase;color:${soft}}
+.wrap{max-width:820px;margin:0 auto;padding:0 6vw}
+.back{display:inline-block;margin:6vh 0 0;color:${accent};text-decoration:none;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;border-bottom:1px solid ${accent}}
+header{padding:5vh 0 6vh;border-bottom:2px solid ${ink}}
+h1{font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,7vw,4.6rem);line-height:1.03;margin-top:16px}
+.sum{font-size:1.14rem;max-width:60ch;color:${ink}dd;margin-top:14px}
+.meta{display:flex;gap:34px;flex-wrap:wrap;margin-top:24px;padding-top:18px;border-top:1px solid ${ink}22}
+.meta span{font-size:.9rem}
+.meta b{display:block;font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.22em;color:${accent};margin-bottom:3px}
+.cover{width:100%;aspect-ratio:21/9;object-fit:cover;border-radius:2px;margin:5vh 0 0;display:block;filter:grayscale(10%)}
+.blk{padding:6vh 0;border-bottom:1px solid ${ink}22}
+.blk h2{font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(1.5rem,3.4vw,2.2rem);color:${accent};margin-bottom:14px}
+.blk p{font-size:1.1rem;max-width:66ch;color:${ink}ee}
+.next{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:6vh 0}
+.next a{color:${accent};text-decoration:none;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;border-bottom:1px solid ${accent}}
+</style></head><body><div class="wrap">
+<a class="back" href="../index.html">← Back to the film</a>
+<header><div class="mono">Case Study</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</header>
+${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
+${nav ? `<div class="next"><a href="../index.html">← All work</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
+</div>${CREDIT}</body></html>`;
+}
+
 /* ================================================================
-   TEMPLATE 03 — THE TERMINAL (engineer's console)
+   TEMPLATE 03 · THE TERMINAL (engineer's console)
 ================================================================ */
-function terminal(p, pal, sec) {
+function terminal(p, pal, sec, ctx = {}) {
   const [bg, green, amber, dim] = pal.vars;
+  const caseHref = ctx.caseHref || noHref;
+  const exp = normExperience(p);
   const bar = (i) => { const f = 9 - (i % 4); return "█".repeat(f) + "░".repeat(10 - f); };
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(p.name)} — ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+<title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -324,7 +472,7 @@ a{color:${amber};text-decoration:none;border-bottom:1px dashed ${amber}88}
 @keyframes bl{50%{opacity:0}}
 @media(prefers-reduced-motion:reduce){.cur{animation:none}}
 </style></head><body>
-<div class="win"><div class="tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">${esc(p.name.toLowerCase().replace(/\s+/g, "-"))} — portfolio.sh</span></div>
+<div class="win"><div class="tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">${esc(p.name.toLowerCase().replace(/\s+/g, "-"))} · portfolio.sh</span></div>
 <main>
 <div><span class="ps">➜ ~</span> <span class="cmd">whoami</span></div>
 <h1>${esc(p.name)}</h1>
@@ -332,14 +480,54 @@ a{color:${amber};text-decoration:none;border-bottom:1px dashed ${amber}88}
 ${sec.about && p.summary ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat README.md</span></div><div class="out">${esc(p.summary)}</div>` : ""}
 ${sec.skills && p.skills.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">./skills --graph</span></div>
 <div class="grid">${p.skills.map((s, i) => `<span class="sk"><b>${esc(s.toLowerCase().padEnd(2))}</b> ${bar(i)}</span>`).join("")}</div>` : ""}
-${sec.experience && p.experience.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">git log --career</span></div>
-${p.experience.map((x) => `<div class="xp"><div class="c">* ${esc(x.title)}${x.org ? ` @ ${esc(x.org)}` : ""}</div><div class="d">${esc(x.period)}</div><ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}` : ""}
-${sec.projects && p.projects.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">ls projects/</span></div>${p.projects.map((pr) => `<div class="xp"><div class="c">${esc(pr.name)}/${isCaseStudy(pr) ? " — case study" : ""}</div><div class="d">${esc(pr.summary || pr.desc)}</div>${pr.cover ? `<img src="${pr.cover}" alt="${esc(pr.name)}" style="max-width:100%;border:1px solid ${green}33;border-radius:6px;margin:8px 0">` : ""}${["role","timeline","tools"].filter((k)=>pr[k]).map((k)=>`<div class="d">${k}: ${esc(pr[k])}</div>`).join("")}${["problem","process","results"].filter((k)=>pr[k]).map((k)=>`<div class="d" style="margin-top:6px"><span style="color:${amber}"># ${k}</span><br>${esc(pr[k])}</div>`).join("")}</div>`).join("")}` : ""}
+${sec.experience && exp.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">git log --career</span></div>
+${exp.map((x) => `<div class="xp"><div class="c">* ${esc(x.title)}${x.org ? ` @ ${esc(x.org)}` : ""}</div>${x.period ? `<div class="d">${esc(x.period)}</div>` : ""}<ul>${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}` : ""}
+${sec.projects && p.projects.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">ls projects/</span></div>${p.projects.map((pr) => { const href = caseHref(pr); return `<div class="xp"><div class="c">${href ? `<a href="${href}">${esc(pr.name)}/</a>` : `${esc(pr.name)}/`}${isCaseStudy(pr) ? " · case study" : ""}</div><div class="d">${esc(pr.summary || pr.desc)}</div>${href ? `<div class="d" style="margin-top:6px"><a href="${href}">cat projects/${esc(href.replace(/^projects\//, ""))}</a></div>` : `${pr.cover ? `<img src="${pr.cover}" alt="${esc(pr.name)}" style="max-width:100%;border:1px solid ${green}33;border-radius:6px;margin:8px 0">` : ""}${["role","timeline","tools"].filter((k)=>pr[k]).map((k)=>`<div class="d">${k}: ${esc(pr[k])}</div>`).join("")}${["problem","process","results"].filter((k)=>pr[k]).map((k)=>`<div class="d" style="margin-top:6px"><span style="color:${amber}"># ${k}</span><br>${esc(pr[k])}</div>`).join("")}`}</div>`; }).join("")}` : ""}
 ${sec.services && (p.services || []).length ? `<div><span class="ps">➜ ~</span> <span class="cmd">./services --list</span></div>${p.services.map((sv) => `<div class="xp"><div class="c">${esc(sv.name)}</div><div class="d">${esc(sv.desc)}</div></div>`).join("")}` : ""}
-${sec.testimonials && (p.testimonials || []).length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat reviews.log</span></div>${p.testimonials.map((t) => `<div class="out">"${esc(t.quote)}" — ${esc(t.who)}</div>`).join("")}` : ""}
-${sec.education && p.education.length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat education.txt</span></div><div class="out">${p.education.map(esc).join("<br>")}</div>` : ""}
+${sec.testimonials && (p.testimonials || []).length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat reviews.log</span></div>${p.testimonials.map((t) => `<div class="out">"${esc(t.quote)}" · ${esc(t.who)}</div>`).join("")}` : ""}
+${sec.education && (p.education || []).length ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat education.txt</span></div><div class="out">${p.education.map((e) => esc(eduLabel(e))).join("<br>")}</div>` : ""}
+${sec.certifications !== false && hasCerts(p) ? `<div><span class="ps">➜ ~</span> <span class="cmd">cat certs.txt</span></div><div class="out">${p.certifications.map((c) => `${esc(c.name)}${[c.issuer, c.year].filter(Boolean).length ? " · " + [c.issuer, c.year].filter(Boolean).map(esc).join(" · ") : ""}${c.url ? ` · <a href="${/^http/.test(c.url) ? esc(c.url) : "https://" + esc(c.url)}" target="_blank" rel="noopener noreferrer">link</a>` : ""}`).join("<br>")}</div>` : ""}
+${sec.languages !== false && hasLangObjs(p) ? `<div><span class="ps">➜ ~</span> <span class="cmd">locale -a</span></div><div class="out">${p.languages.map((l) => esc(langLabel(l))).join("<br>")}</div>` : ""}
 ${sec.contact ? `<div><span class="ps">➜ ~</span> <span class="cmd">contact --now</span> <span class="cur"></span></div>
 <div class="out">${p.email ? `mail: <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : "reach out via the links above"}</div>` : ""}
+</main></div>${CREDIT}</body></html>`;
+}
+
+// standalone case-study page in the Terminal skin
+function terminalCase(p, pal, pr, nav) {
+  const [bg, green, amber, dim] = pal.vars;
+  const file = "projects/" + (nav ? nav.slug : slugify(pr.name)) + ".md";
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:${bg};color:${green};font-family:'IBM Plex Mono',monospace;font-size:14px;line-height:1.75;padding:5vh 5vw}
+.win{max-width:880px;margin:0 auto;border:1px solid ${green}44;border-radius:10px;overflow:hidden;box-shadow:0 0 60px ${green}18}
+.tbar{background:${green}14;padding:10px 16px;display:flex;gap:8px;align-items:center;border-bottom:1px solid ${green}33}
+.tbar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+.tbar .t{margin-left:10px;font-size:11px;color:${dim};letter-spacing:.08em}
+main{padding:28px clamp(16px,4vw,44px) 40px}
+.ps{color:${amber}}.cmd{color:#fff}.out{color:${dim};margin:4px 0 22px}
+h1{font-size:clamp(1.4rem,4.6vw,2.2rem);color:#fff;font-weight:600;margin:4px 0 6px}
+a{color:${amber};text-decoration:none;border-bottom:1px dashed ${amber}88}
+.meta{display:flex;gap:26px;flex-wrap:wrap;margin:10px 0 18px;color:${dim}}
+.meta b{color:${amber};font-weight:400;margin-right:6px}
+.cover{max-width:100%;border:1px solid ${green}33;border-radius:6px;margin:6px 0 20px;display:block}
+.blk{margin:0 0 22px}
+.blk h2{color:${amber};font-size:14px;font-weight:600;margin-bottom:4px}.blk h2:before{content:"## "}
+.blk p{color:${dim}}
+.next{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:26px;padding-top:18px;border-top:1px solid ${green}33}
+</style></head><body>
+<div class="win"><div class="tbar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="t">${esc(file)}</span></div>
+<main>
+<div><span class="ps">➜ ~</span> <span class="cmd">cat ${esc(file)}</span></div>
+<h1># ${esc(pr.name)}</h1>
+${pr.summary || pr.desc ? `<div class="out">${esc(pr.summary || pr.desc)}</div>` : ""}
+${["role","timeline","tools"].filter((k)=>pr[k]).length ? `<div class="meta">${["role","timeline","tools"].filter((k)=>pr[k]).map((k)=>`<span><b>${k}:</b>${esc(pr[k])}</span>`).join("")}</div>` : ""}
+${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "problem" : k === "process" ? "process" : "results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
+<div class="next"><a href="../index.html">← Back to the film</a>${nav && nav.next ? `<a href="${esc(nav.next.slug)}.html">next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>
 </main></div>${CREDIT}</body></html>`;
 }
 
@@ -347,7 +535,7 @@ ${sec.contact ? `<div><span class="ps">➜ ~</span> <span class="cmd">contact --
 export const TEMPLATES = [
   {
     id: "monolith", name: "The Monolith", blurb: "Cinematic dark. Kinetic type, marquee, timeline scenes.",
-    compile: monolith,
+    compile: monolith, caseCompile: monolithCase,
     palettes: [
       { id: "jersey", label: "Jersey", vars: ["#0E1C3F", "#132550", "#C8102E", "#D9A441", "#F4EFE6"] },
       { id: "lavender", label: "Lavender", vars: ["#141126", "#1D1837", "#8B5CF6", "#C4B5FD", "#EFEAFF"] },
@@ -356,7 +544,7 @@ export const TEMPLATES = [
   },
   {
     id: "editorial", name: "The Editorial", blurb: "Light magazine. Serif mastheads, ruled sections, recruiter-calm.",
-    compile: editorial,
+    compile: editorial, caseCompile: editorialCase,
     palettes: [
       { id: "bone", label: "Bone", vars: ["#F4EFE6", "#1A1712", "#C8102E", "#6E655A"] },
       { id: "sage", label: "Sage", vars: ["#EEF1EA", "#1C221A", "#0E9E62", "#5F6B5C"] },
@@ -365,7 +553,7 @@ export const TEMPLATES = [
   },
   {
     id: "terminal", name: "The Terminal", blurb: "Engineer's console. Prompt, skill bars, git-log career.",
-    compile: terminal,
+    compile: terminal, caseCompile: terminalCase,
     palettes: [
       { id: "phosphor", label: "Phosphor", vars: ["#07100a", "#33ff88", "#ffc857", "#7ea08b"] },
       { id: "amber", label: "Amber CRT", vars: ["#100b04", "#ffb454", "#7fdb8f", "#a08a6a"] },
@@ -381,4 +569,28 @@ export function compile(templateId, paletteId, profile, opts = {}) {
   const pal = t.palettes.find((x) => x.id === paletteId) || t.palettes[0];
   const sections = { ...DEFAULT_SECTIONS, ...(opts.sections || {}) };
   return t.compile(profile, pal, sections);
+}
+
+// ---------- multi-page bundle compiler ----------
+// files[0] is always index.html: the compile() output, except case-study cards
+// link out to projects/{slug}.html (relative). Then one standalone page per
+// case study (capped at 12), each in its template family's own skin.
+export function compileBundle(templateId, paletteId, profile, opts = {}) {
+  const t = TEMPLATES.find((x) => x.id === templateId) || TEMPLATES[0];
+  const pal = t.palettes.find((x) => x.id === paletteId) || t.palettes[0];
+  const sections = { ...DEFAULT_SECTIONS, ...(opts.sections || {}) };
+
+  const cases = caseStudyList(profile.projects);
+  const slugFor = new Map(cases.map(({ pr, slug }) => [pr, slug]));
+  const caseHref = (pr) => { const s = slugFor.get(pr); return s ? "projects/" + s + ".html" : ""; };
+
+  const files = [];
+  files.push({ path: "index.html", html: t.compile(profile, pal, sections, { caseHref }) });
+
+  cases.forEach(({ pr, slug }, i) => {
+    const nav = { slug, prev: cases[i - 1] || null, next: cases[i + 1] || null };
+    files.push({ path: "projects/" + slug + ".html", html: t.caseCompile(profile, pal, pr, cases.length > 1 ? nav : { slug }) });
+  });
+
+  return { files };
 }
