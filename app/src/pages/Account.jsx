@@ -20,7 +20,7 @@ const STATUS_LABEL = {
 const domainIntents = () => { try { return JSON.parse(localStorage.getItem("cf.domainIntent") || "{}"); } catch { return {}; } };
 
 export default function Account() {
-  const { user } = useAuth();
+  const { user, nav } = useAuth();
   const [form, setForm] = useState(null);
   const [plan, setPlan] = useState("free");
   const [sites, setSites] = useState(null);
@@ -197,6 +197,12 @@ export default function Account() {
                     </div>
                     <div className="ordacts">
                       <span className={`badge ${STATUS_CLASS[o.status] || "queued"}`}>{STATUS_LABEL[o.status] || o.status}</span>
+                      {o.status === "ready" && (
+                        <>
+                          <a className="btn ghost ordbtn" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(o.orderId)}`} target="_blank" rel="noopener noreferrer" title="Preview the delivered cut; case-study pages activate at premiere">Watch the cut</a>
+                          <button type="button" className="btn primary ordbtn" onClick={() => { try { sessionStorage.setItem("cf.premiereCut", o.orderId); } catch { /* noop */ } nav("dashboard"); }}>Premiere</button>
+                        </>
+                      )}
                       {o.status === "ready" && !o.revisionRequested && (
                         <button type="button" className="btn ghost ordbtn" onClick={() => setRevising(o.orderId)}>Request revision</button>
                       )}
