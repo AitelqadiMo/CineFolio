@@ -1,4 +1,4 @@
-// Account v2 — a ticket stub, because every client is on the marquee.
+// Account v2: a ticket stub, because every client is on the marquee.
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
@@ -38,7 +38,7 @@ export default function Account() {
       {form && (
         <form className="ticket" onSubmit={save}>
           <div className="tophalf">
-            <div className="admit">ADMIT ONE — CINEFOLIO STUDIOS</div>
+            <div className="admit">ADMIT ONE · CINEFOLIO STUDIOS</div>
             <div className="name">{form.name || user.email.split("@")[0]}</div>
             <div className="mono" style={{ marginTop: 6, textTransform: "none", letterSpacing: ".06em" }}>{user.email}</div>
             <div style={{ marginTop: 10 }}>
@@ -54,7 +54,7 @@ export default function Account() {
             <label className="mono">Links (portfolio, GitHub, LinkedIn)</label>
             <input value={form.links} onChange={(e) => setForm({ ...form, links: e.target.value })} placeholder="https://…" />
             {err && <div className="err">{err}</div>}
-            {saved && !err && <div className="okmsg">Saved — the marquee is updated.</div>}
+            {saved && !err && <div className="okmsg">Saved. The marquee is updated.</div>}
             <div className="btnrow"><button className="btn primary" disabled={busy}>{busy ? <span className="spin" /> : null}Save</button></div>
           </div>
         </form>

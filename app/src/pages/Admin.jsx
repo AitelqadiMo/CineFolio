@@ -1,4 +1,4 @@
-// Admin v2 — the production floor: every order on a kanban of pipeline states,
+// Admin v2: the production floor. Every order on a kanban of pipeline states,
 // with retry actions and headline counts. Data storytelling, not raw rows.
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
@@ -43,9 +43,9 @@ export default function Admin() {
       </div>
 
       <div className="metrics">
-        <div className="metric"><b>{board ? total : "–"}</b><span>Orders on the floor</span></div>
-        <div className="metric"><b>{board ? board.filming?.length || 0 : "–"}</b><span>Cameras rolling</span></div>
-        <div className="metric"><b style={{ color: stuck ? "#ff8d96" : undefined }}>{board ? stuck : "–"}</b><span>Need attention</span></div>
+        <div className="metric"><b>{board ? total : "···"}</b><span>Orders on the floor</span></div>
+        <div className="metric"><b>{board ? board.filming?.length || 0 : "···"}</b><span>Cameras rolling</span></div>
+        <div className="metric"><b style={{ color: stuck ? "var(--red-lit)" : undefined }}>{board ? stuck : "···"}</b><span>Need attention</span></div>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
