@@ -42,6 +42,12 @@ export const ledger = {
   // entitlement truth: any production order on record makes this a paying client
   isClient: (list) => (list || read()).some((o) => o.production && o.status !== "preview_only"),
 
+  // studio credits, derived from the ledger (server entitlements arrive later)
+  credits(list) {
+    const paid = (list || read()).filter((o) => o.production && o.status !== "preview_only");
+    return { cuts: paid.length, revisions: paid.filter((o) => o.status === "ready" && !o.revisionRequested).length };
+  },
+
   unseenDelivery: (list) => (list || read()).find((o) => o.status === "ready" && !o.acknowledged),
 
   // merge server truth over the local ledger once the backend route exists
