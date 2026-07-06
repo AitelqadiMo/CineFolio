@@ -35,7 +35,7 @@ export default function Login({ onBack }) {
           </button>
         )}
         <div className="lenshero" />
-        <div className="mono" style={{ marginBottom: 10 }}>CINEFOLIO — STUDIO CONSOLE</div>
+        <div className="mono" style={{ marginBottom: 10 }}>CINEFOLIO · STUDIO CONSOLE</div>
         <h1>Your career,<br /><em>in cinema.</em></h1>
 
         <div className="authtabs">
