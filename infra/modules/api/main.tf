@@ -15,6 +15,16 @@ variable "orders_queue_arn" { type = string }
 variable "kvs_arn" { type = string }
 variable "distribution_id" { type = string }
 variable "cdn_domain" { type = string }
+variable "ses_from" {
+  type        = string
+  default     = ""
+  description = "Verified SES sender for transactional email; empty disables sending (sandbox-safe)."
+}
+variable "app_origin" {
+  type        = string
+  default     = ""
+  description = "Console origin used in email CTAs, e.g. https://d2f6618tf0eldv.cloudfront.net"
+}
 variable "cors_allowed_origins" {
   type    = list(string)
   default = ["*"]
@@ -55,11 +65,15 @@ locals {
     "POST /sites"                   = true
     "GET /sites"                    = true
     "GET /sites/{id}"               = true
+    "GET /sites/{id}/stats"         = true
     "GET /sites/{id}/source"        = true
     "POST /sites/{id}/publish"      = true
     "POST /sites/{id}/rollback"     = true
     "POST /sites/{id}/duplicate"    = true
+    "POST /sites/{id}/domain"       = true
     "DELETE /sites/{id}"            = true
+    "GET /orders"                   = true
+    "POST /orders/{id}/revision"    = true
   }
 }
 
@@ -122,6 +136,13 @@ data "aws_iam_policy_document" "api" {
     resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}*"]
   }
   statement {
+    # Sender identities are created out-of-band (SES console); scope to identity
+    # ARNs once the production domain identity exists.
+    sid       = "Email"
+    actions   = ["ses:SendEmail"]
+    resources = ["*"]
+  }
+  statement {
     sid       = "Queue"
     actions   = ["sqs:SendMessage"]
     resources = [var.orders_queue_arn]
@@ -179,6 +200,8 @@ resource "aws_lambda_function" "api" {
       CDN_DOMAIN       = var.cdn_domain
       ORDERS_QUEUE_URL = var.orders_queue_url
       SSM_PREFIX       = local.ssm_prefix
+      SES_FROM         = var.ses_from
+      APP_ORIGIN       = var.app_origin
     }
   }
   depends_on = [aws_cloudwatch_log_group.api]
