@@ -1,4 +1,4 @@
-// api.js — typed-ish client for the CineFolio API. Authenticated calls attach the
+// api.js: typed-ish client for the CineFolio API. Authenticated calls attach the
 // Cognito ID token (the authorizer validates aud = clientId on ID tokens).
 import { CONFIG } from "./config.js";
 import { idToken } from "./cognito.js";
@@ -45,4 +45,18 @@ export const api = {
 
   adminOrders: (status) => req(`/admin/orders?status=${encodeURIComponent(status)}`, { auth: true }),
   adminRetry: (orderId) => req(`/admin/orders/${orderId}/retry`, { method: "POST", auth: true }),
+
+  // ---------- buyer-facing surfaces (UI-first) ----------
+  // These routes are the contract the console expects; some are not wired in the
+  // gateway yet. Callers must treat notWired errors as "backend pending" and fall
+  // back gracefully (local ledger, contact fallback, hidden widget). Never a dead end.
+  myOrders: () => req("/orders", { auth: true }),
+  requestRevision: (orderId, body) => req(`/orders/${encodeURIComponent(orderId)}/revision`, { method: "POST", body, auth: true }),
+  contact: (body) => req("/contact", { method: "POST", body }),
+  siteStats: (id) => req(`/sites/${id}/stats`, { auth: true }),
+  connectDomain: (id, domain) => req(`/sites/${id}/domain`, { method: "POST", body: { domain }, auth: true }),
 };
+
+// True when an endpoint is missing or not deployed yet (route absent from the
+// HTTP API returns 404, JWT-scoped stages can answer 401/403 for unknown paths).
+export const notWired = (e) => [401, 403, 404, 405, 501].includes(e?.status);
