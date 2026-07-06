@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
-import { confetti, friendly, ConfirmDialog } from "../ui.jsx";
+import { confetti, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
 import { parseProfile, compile, compileBundle, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
 
@@ -38,6 +38,7 @@ export default function Studio() {
   const [orderStatus, setOrderStatus] = useState(null);
   const [err, setErr] = useState("");
   const [confirmCut, setConfirmCut] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
@@ -141,10 +142,13 @@ export default function Studio() {
   }, [tpl, pal, fullProfile, sections]);
 
   // live posters: each template rendered with the CLIENT'S data
+  // live posters: compile only what is on screen (the selected look in the
+  // rail; every look only while the browse gallery is open)
   const posters = useMemo(() => TEMPLATES.map((t) => {
+    if (!lookOpen && t.id !== tpl) return { id: t.id, html: "" };
     try { return { id: t.id, html: compile(t.id, t.id === tpl ? pal : t.palettes[0].id, fullProfile, { sections }) }; }
     catch { return { id: t.id, html: "" }; }
-  }), [fullProfile, tpl, pal, sections]);
+  }), [fullProfile, tpl, pal, sections, lookOpen]);
 
   const ready = cvText.trim().length > 60 || q.name;
 
@@ -390,18 +394,21 @@ export default function Studio() {
           </div>
 
           <div className="railsec act">
-            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">your free take: three worlds, rendered live with your data</span></div></div>
+            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">five worlds, fifteen film stocks, rendered live with your data</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
                   <span className="posterframe">
-                    {ready && posters[i].html
+                    {ready && tpl === t.id && posters[i].html
                       ? <iframe title={t.name} tabIndex={-1} sandbox="allow-scripts" scrolling="no" srcDoc={posters[i].html} loading="lazy" />
                       : <span className="posterghost mono">{t.name.split(" ").pop().toUpperCase()}</span>}
                   </span>
                   <span className="posterlbl mono">{t.name}</span>
                 </button>
               ))}
+            </div>
+            <div className="btnrow" style={{ marginTop: 10 }}>
+              <button type="button" className="btn ghost ordbtn" onClick={() => setLookOpen(true)}>Browse all looks</button>
             </div>
             <div className="stockrow">
               <span className="mono" style={{ fontSize: 8.5 }}>FILM STOCK</span>
@@ -496,6 +503,36 @@ export default function Studio() {
           </div>
         </section>
       </div>
+
+      <Dialog open={lookOpen} title="Browse the looks" kicker="FIVE FAMILIES · FIFTEEN FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
+        <div className="lookgrid">
+          {TEMPLATES.map((t, i) => (
+            <div key={t.id} className={`lookcard ${tpl === t.id ? "on" : ""}`}>
+              <span className="posterframe lookframe">
+                {ready && posters[i].html
+                  ? <iframe title={`look-${t.name}`} tabIndex={-1} sandbox="allow-scripts" scrolling="no" srcDoc={posters[i].html} loading="lazy" />
+                  : <span className="posterghost mono">{t.name.toUpperCase()}</span>}
+              </span>
+              <b className="lookname">{t.name}</b>
+              <p className="lookblurb">{t.blurb}</p>
+              <div className="stockrow" style={{ marginTop: 8 }}>
+                {t.palettes.map((p2) => (
+                  <button key={p2.id} type="button" className={`stock ${tpl === t.id && pal === p2.id ? "on" : ""}`}
+                    onClick={() => { setTpl(t.id); setPal(p2.id); }}>
+                    <i style={{ background: `linear-gradient(135deg, ${p2.vars[2] || p2.vars[1]}, ${p2.vars[3] || p2.vars[2]})` }} />{p2.label}
+                  </button>
+                ))}
+              </div>
+              <div className="btnrow" style={{ marginTop: 10 }}>
+                <button type="button" className={`btn ${tpl === t.id ? "primary" : "ghost"} ordbtn`}
+                  onClick={() => { if (tpl !== t.id) { setTpl(t.id); setPal(t.palettes[0].id); } setLookOpen(false); }}>
+                  {tpl === t.id ? "Keep this look ✓" : "Use this look"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmCut} kicker="THE DIRECTOR'S CUT · $149 ONE TIME" title="Order your Director's Cut"
