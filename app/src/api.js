@@ -37,6 +37,7 @@ export const api = {
   publish: (id, body) => req(`/sites/${id}/publish`, { method: "POST", body, auth: true }),
   rollback: (id, to) => req(`/sites/${id}/rollback`, { method: "POST", body: to ? { to } : {}, auth: true }),
   takedown: (id) => req(`/sites/${id}`, { method: "DELETE", auth: true }),
+  deleteSite: (id) => req(`/sites/${id}/delete`, { method: "POST", auth: true }),
 
   media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
   getDraft: () => req("/draft", { auth: true }),
