@@ -1,8 +1,8 @@
-// Studio v4 — THE SET. A production floor, not a form:
+// Studio v4: THE SET. A production floor, not a form:
 // slate bar with live timecode + take counter, casting acts on the left,
 // LIVE template posters compiled from the client's own data, film-stock
 // palette chips, and a studio monitor that re-renders on every direction.
-// The engine is deterministic — every frame on this set is real output.
+// The engine is deterministic: every frame on this set is real output.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
@@ -53,7 +53,7 @@ export default function Studio() {
     if (d.pal) setPal(d.pal);
   };
 
-  // draft autosave — local instantly, server-synced (newer copy wins on load)
+  // draft autosave: local instantly, server-synced (newer copy wins on load)
   useEffect(() => {
     try {
       const d = JSON.parse(localStorage.getItem("cf.studioDraft") || "null");
@@ -86,7 +86,7 @@ export default function Studio() {
       const slim = JSON.parse(JSON.stringify(draft));
       if (String(slim.q?.photo || "").startsWith("data:")) delete slim.q.photo;
       (slim.projects || []).forEach((p2) => { if (String(p2.cover || "").startsWith("data:")) delete p2.cover; });
-      api.putDraft(slim).catch(() => { /* silent — local copy is safe */ });
+      api.putDraft(slim).catch(() => { /* silent, local copy is safe */ });
     }, 2500);
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal]);
@@ -123,7 +123,7 @@ export default function Studio() {
   }), [profile, projects, testimonials, services]);
 
   const html = useMemo(() => {
-    try { return compile(tpl, pal, fullProfile, { sections }); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error — adjust the brief</body></html>"; }
+    try { return compile(tpl, pal, fullProfile, { sections }); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error, adjust the brief</body></html>"; }
   }, [tpl, pal, fullProfile, sections]);
 
   // live posters: each template rendered with the CLIENT'S data
@@ -172,7 +172,7 @@ export default function Studio() {
       setPdfBusy(true);
       try {
         const pdfjs = window.pdfjsLib;
-        if (!pdfjs) throw new Error("PDF reader still loading — try again in a second.");
+        if (!pdfjs) throw new Error("PDF reader still loading. Try again in a second.");
         pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
         const buf = await f.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
@@ -221,7 +221,7 @@ export default function Studio() {
     try {
       const r = await api.generate({
         email: profile.email || q.email, name: profile.name, role: "engineer",
-        cvText: cvText || `${profile.name} — ${profile.headline}`,
+        cvText: cvText || `${profile.name}, ${profile.headline}`,
         template: tpl, palette: pal, customIdea,
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
@@ -250,6 +250,7 @@ export default function Studio() {
 
   return (
     <div ref={premiereRef}>
+      <h1 className="visually-hidden">The Set</h1>
       {/* ---------------- the slate ---------------- */}
       <div className="slate">
         <div className="slateleft">
@@ -261,7 +262,7 @@ export default function Studio() {
           <span>TAKE <b>{take}</b></span>
           <span className="tcode"><i className="recdot" /> {tc}</span>
         </div>
-        <div className="mono slamp">SET · <b style={{ color: "#58e0a5" }}>LIT</b></div>
+        <div className="mono slamp">SET · <b style={{ color: "var(--green-lit)" }}>LIT</b></div>
       </div>
 
       <div className="mobiletoggle">
@@ -281,12 +282,12 @@ export default function Studio() {
             <div className="acthead"><span className="actno">I</span><div><b>The Cast</b><span className="actsub">who this film is about</span></div></div>
             <label className="uploadrow" htmlFor="cvUp">
               {pdfBusy ? <span className="spin" /> : <span className="upic">◉</span>}
-              <span>{cvRaw ? "RESUME LOADED ✓ — REPLACE" : "DROP THE RESUME · PDF OR TXT"}</span>
+              <span>{cvRaw ? "RESUME LOADED ✓ · REPLACE" : "DROP THE RESUME · PDF OR TXT"}</span>
               <input id="cvUp" type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={onResume} hidden />
             </label>
             <label className="uploadrow" htmlFor="phUp">
               {photo ? <img className="upthumb" src={photo} alt="" /> : <span className="upic">✦</span>}
-              <span>{photo ? "HEADSHOT LOADED ✓ — REPLACE" : "ADD A HEADSHOT · OPTIONAL"}</span>
+              <span>{photo ? "HEADSHOT LOADED ✓ · REPLACE" : "ADD A HEADSHOT · OPTIONAL"}</span>
               <input id="phUp" type="file" accept="image/*" onChange={onPhoto} hidden />
             </label>
             <textarea value={cvRaw} onChange={(e) => setCvRaw(e.target.value)} placeholder="…or paste the CV. The engine reads sections, years, links and skills on its own." style={{ minHeight: 84, marginTop: 8 }} />
@@ -295,7 +296,7 @@ export default function Studio() {
           <div className="railsec act">
             <div className="acthead"><span className="actno">II</span><div><b>Direction</b><span className="actsub">the questions that matter</span></div></div>
             <input value={q.name} onChange={(e) => setQ({ ...q, name: e.target.value })} placeholder="Name on the marquee" />
-            <input value={q.headline} onChange={(e) => setQ({ ...q, headline: e.target.value })} placeholder="Headline — e.g. Platform Engineer, AWS certified" />
+            <input value={q.headline} onChange={(e) => setQ({ ...q, headline: e.target.value })} placeholder="Headline, e.g. Platform Engineer, AWS certified" />
             <input value={q.email} onChange={(e) => setQ({ ...q, email: e.target.value })} placeholder="Contact email" />
             <input value={q.website} onChange={(e) => setQ({ ...q, website: e.target.value })} placeholder="Website / domain (optional)" />
             <textarea value={q.focus} onChange={(e) => setQ({ ...q, focus: e.target.value })} placeholder="One paragraph a visitor should remember." style={{ minHeight: 58 }} />
@@ -306,12 +307,12 @@ export default function Studio() {
             {projects.length === 0 && (
             <div className="projempty" onClick={() => { setProjects([{}]); setOpenProj(0); }}>
               <div className="mono" style={{ fontSize: 9, color: "var(--gold)" }}>NO SCENES YET</div>
-              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>Your best work deserves a case study. Add the first project — we'll guide the story.</div>
+              <div style={{ fontSize: 12.5, color: "var(--dim)", marginTop: 4 }}>Your best work deserves a case study. Add the first project and we'll guide the story.</div>
             </div>
           )}
           {projects.map((pr, i) => (
               <div key={i} className={`projcard ${openProj === i ? "open" : ""}`}>
-                <div className="projrow" onClick={() => setOpenProj(openProj === i ? null : i)}>
+                <div className="projrow" role="button" tabIndex={0} aria-expanded={openProj === i} onClick={() => setOpenProj(openProj === i ? null : i)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenProj(openProj === i ? null : i); } }}>
                   <b>{pr.name || `Project ${i + 1}`}</b>
                   <span className="projops" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => moveProj(i, -1)} title="Up">↑</button>
@@ -323,7 +324,7 @@ export default function Studio() {
                   <div className="projbody">
                     <label className="uploadrow" htmlFor={`cov${i}`} style={{ marginTop: 2 }}>
                       {pr.cover ? <img className="upthumb" src={pr.cover} alt="" style={{ borderRadius: 4 }} /> : <span className="upic">▦</span>}
-                      <span>{pr.cover ? "COVER LOADED ✓ — REPLACE" : "COVER IMAGE"}</span>
+                      <span>{pr.cover ? "COVER LOADED ✓ · REPLACE" : "COVER IMAGE"}</span>
                       <input id={`cov${i}`} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files[0]; if (!f) return; const u = await uploadImage(f); if (u) proj(i, { cover: u }); }} />
                     </label>
                     <input value={pr.name || ""} onChange={(e) => proj(i, { name: e.target.value })} placeholder="Project title" />
@@ -335,7 +336,7 @@ export default function Studio() {
                     </div>
                     <textarea value={pr.problem || ""} onChange={(e) => proj(i, { problem: e.target.value })} placeholder="The problem: what was broken, risky, or missing before you started?" style={{ minHeight: 48 }} />
                     <textarea value={pr.process || ""} onChange={(e) => proj(i, { process: e.target.value })} placeholder="The process: how you approached it, what you tried, what you decided." style={{ minHeight: 48 }} />
-                    <textarea value={pr.results || ""} onChange={(e) => proj(i, { results: e.target.value })} placeholder="The results: numbers first — faster, cheaper, safer, adopted by…" style={{ minHeight: 48 }} />
+                    <textarea value={pr.results || ""} onChange={(e) => proj(i, { results: e.target.value })} placeholder="The results: numbers first. Faster, cheaper, safer, adopted by…" style={{ minHeight: 48 }} />
                   </div>
                 )}
               </div>
@@ -374,7 +375,7 @@ export default function Studio() {
           </div>
 
           <div className="railsec act">
-            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">three worlds, rendered with your data — live</span></div></div>
+            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">three worlds, rendered live with your data</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
@@ -395,9 +396,9 @@ export default function Studio() {
                 </button>
               ))}
             </div>
-            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Custom vision for the Director's Cut — lighting, mood, references… (the AI film pipeline reads this)" style={{ minHeight: 54, marginTop: 10 }} />
+            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Custom vision for the Director's Cut: lighting, mood, references… (the AI film pipeline reads this)" style={{ minHeight: 54, marginTop: 10 }} />
             <div className="mono" style={{ marginTop: 8, textTransform: "none", letterSpacing: ".05em", fontSize: 10 }}>
-              Reference screening: <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">aitelqadi.dev ↗</a>
+              The Director's Cut is a bespoke AI film pass, produced scene by scene by the studio.
             </div>
           </div>
 
@@ -406,7 +407,7 @@ export default function Studio() {
             <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
             <label className="mono" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", cursor: "pointer", fontSize: 9.5 }}>
               <input type="checkbox" checked={stageMode} onChange={(e) => setStageMode(e.target.checked)} style={{ width: "auto" }} />
-              STAGE AS DRAFT — PREVIEW LINK ONLY, GO LIVE FROM MY FILMS
+              STAGE AS DRAFT · PREVIEW LINK ONLY, GO LIVE FROM MY FILMS
             </label>
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn marquee" disabled={!ready || pub.busy || !!pub.done} onClick={premiere}>
@@ -418,20 +419,21 @@ export default function Studio() {
             </div>
             {order && (
               <div className="mono" style={{ marginTop: 10, textTransform: "none", letterSpacing: ".05em", fontSize: 10.5 }}>
-                {orderStatus === "filming" ? "🎥 Cameras rolling — the pipeline is filming your cut." :
-                 orderStatus === "ready" ? "🎬 Director's cut delivered — check My Films." :
-                 ["dispatch_failed", "human_review", "timeout"].includes(orderStatus) ? "The studio is at capacity — your cut will arrive by email." :
+                {orderStatus === "filming" ? "🎥 Cameras rolling. The pipeline is filming your cut." :
+                 orderStatus === "ready" ? "🎬 Director's cut delivered. Check My Films." :
+                 orderStatus === "timeout" ? "Still filming. The moment your cut lands it premieres in My Films and by email." :
+                 ["dispatch_failed", "human_review"].includes(orderStatus) ? "A studio human is finishing this cut by hand. It will arrive by email." :
                  `Order ${order.orderId.slice(0, 8)} queued in the pipeline.`}
               </div>
             )}
             {err && <div className="err">{err}</div>}
             {pub.done && (
               <div className="premiere" style={{ marginTop: 12 }}>
-                <div className="mq">{pub.done.staged ? <>In the can — <em>staged cut #{pub.done.release}</em></> : <>Now screening — <em>release #{pub.done.release}</em></>}</div>
+                <div className="mq">{pub.done.staged ? <>In the can: <em>staged cut #{pub.done.release}</em></> : <>Now screening: <em>release #{pub.done.release}</em></>}</div>
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <a className="btn ghost" href={pub.done.url} target="_blank" rel="noopener noreferrer">Open live URL</a>
                   <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(pub.done.url)}>Copy link</button>
-                  <a className="btn ghost" onClick={() => nav("dashboard")} style={{ cursor: "pointer" }}>My Films</a>
+                  <button type="button" className="btn ghost" onClick={() => nav("dashboard")}>My Films</button>
                 </div>
               </div>
             )}
@@ -457,7 +459,7 @@ export default function Studio() {
                 <div className="stageempty">
                   <div className="lensbig" />
                   <div className="mono" style={{ marginTop: 18 }}>THE SCREENING ROOM · DARK</div>
-                  <p>Drop a resume on the left and the lights come up.<br />Your site renders here <b>as you type</b> — no waiting, no AI roulette.</p>
+                  <p>Drop a resume on the left and the lights come up.<br />Your site renders here <b>as you type</b>. No waiting, no AI roulette.</p>
                 </div>
               )}
             </div>
