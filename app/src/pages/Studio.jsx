@@ -1,12 +1,14 @@
-// Studio v4: THE SET. A production floor, not a form:
-// slate bar with live timecode + take counter, casting acts on the left,
-// LIVE template posters compiled from the client's own data, film-stock
+// Studio v5: THE SET. A production floor, not a form: casting acts on the
+// left, LIVE template posters compiled from the client's own data, film-stock
 // palette chips, and a studio monitor that re-renders on every direction.
 // The engine is deterministic: every frame on this set is real output.
+// The paid Director's Cut is a priced creative-direction card, never a
+// template drop-down; set dressing is one slate, not a theater.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
-import { confetti, friendly } from "../ui.jsx";
+import { confetti, friendly, ConfirmDialog } from "../ui.jsx";
+import { ledger } from "../orders.js";
 import { parseProfile, compile, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
 
 const POLL_MS = 8000, POLL_MAX = 220;
@@ -35,9 +37,7 @@ export default function Studio() {
   const [order, setOrder] = useState(null);
   const [orderStatus, setOrderStatus] = useState(null);
   const [err, setErr] = useState("");
-  // set dressing
-  const [take, setTake] = useState(1);
-  const [tc, setTc] = useState("00:00:00");
+  const [confirmCut, setConfirmCut] = useState(false);
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
@@ -94,16 +94,6 @@ export default function Studio() {
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
 
-  // studio clock + take counter
-  useEffect(() => {
-    const t0 = Date.now();
-    const t = setInterval(() => {
-      const s = Math.floor((Date.now() - t0) / 1000);
-      setTc(`${String(Math.floor(s / 3600)).padStart(2, "0")}:${String(Math.floor((s % 3600) / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`);
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-
   // ---------- the engine (defensive: a compile error can never drop the set) ----------
   const profile = useMemo(() => {
     try {
@@ -132,7 +122,6 @@ export default function Studio() {
     catch { return { id: t.id, html: "" }; }
   }), [fullProfile, tpl, pal, sections]);
 
-  useEffect(() => { setTake((n) => n + 1); }, [html]); // every recompile is a new take
   const ready = cvText.trim().length > 60 || q.name;
 
   // ---------- media: compress client-side, upload via presigned PUT ----------
@@ -225,6 +214,7 @@ export default function Studio() {
         template: tpl, palette: pal, customIdea,
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
+      ledger.record({ orderId: r.orderId, name: profile.name, price: 149, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       if (r.production) {
         try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name: profile.name })); } catch { /* noop */ }
       }
@@ -238,9 +228,9 @@ export default function Studio() {
       polls.current += 1;
       try {
         const s = await api.orderStatus(order.orderId);
-        if (["ready", "dispatch_failed", "human_review"].includes(s.status)) { clearInterval(t); setOrderStatus(s.status); }
-        else if (s.status === "filming") setOrderStatus("filming");
-        else if (polls.current >= POLL_MAX) { clearInterval(t); setOrderStatus("timeout"); }
+        if (["ready", "dispatch_failed", "human_review"].includes(s.status)) { clearInterval(t); setOrderStatus(s.status); ledger.setStatus(order.orderId, s.status); }
+        else if (s.status === "filming") { setOrderStatus("filming"); ledger.setStatus(order.orderId, "filming"); }
+        else if (polls.current >= POLL_MAX) { clearInterval(t); setOrderStatus("timeout"); ledger.setStatus(order.orderId, "timeout"); }
       } catch { /* transient */ }
     }, POLL_MS);
     return () => clearInterval(t);
@@ -255,12 +245,10 @@ export default function Studio() {
       <div className="slate">
         <div className="slateleft">
           <span className="clap" aria-hidden="true"><i /><i /><i /><i /></span>
-          <span className="mono slbl">CINEFOLIO PRODUCTION Nº {String(take).padStart(3, "0")}</span>
+          <span className="mono slbl">CINEFOLIO STUDIOS · THE SET</span>
         </div>
         <div className="slatemid mono">
-          <span>SCENE <b>STUDIO</b></span>
-          <span>TAKE <b>{take}</b></span>
-          <span className="tcode"><i className="recdot" /> {tc}</span>
+          <span>YOUR SITE RENDERS <b>AS YOU TYPE</b></span>
         </div>
         <div className="mono slamp">SET · <b style={{ color: "var(--green-lit)" }}>LIT</b></div>
       </div>
@@ -375,7 +363,7 @@ export default function Studio() {
           </div>
 
           <div className="railsec act">
-            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">three worlds, rendered live with your data</span></div></div>
+            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">your free take: three worlds, rendered live with your data</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
@@ -396,14 +384,10 @@ export default function Studio() {
                 </button>
               ))}
             </div>
-            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Custom vision for the Director's Cut: lighting, mood, references… (the AI film pipeline reads this)" style={{ minHeight: 54, marginTop: 10 }} />
-            <div className="mono" style={{ marginTop: 8, textTransform: "none", letterSpacing: ".05em", fontSize: 10 }}>
-              The Director's Cut is a bespoke AI film pass, produced scene by scene by the studio.
-            </div>
           </div>
 
           <div className="railsec act gold">
-            <div className="acthead"><span className="actno">V</span><div><b>Premiere</b><span className="actsub">one click, on our infrastructure</span></div></div>
+            <div className="acthead"><span className="actno">V</span><div><b>Premiere the free take</b><span className="actsub">included: one click, live on our infrastructure</span></div></div>
             <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
             <label className="mono" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", cursor: "pointer", fontSize: 9.5 }}>
               <input type="checkbox" checked={stageMode} onChange={(e) => setStageMode(e.target.checked)} style={{ width: "auto" }} />
@@ -413,19 +397,7 @@ export default function Studio() {
               <button className="btn marquee" disabled={!ready || pub.busy || !!pub.done} onClick={premiere}>
                 {pub.busy ? <span className="spin" /> : "◈ "}{pub.done ? (stageMode ? "STAGED" : "PREMIERED") : stageMode ? "STAGE THIS CUT" : "PREMIERE THIS SITE"}
               </button>
-              <button className="btn ghost" disabled={!ready || !!order} onClick={directorsCut} title="Identity AI film scenes + bespoke build by the studio pipeline">
-                {order ? "DIRECTOR'S CUT ORDERED" : "+ DIRECTOR'S CUT"}
-              </button>
             </div>
-            {order && (
-              <div className="mono" style={{ marginTop: 10, textTransform: "none", letterSpacing: ".05em", fontSize: 10.5 }}>
-                {orderStatus === "filming" ? "🎥 Cameras rolling. The pipeline is filming your cut." :
-                 orderStatus === "ready" ? "🎬 Director's cut delivered. Check My Films." :
-                 orderStatus === "timeout" ? "Still filming. The moment your cut lands it premieres in My Films and by email." :
-                 ["dispatch_failed", "human_review"].includes(orderStatus) ? "A studio human is finishing this cut by hand. It will arrive by email." :
-                 `Order ${order.orderId.slice(0, 8)} queued in the pipeline.`}
-              </div>
-            )}
             {err && <div className="err">{err}</div>}
             {pub.done && (
               <div className="premiere" style={{ marginTop: 12 }}>
@@ -435,6 +407,32 @@ export default function Studio() {
                   <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(pub.done.url)}>Copy link</button>
                   <button type="button" className="btn ghost" onClick={() => nav("dashboard")}>My Films</button>
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="railsec act paidcard">
+            <div className="acthead"><span className="actno">VI</span><div><b>The Director's Cut</b><span className="actsub">the studio films it for you · $149, one time</span></div></div>
+            <ul className="paidlist">
+              <li>Bespoke art direction, built scene by scene for your story</li>
+              <li>Identity-locked AI film sequences, yours alone</li>
+              <li>Premieres within 24 hours as a new release</li>
+              <li>One revision included</li>
+            </ul>
+            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the studio: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
+            <div className="btnrow" style={{ marginTop: 10 }}>
+              <button className="btn primary" disabled={!ready || !!order} onClick={() => setConfirmCut(true)}>
+                {order ? "DIRECTOR'S CUT ORDERED ✓" : "ORDER THE DIRECTOR'S CUT · $149"}
+              </button>
+            </div>
+            {order && (
+              <div className="mono" style={{ marginTop: 10, textTransform: "none", letterSpacing: ".05em", fontSize: 10.5 }}>
+                {orderStatus === "filming" ? "🎥 Cameras rolling. The pipeline is filming your cut." :
+                 orderStatus === "ready" ? "🎬 Director's cut delivered. Check My Films." :
+                 orderStatus === "timeout" ? "Still filming. The moment your cut lands it premieres in My Films and by email." :
+                 orderStatus === "preview_only" ? "Your brief is saved. Production orders open in this environment soon; nothing is charged." :
+                 ["dispatch_failed", "human_review"].includes(orderStatus) ? "A studio human is finishing this cut by hand. It will arrive by email." :
+                 `Order ${order.orderId.slice(0, 8)} is in the queue. Track it any time in Account · Orders.`}
               </div>
             )}
           </div>
@@ -464,13 +462,20 @@ export default function Studio() {
               )}
             </div>
             <div className="monfoot mono">
-              <span><i className="recdot" /> REC · TAKE {take}</span>
-              <span>ENGINE · DETERMINISTIC · 0 LLM CALLS</span>
+              <span>LIVE PREVIEW · RENDERS AS YOU TYPE</span>
               <span>{view.toUpperCase()} · {(profile.skills || []).length} SKILLS CAST</span>
             </div>
           </div>
         </section>
       </div>
+
+      <ConfirmDialog
+        open={confirmCut} kicker="THE DIRECTOR'S CUT · $149 ONE TIME" title="Order your Director's Cut"
+        body={`The studio films a bespoke cut for ${profile.name || "you"}: art direction built for your story, identity-locked film sequences, premiere within 24 hours as a new release, one revision included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.`}
+        confirmLabel="Place the order"
+        onConfirm={() => { setConfirmCut(false); directorsCut(); }}
+        onClose={() => setConfirmCut(false)}
+      />
     </div>
   );
 }

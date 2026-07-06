@@ -9,6 +9,7 @@ import Admin from "./pages/Admin.jsx";
 import Account from "./pages/Account.jsx";
 import CmdK from "./CmdK.jsx";
 import { api } from "./api.js";
+import { ledger } from "./orders.js";
 
 export const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -77,9 +78,8 @@ export default function App() {
         const st = await api.orderStatus(o.orderId);
         if (!alive) return;
         setProd({ ...o, status: st.status, failCause: st.failCause });
-        if (["ready", "human_review", "dispatch_failed"].includes(st.status)) {
-          setTimeout(() => { localStorage.removeItem("cf.activeOrder"); }, 120000); // linger 2 min then clear
-        }
+        ledger.setStatus(o.orderId, st.status);
+        // the chip persists until the delivery is acknowledged in My Films or Account
       } catch { /* transient */ }
     };
     tick();
@@ -129,6 +129,7 @@ export default function App() {
             </>)}
             <div className="mono sidelabel">STUDIO</div>
             <button className={route === "account" ? "on" : ""} aria-current={route === "account" ? "page" : undefined} onClick={() => nav("account")}><i>✦</i> Account</button>
+            <button onClick={() => { sessionStorage.setItem("cf.openSupport", "1"); nav("account"); }}><i>◍</i> Get Help</button>
           </nav>
           <div className="sideuser">
             <div className="mono" style={{ textTransform: "none", letterSpacing: ".04em", overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
@@ -140,7 +141,7 @@ export default function App() {
             <span className="mono crumb">{route === "studio" ? "THE SET" : route === "admin" ? "PRODUCTION FLOOR" : route === "account" ? "ACCOUNT" : "MY FILMS"}</span>
             <span style={{ flex: 1 }} />
             {prod && (
-              <button className={`prodchip mono ${prod.status}`} onClick={() => nav("studio")} title="Director's cut production">
+              <button className={`prodchip mono ${prod.status}`} onClick={() => nav(prod.status === "ready" ? "dashboard" : "account")} title="Director's cut order status">
                 {prod.status === "ready" ? "🎬 CUT READY" :
                  ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" :
                  <><i className="recdot" />{prod.status === "filming" ? "CAMERAS ROLLING" : "IN THE QUEUE"}</>}
