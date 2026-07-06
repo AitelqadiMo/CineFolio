@@ -5,6 +5,7 @@ import { json, bad, routeKeyOf } from "./lib.mjs";
 import * as misc from "./misc.mjs";
 import * as studio from "./studio.mjs";
 import * as sites from "./sites.mjs";
+import * as orders from "./orders.mjs";
 
 export const ROUTES = {
   "GET /health": async (_e, ctx) => json(200, { ok: true, service: "cinefolio-api", env: ctx.config.appEnv, ts: new Date().toISOString() }),
@@ -23,6 +24,10 @@ export const ROUTES = {
   "GET /studio/status": studio.status,
   "GET /studio/cut": studio.cut,
   "POST /callback": studio.callback,
+  "GET /orders": orders.listOrders,
+  "POST /orders/{id}/revision": orders.requestRevision,
+  "GET /sites/{id}/stats": sites.stats,
+  "POST /sites/{id}/domain": sites.connectDomain,
   "POST /sites": sites.createSite,
   "GET /sites": sites.listSites,
   "GET /sites/{id}": sites.getSite,
@@ -38,7 +43,7 @@ async function buildCtx() {
   if (realCtx) return realCtx;
   const aws = await import("./aws.mjs");
   realCtx = {
-    ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn, presign: aws.presign,
+    ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn, presign: aws.presign, ses: aws.ses,
     secrets: aws.secrets, fetchFn: aws.fetchFn,
     config: {
       appEnv: process.env.APP_ENV || "dev",
@@ -49,6 +54,8 @@ async function buildCtx() {
       distributionId: process.env.DISTRIBUTION_ID,
       cdnDomain: process.env.CDN_DOMAIN,
       ordersQueueUrl: process.env.ORDERS_QUEUE_URL,
+      sesFrom: process.env.SES_FROM || "",
+      appOrigin: (process.env.APP_ORIGIN || "").replace(/\/$/, ""),
     },
   };
   return realCtx;
