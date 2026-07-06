@@ -59,6 +59,7 @@ function fakeCtx(overrides = {}) {
       async putObject(b, k, body) { s3store.set(`${b}/${k}`, body); },
       async getObjectText(b, k) { if (!s3store.has(`${b}/${k}`)) throw new Error("NoSuchKey"); return s3store.get(`${b}/${k}`); },
       async copyObject(b, from, to) { s3store.set(`${b}/${to}`, s3store.get(`${b}/${from}`)); },
+      async deleteObject(b, k) { s3store.delete(`${b}/${k}`); },
       _store: s3store,
     },
     kvs: { puts: [], dels: [], async put(_a, k, val) { this.puts.push([k, val]); }, async del(_a, k) { this.dels.push(k); } },
