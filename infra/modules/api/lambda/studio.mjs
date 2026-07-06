@@ -3,6 +3,7 @@
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
 import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin } from "./lib.mjs";
+import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -105,6 +106,7 @@ export async function generate(event, ctx) {
       console.error(JSON.stringify({ level: "error", msg: "enqueue failed", orderId, err: e?.message }));
       await setStatus(ctx, orderId, "dispatch_failed");
     }
+    await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
 
   return ok({ ok: true, orderId, production, html: previewHTML(parsed) });
