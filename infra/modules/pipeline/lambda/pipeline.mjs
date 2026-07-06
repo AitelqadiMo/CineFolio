@@ -98,6 +98,9 @@ export const handler = async (event) => {
         "content-type": "application/json",
         authorization: `Bearer ${sec.AGENT_WEBHOOK_SECRET}`,
         "x-webhook-secret": sec.AGENT_WEBHOOK_SECRET,
+        // the platform validates THIS header name; the two above stay for
+        // compatibility with any future non-platform build endpoint
+        "X-Hyperagent-Webhook-Secret": sec.AGENT_WEBHOOK_SECRET,
       },
       body: JSON.stringify(payload),
     });
