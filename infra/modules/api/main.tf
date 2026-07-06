@@ -74,6 +74,8 @@ locals {
     "DELETE /sites/{id}"            = true
     "GET /orders"                   = true
     "POST /orders/{id}/revision"    = true
+    "GET /profile"                  = true
+    "PUT /profile"                  = true
   }
 }
 

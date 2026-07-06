@@ -7,9 +7,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
-import { confetti, friendly, ConfirmDialog } from "../ui.jsx";
+import { confetti, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
-import { parseProfile, compile, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
+import { parseProfile, compile, compileBundle, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
 
 const POLL_MS = 8000, POLL_MAX = 220;
 
@@ -38,6 +38,7 @@ export default function Studio() {
   const [orderStatus, setOrderStatus] = useState(null);
   const [err, setErr] = useState("");
   const [confirmCut, setConfirmCut] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
@@ -91,6 +92,26 @@ export default function Studio() {
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal]);
 
+  // the dossier (My Profile) is the casting source of truth: prefill once, never clobber
+  const [dossier, setDossier] = useState(null);
+  useEffect(() => {
+    api.getProfile().then((r) => {
+      if (!r.profile) return;
+      setDossier(r.profile);
+      const idn = r.profile.identity || {};
+      setQ((q0) => ({
+        ...q0,
+        name: q0.name || idn.name || "",
+        headline: q0.headline || idn.headline || "",
+        email: q0.email || idn.email || "",
+        website: q0.website || r.profile.links?.website || "",
+        focus: q0.focus || r.profile.story || "",
+      }));
+      setProjects((p0) => (p0.length ? p0 : (r.profile.projects || []).slice(0, 8)));
+    }).catch(() => { /* the dossier is optional; the set works without it */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
 
@@ -108,19 +129,26 @@ export default function Studio() {
 
   const fullProfile = useMemo(() => ({
     ...profile,
+    ...(dossier?.certifications?.length ? { certifications: dossier.certifications } : {}),
+    ...(dossier?.education?.length ? { education: dossier.education } : {}),
+    ...(dossier?.languages?.length ? { languages: dossier.languages } : {}),
+    ...(dossier?.experience?.length ? { experience: dossier.experience } : {}),
     ...(projects.length ? { projects } : {}),
     testimonials, services,
-  }), [profile, projects, testimonials, services]);
+  }), [profile, projects, testimonials, services, dossier]);
 
   const html = useMemo(() => {
     try { return compile(tpl, pal, fullProfile, { sections }); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error, adjust the brief</body></html>"; }
   }, [tpl, pal, fullProfile, sections]);
 
   // live posters: each template rendered with the CLIENT'S data
+  // live posters: compile only what is on screen (the selected look in the
+  // rail; every look only while the browse gallery is open)
   const posters = useMemo(() => TEMPLATES.map((t) => {
+    if (!lookOpen && t.id !== tpl) return { id: t.id, html: "" };
     try { return { id: t.id, html: compile(t.id, t.id === tpl ? pal : t.palettes[0].id, fullProfile, { sections }) }; }
     catch { return { id: t.id, html: "" }; }
-  }), [fullProfile, tpl, pal, sections]);
+  }), [fullProfile, tpl, pal, sections, lookOpen]);
 
   const ready = cvText.trim().length > 60 || q.name;
 
@@ -199,7 +227,9 @@ export default function Studio() {
     try {
       const slug = pub.slug || (profile.name || "site").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const site = await api.createSite({ slug, title: profile.name });
-      const r = await api.publish(site.site.siteId, { html, ...(stageMode ? { stage: true } : {}) });
+      // a premiere ships the whole web app: index plus case-study pages
+      const bundle = compileBundle(tpl, pal, fullProfile, { sections });
+      const r = await api.publish(site.site.siteId, { files: bundle.files, ...(stageMode ? { stage: true } : {}) });
       setPub({ slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });
       if (!stageMode) setTimeout(() => confetti(premiereRef.current || undefined), 60);
     } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
@@ -279,6 +309,7 @@ export default function Studio() {
               <input id="phUp" type="file" accept="image/*" onChange={onPhoto} hidden />
             </label>
             <textarea value={cvRaw} onChange={(e) => setCvRaw(e.target.value)} placeholder="…or paste the CV. The engine reads sections, years, links and skills on its own." style={{ minHeight: 84, marginTop: 8 }} />
+            {dossier && <div className="mono" style={{ marginTop: 8, fontSize: 9, color: "var(--gold)" }}>CAST FROM YOUR PROFILE ✓ · KEEP IT CURRENT IN MY PROFILE</div>}
           </div>
 
           <div className="railsec act">
@@ -363,18 +394,21 @@ export default function Studio() {
           </div>
 
           <div className="railsec act">
-            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">your free take: three worlds, rendered live with your data</span></div></div>
+            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">five worlds, fifteen film stocks, rendered live with your data</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
                   <span className="posterframe">
-                    {ready && posters[i].html
+                    {ready && tpl === t.id && posters[i].html
                       ? <iframe title={t.name} tabIndex={-1} sandbox="allow-scripts" scrolling="no" srcDoc={posters[i].html} loading="lazy" />
                       : <span className="posterghost mono">{t.name.split(" ").pop().toUpperCase()}</span>}
                   </span>
                   <span className="posterlbl mono">{t.name}</span>
                 </button>
               ))}
+            </div>
+            <div className="btnrow" style={{ marginTop: 10 }}>
+              <button type="button" className="btn ghost ordbtn" onClick={() => setLookOpen(true)}>Browse all looks</button>
             </div>
             <div className="stockrow">
               <span className="mono" style={{ fontSize: 8.5 }}>FILM STOCK</span>
@@ -469,6 +503,36 @@ export default function Studio() {
           </div>
         </section>
       </div>
+
+      <Dialog open={lookOpen} title="Browse the looks" kicker="FIVE FAMILIES · FIFTEEN FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
+        <div className="lookgrid">
+          {TEMPLATES.map((t, i) => (
+            <div key={t.id} className={`lookcard ${tpl === t.id ? "on" : ""}`}>
+              <span className="posterframe lookframe">
+                {ready && posters[i].html
+                  ? <iframe title={`look-${t.name}`} tabIndex={-1} sandbox="allow-scripts" scrolling="no" srcDoc={posters[i].html} loading="lazy" />
+                  : <span className="posterghost mono">{t.name.toUpperCase()}</span>}
+              </span>
+              <b className="lookname">{t.name}</b>
+              <p className="lookblurb">{t.blurb}</p>
+              <div className="stockrow" style={{ marginTop: 8 }}>
+                {t.palettes.map((p2) => (
+                  <button key={p2.id} type="button" className={`stock ${tpl === t.id && pal === p2.id ? "on" : ""}`}
+                    onClick={() => { setTpl(t.id); setPal(p2.id); }}>
+                    <i style={{ background: `linear-gradient(135deg, ${p2.vars[2] || p2.vars[1]}, ${p2.vars[3] || p2.vars[2]})` }} />{p2.label}
+                  </button>
+                ))}
+              </div>
+              <div className="btnrow" style={{ marginTop: 10 }}>
+                <button type="button" className={`btn ${tpl === t.id ? "primary" : "ghost"} ordbtn`}
+                  onClick={() => { if (tpl !== t.id) { setTpl(t.id); setPal(t.palettes[0].id); } setLookOpen(false); }}>
+                  {tpl === t.id ? "Keep this look ✓" : "Use this look"}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmCut} kicker="THE DIRECTOR'S CUT · $149 ONE TIME" title="Order your Director's Cut"

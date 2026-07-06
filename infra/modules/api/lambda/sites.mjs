@@ -3,7 +3,7 @@
 // Pointer: CloudFront KVS  slug -> "{siteId}/releases/{n}"   (atomic flip, no invalidation)
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle } from "./lib.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -66,7 +66,7 @@ export async function getSite(event, ctx) {
     ScanIndexForward: false,
     Limit: 10,
   });
-  return ok({ ok: true, site: pub(site, ctx), releases: releases.map((r) => ({ n: r.n, createdAt: r.createdAt, source: r.source })) });
+  return ok({ ok: true, site: pub(site, ctx), releases: releases.map((r) => ({ n: r.n, createdAt: r.createdAt, source: r.source, files: r.filePaths?.length || 1 })) });
 }
 
 // POST /sites/{id}/publish { html? , orderId? } — html direct, or pull a ready order's cut
@@ -77,23 +77,29 @@ export async function publish(event, ctx) {
   const b = bodyOf(event);
   if (!b) return bad("invalid json");
 
-  let html = typeof b.html === "string" ? b.html : null;
+  // a release is a BUNDLE now: [{ path, html }]; a bare html string stays valid
+  let files = Array.isArray(b.files) && b.files.length ? b.files
+    : typeof b.html === "string" && b.html ? [{ path: "index.html", html: b.html }] : null;
   let source = "direct";
-  if (!html && b.orderId) {
+  if (!files && b.orderId) {
     const order = await ctx.ddb.get({ PK: `ORDER#${b.orderId}`, SK: "META" });
-    if (!order?.cutKey || order.status !== "ready") return bad("order cut not ready", 409);
-    html = await ctx.s3.getObjectText(ctx.config.artifactsBucket, order.cutKey);
+    if (order?.status !== "ready" || (!order.cutKey && !Array.isArray(order.cutFiles))) return bad("order cut not ready", 409);
+    const paths = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : null;
+    files = paths
+      ? await Promise.all(paths.map(async (p) => ({ path: p, html: await ctx.s3.getObjectText(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`) })))
+      : [{ path: "index.html", html: await ctx.s3.getObjectText(ctx.config.artifactsBucket, order.cutKey) }];
     source = `order:${b.orderId}`;
   }
-  if (!html || !html.trimStart().toLowerCase().startsWith("<!doctype html")) return bad("html document required");
-  if (Buffer.byteLength(html, "utf8") > 2 * 1024 * 1024) return bad("bundle too large", 413);
-  html = withBeacon(html, apiBaseOf(event, ctx), site.slug); // every release carries the audience beacon
+  const problem = validateBundle(files, { maxTotal: 5 * 1024 * 1024 });
+  if (problem) return bad(problem, problem.includes("large") ? 413 : 400);
+  const beaconBase = apiBaseOf(event, ctx);
+  files = files.map((f) => ({ path: f.path, html: withBeacon(f.html, beaconBase, site.slug) })); // every page carries the audience beacon
 
   const n = (site.releases || 0) + 1;
   const releasePrefix = `sites/${site.siteId}/releases/${n}`;
-  await ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/index.html`, html);
+  await Promise.all(files.map((f) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${f.path}`, f.html)));
   const staged = b.stage === true;
-  await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now() });
+  await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now(), filePaths: files.map((f) => f.path) });
 
   if (staged) {
     // draft workflow: the release exists and is previewable, but the pointer
@@ -133,12 +139,14 @@ export async function source(event, ctx) {
   if (err) return err;
   const n = Number(qs(event, "release") || site.liveRelease);
   if (!Number.isInteger(n) || n < 1 || n > (site.releases || 0)) return bad("bad release");
-  const html = await ctx.s3.getObjectText(ctx.config.publishedBucket, `sites/${site.siteId}/releases/${n}/index.html`);
+  const reqPath = qs(event, "path") || "index.html";
+  if (!/^(?:[a-z0-9_-]+\/)?[a-z0-9_-]+\.html$/.test(reqPath)) return bad("bad path");
+  const html = await ctx.s3.getObjectText(ctx.config.publishedBucket, `sites/${site.siteId}/releases/${n}/${reqPath}`);
   return {
     statusCode: 200,
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "content-disposition": `attachment; filename="${site.slug}-release-${n}.html"`,
+      "content-disposition": `attachment; filename="${site.slug}-release-${n}-${reqPath.replace("/", "-")}"`,
       "cache-control": "no-store",
     },
     body: html,
@@ -286,12 +294,14 @@ export async function duplicate(event, ctx) {
     if (e?.name === "ConditionalCheckFailedException") return bad("slug taken", 409);
     throw e;
   }
-  await ctx.s3.copyObject(
+  const srcRel = await ctx.ddb.get({ PK: site.PK, SK: relSK(site.liveRelease) });
+  const srcPaths = srcRel?.filePaths?.length ? srcRel.filePaths : ["index.html"];
+  await Promise.all(srcPaths.map((p) => ctx.s3.copyObject(
     ctx.config.publishedBucket,
-    `sites/${site.siteId}/releases/${site.liveRelease}/index.html`,
-    `sites/${newId}/releases/1/index.html`
-  );
-  await ctx.ddb.put({ PK: `SITE#${newId}`, SK: relSK(1), type: "release", n: 1, source: `duplicate:${site.siteId}`, by: claims.sub, createdAt: now() });
+    `sites/${site.siteId}/releases/${site.liveRelease}/${p}`,
+    `sites/${newId}/releases/1/${p}`
+  )));
+  await ctx.ddb.put({ PK: `SITE#${newId}`, SK: relSK(1), type: "release", n: 1, source: `duplicate:${site.siteId}`, by: claims.sub, createdAt: now(), filePaths: srcPaths });
   const flip = await flipPointer(ctx, slug, `${newId}/releases/1`, slug);
   const newSite = {
     PK: `SITE#${newId}`, SK: "META", type: "site", siteId: newId, slug,

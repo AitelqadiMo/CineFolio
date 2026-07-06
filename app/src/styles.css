@@ -157,7 +157,7 @@ h1 em, h2 em { font-family: 'Instrument Serif', serif; font-style: italic; font-
 .sitecard { display: flex; flex-direction: column; gap: 10px; border-radius: 16px; transition: transform .3s cubic-bezier(.22,1,.36,1), box-shadow .3s; }
 .sitecard:hover { transform: translateY(-4px); box-shadow: var(--shadow-2); }
 .sitecard .row1 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.sitecard h3 { font-size: 1.08rem; }
+.sitecard .cardtitle { font-size: 1.08rem; margin: 0; }
 .poster {
   position: relative; aspect-ratio: 16/10; border-radius: 10px; overflow: hidden;
   background: var(--screen); border: 1px solid var(--line); margin-bottom: 8px;
@@ -482,3 +482,31 @@ textarea { min-height: 130px; resize: vertical; font-family: var(--mono); font-s
   .sitecard:hover, .posterpick:hover .posterframe { transform: none; }
   .page > *, .grid.two > *, .metrics > *, .projbody, .kcard, .dlgbox, .cmdkbox { animation: none; }
 }
+
+/* studio credits chip (the usage meter's shell presence) */
+.credchip { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid rgba(217, 164, 65, .6); color: var(--gold); background: rgba(217, 164, 65, .08); border-radius: 99px; padding: 6px 12px; font-size: 8.5px; cursor: pointer; }
+.credchip:hover { border-color: var(--gold-g); }
+
+
+/* ================= ZWIN pass 06: choosing the look + first run ================= */
+/* the look gallery: big live posters, one per family */
+.dlgbox { max-height: 88vh; overflow-y: auto; }
+.lookgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 760px) { .lookgrid { grid-template-columns: 1fr; } }
+.lookcard { border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; background: #fff; }
+.lookcard.on { border-color: var(--gold-g); box-shadow: 0 0 0 2px rgba(217, 164, 65, .3); }
+.lookframe { aspect-ratio: 16/10; border-radius: 10px; }
+.lookname { font-family: var(--disp); text-transform: uppercase; font-size: .95rem; color: var(--navy); display: block; margin-top: 10px; }
+.lookblurb { font-size: 12px; color: var(--dim); margin-top: 2px; line-height: 1.5; }
+
+/* first-run production checklist */
+.steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 820px) { .steps3 { grid-template-columns: 1fr; } }
+.step3 { display: flex; gap: 12px; align-items: flex-start; text-align: left; background: #fff; border: 1.5px solid var(--line); border-radius: 12px; padding: 16px; cursor: pointer; font: inherit; color: var(--navy); transition: border-color .15s, transform .2s, box-shadow .2s; }
+.step3:hover { border-color: var(--navy); transform: translateY(-2px); box-shadow: var(--shadow-1); }
+.step3.done { border-color: rgba(14, 158, 98, .5); }
+.stepno { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-size: 11px; background: var(--navy); color: var(--bone); }
+.step3.done .stepno { background: var(--green); }
+.steptxt b { font-family: var(--disp); text-transform: uppercase; font-size: .82rem; display: block; }
+.steptxt i { font-style: normal; font-size: 12px; color: var(--dim); display: block; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .step3:hover { transform: none; } }

@@ -9,6 +9,8 @@ import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly, confetti, Dialog, ConfirmDialog, PromptDialog, slugProblem } from "../ui.jsx";
 import { ledger } from "../orders.js";
 
+const hasDraft = () => { try { return !!localStorage.getItem("cf.studioDraft"); } catch { return false; } };
+
 const HISTORY_PREVIEW = 4;
 
 export default function Dashboard() {
@@ -25,6 +27,7 @@ export default function Dashboard() {
   const [duping, setDuping] = useState(null);   // site | null
   const [copied, setCopied] = useState("");
   const cheered = useRef(false);
+  const [firstRun, setFirstRun] = useState({ dossier: false, draft: hasDraft() });
 
   const load = () => api.sites().then((r) => {
     setSites(r.sites);
@@ -35,6 +38,10 @@ export default function Dashboard() {
     });
   }).catch((e) => setErr(friendly(e.message)));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (delivery && !cheered.current) { cheered.current = true; setTimeout(() => confetti(), 250); }
@@ -98,10 +105,24 @@ export default function Dashboard() {
       {sites === null && <div className="grid two"><Skeleton h={220} /><Skeleton h={220} /></div>}
 
       {sites?.length === 0 && (
-        <div className="panel glass" style={{ textAlign: "center", padding: 52 }}>
-          <div className="mono" style={{ marginBottom: 10 }}>NOTHING IN PRODUCTION · THE FLOOR IS QUIET</div>
-          <h2 style={{ marginBottom: 18 }}>Your first film awaits, {user.email.split("@")[0]}.</h2>
-          <button className="btn primary" onClick={() => nav("studio")}>Roll camera on film one</button>
+        <div className="panel glass" style={{ padding: 40 }}>
+          <div className="mono" style={{ marginBottom: 8 }}>NOTHING IN PRODUCTION · THE FLOOR IS QUIET</div>
+          <h2 style={{ marginBottom: 6 }}>Your first film, {user.email.split("@")[0]}.</h2>
+          <p className="dlgtext" style={{ marginBottom: 18 }}>Three steps from resume to a live premiere. Take them in any order; the studio keeps up.</p>
+          <div className="steps3">
+            <button className={`step3 ${firstRun.dossier ? "done" : ""}`} onClick={() => nav("profile")}>
+              <span className="stepno" aria-hidden="true">{firstRun.dossier ? "✓" : "1"}</span>
+              <span className="steptxt"><b>Fill your dossier</b><i>Upload a resume once; every film casts from it.</i></span>
+            </button>
+            <button className={`step3 ${firstRun.draft ? "done" : ""}`} onClick={() => nav("studio")}>
+              <span className="stepno" aria-hidden="true">{firstRun.draft ? "✓" : "2"}</span>
+              <span className="steptxt"><b>Direct your free take</b><i>Pick a look; your site renders as you type.</i></span>
+            </button>
+            <button className="step3" onClick={() => nav("studio")}>
+              <span className="stepno" aria-hidden="true">3</span>
+              <span className="steptxt"><b>Premiere it</b><i>One click, live on yourname.cinefolio.site.</i></span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -115,7 +136,7 @@ export default function Dashboard() {
               </div>
             )}
             <div className="row1">
-              <h3>{s.title}</h3>
+              <h2 className="cardtitle">{s.title}</h2>
               <span className={`badge ${s.status}`}>{s.status.replace("_", " ")}</span>
             </div>
             <div className="mono" style={{ textTransform: "none", letterSpacing: ".06em" }}>

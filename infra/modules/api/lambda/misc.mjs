@@ -120,6 +120,23 @@ export async function putDraft(event, ctx) {
   return ok({ ok: true, updatedAt: now() });
 }
 
+// GET /profile + PUT /profile: the client's portfolio dossier, the single
+// source every film is cast from. One item per user, size-capped like drafts.
+export async function getProfile(event, ctx) {
+  const claims = claimsOf(event);
+  const item = await ctx.ddb.get({ PK: `USER#${claims.sub}`, SK: "PORTFOLIO" });
+  return ok({ ok: true, profile: item?.data || null, updatedAt: item?.updatedAt || null });
+}
+
+export async function putProfile(event, ctx) {
+  const claims = claimsOf(event);
+  if (!event.body || Buffer.byteLength(event.body, "utf8") > 200 * 1024) return bad("profile too large", 413);
+  const b = bodyOf(event);
+  if (!b || typeof b.profile !== "object" || b.profile === null) return bad("invalid profile");
+  await ctx.ddb.put({ PK: `USER#${claims.sub}`, SK: "PORTFOLIO", type: "portfolio", data: b.profile, updatedAt: now() });
+  return ok({ ok: true, updatedAt: now() });
+}
+
 // POST /media { contentType, ext? } — presigned upload for project covers /
 // headshots. Media lives in the PUBLISHED bucket under media/{sub}/ and is
 // served through the sites CDN (router passes /media/* straight through).

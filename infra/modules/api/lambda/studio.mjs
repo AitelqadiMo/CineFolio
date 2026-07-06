@@ -2,7 +2,7 @@
 // generate: create order (idempotent) -> fire agent webhook -> return instant rough cut
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
-import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin } from "./lib.mjs";
+import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle } from "./lib.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -135,16 +135,32 @@ export async function callback(event, ctx) {
   if (!secrets.CF_CALLBACK_SECRET || !safeEqual(given, secrets.CF_CALLBACK_SECRET)) return json(401, { ok: false });
   const orderId = event.headers?.["x-cf-order"] || event.headers?.["X-CF-Order"] || qs(event, "orderId");
   if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
-  const html = event.isBase64Encoded ? Buffer.from(event.body || "", "base64").toString("utf8") : event.body || "";
-  const trimmed = html.trimStart().toLowerCase();
-  if (!trimmed.startsWith("<!doctype html")) return bad("body must be a full html document");
-  if (Buffer.byteLength(html, "utf8") > 900 * 1024) return bad("html too large (900KB max)", 413);
+  const raw = event.isBase64Encoded ? Buffer.from(event.body || "", "base64").toString("utf8") : event.body || "";
+  // v2: the agent delivers a whole web app as JSON { files: [{ path, html }] };
+  // a raw single html document stays accepted so v1 agents keep working
+  let files;
+  if (raw.trimStart().startsWith("{")) {
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch { return bad("invalid json body"); }
+    files = Array.isArray(parsed?.files) ? parsed.files : null;
+  } else {
+    files = [{ path: "index.html", html: raw }];
+  }
+  const problem = validateBundle(files, { maxTotal: 3 * 1024 * 1024 });
+  if (problem) return bad(problem, problem.includes("large") ? 413 : 400);
 
   const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
   if (!order) return bad("unknown order", 404);
 
-  const key = `orders/${orderId}/cut.html`;
-  await ctx.s3.putObject(ctx.config.artifactsBucket, key, html);
+  const key = `orders/${orderId}/cut/index.html`;
+  await Promise.all(files.map((f) => ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, f.html)));
+  // the file manifest rides on the order so publish and finalize need no state machine changes
+  await ctx.ddb.update({
+    Key: { PK: `ORDER#${orderId}`, SK: "META" },
+    UpdateExpression: "SET cutFiles = :f",
+    ExpressionAttributeValues: { ":f": files.map((f) => f.path) },
+    ConditionExpression: "attribute_exists(PK)",
+  });
 
   if (order.taskToken) {
     // Pipeline mode: resume the Step Functions execution; Finalize owns the

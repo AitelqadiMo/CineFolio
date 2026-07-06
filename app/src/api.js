@@ -41,6 +41,8 @@ export const api = {
   media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
   getDraft: () => req("/draft", { auth: true }),
   putDraft: (draft) => req("/draft", { method: "PUT", body: { draft }, auth: true }),
+  getProfile: () => req("/profile", { auth: true }),
+  putProfile: (profile) => req("/profile", { method: "PUT", body: { profile }, auth: true }),
   duplicate: (id, body) => req(`/sites/${id}/duplicate`, { method: "POST", body, auth: true }),
 
   adminOrders: (status) => req(`/admin/orders?status=${encodeURIComponent(status)}`, { auth: true }),

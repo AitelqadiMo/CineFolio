@@ -85,11 +85,11 @@ export const handler = async (event) => {
       brief: order.brief || null, // template/palette/customIdea from the Studio workspace
       revisionNotes: order.revisionNotes || null, // set when this run is the included revision
       instructions:
-        "Produce a single-file cinematic portfolio HTML (CineFolio jersey brand: navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62). Max 900KB, self-contained, no external JS. POST it raw to deliver.url with deliver.headers within 25 minutes.",
+        "Produce a complete multi-page portfolio web app: index.html plus projects/{slug}.html case-study pages. Every file is a self-contained html document (inline CSS, Google Fonts links allowed, no external JS), art-directed to the client and the brief. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint. Deliver within 25 minutes: POST JSON {\"files\":[{\"path\":\"index.html\",\"html\":\"<!doctype html...\"}]} to deliver.url with deliver.headers. Max 20 files, 3MB total, index.html required.",
       deliver: {
         method: "POST",
         url: `https://${process.env.API_DOMAIN}/callback`,
-        headers: { "X-CF-Secret": sec.CF_CALLBACK_SECRET, "X-CF-Order": orderId, "content-type": "text/html" },
+        headers: { "X-CF-Secret": sec.CF_CALLBACK_SECRET, "X-CF-Order": orderId, "content-type": "application/json" },
       },
     };
     const r = await fetch(sec.AGENT_WEBHOOK_URL, {

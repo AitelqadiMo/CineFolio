@@ -217,7 +217,7 @@ test("sites: source download serves release html to owner only; previewUrl uses 
   assert.match(p.body.url, /\/_preview\/dl-site\/$/);
   const dl = await h(ev("GET /sites/{id}/source", { claims: "u1", path: { id } }));
   assert.equal(dl.statusCode, 200);
-  assert.match(dl.headers["content-disposition"], /dl-site-release-1\.html/);
+  assert.match(dl.headers["content-disposition"], /dl-site-release-1-index\.html/);
   assert.match(dl.body, /v1 source/);
   // stranger blocked
   assert.equal(parse(await h(ev("GET /sites/{id}/source", { claims: "intruder", path: { id } }))).code, 403);
@@ -425,4 +425,72 @@ test("publish injects the audience beacon before the closing body tag", async ()
   assert.match(stored, /data-cf-beacon/);
   assert.match(stored, /s\/lena/);
   assert.ok(stored.indexOf("data-cf-beacon") < stored.indexOf("</body>"), "beacon sits inside body");
+});
+
+// ---------- ZWIN pass 05: the complete web app ----------
+
+test("profile: dossier round trip, size cap, shape guard", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const empty = parse(await h(ev("GET /profile", { claims: "u1" })));
+  assert.equal(empty.body.profile, null);
+  const profile = { identity: { name: "Dora Szabo", headline: "Senior Accounts Payable" }, skills: ["excel"], certifications: [{ name: "CPA", year: "2024" }] };
+  const put = parse(await h(ev("PUT /profile", { claims: "u1", body: { profile } })));
+  assert.equal(put.code, 200);
+  const got = parse(await h(ev("GET /profile", { claims: "u1" })));
+  assert.equal(got.body.profile.identity.name, "Dora Szabo");
+  assert.equal(got.body.profile.certifications[0].name, "CPA");
+  assert.equal(parse(await h(ev("PUT /profile", { claims: "u1", body: { profile: "nope" } }))).code, 400);
+  assert.equal(parse(await h(ev("GET /profile", { claims: "u2" }))).body.profile, null); // isolation
+});
+
+test("publish: a bundle stores every page with the beacon, index required, bad paths rejected", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "bundle-site", title: "Bundle" } }))).body.site;
+  const files = [
+    { path: "index.html", html: "<!doctype html><html><body>home <a href=\"projects/atlas.html\">atlas</a></body></html>" },
+    { path: "projects/atlas.html", html: "<!doctype html><html><body>case study</body></html>" },
+  ];
+  const pubd = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { files } })));
+  assert.equal(pubd.code, 200);
+  const idx = ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/index.html`);
+  const page = ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/projects/atlas.html`);
+  assert.ok(idx && page, "both pages stored");
+  assert.match(idx, /data-cf-beacon/);
+  assert.match(page, /data-cf-beacon/);
+  const rel = ctx.ddb._store.get(`SITE#${site.siteId}|RELEASE#00001`);
+  assert.deepEqual(rel.filePaths, ["index.html", "projects/atlas.html"]);
+  // guards
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { files: [{ path: "projects/x.html", html: "<!doctype html><html></html>" }] } }))).code, 400);
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { files: [{ path: "../evil.html", html: "<!doctype html><html></html>" }, { path: "index.html", html: "<!doctype html><html></html>" }] } }))).code, 400);
+  // source can fetch a specific page of the bundle
+  const src = await h(ev("GET /sites/{id}/source", { claims: "u1", path: { id: site.siteId }, qs: { path: "projects/atlas.html" } }));
+  assert.match(src.body, /case study/);
+});
+
+test("callback v2: the agent delivers a whole web app as JSON and publish serves it", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/generate", { claims: "u1", body: { email: "u1@x.io", name: "Dora", role: "designer", cvText: "2022 design at Acme" } })));
+  const orderId = gen.body.orderId;
+  const payload = JSON.stringify({ files: [
+    { path: "index.html", html: "<!doctype html><html><body>the cut</body></html>" },
+    { path: "projects/atlas.html", html: "<!doctype html><html><body>atlas case</body></html>" },
+  ] });
+  const cb = parse(await h(ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId }, body: undefined })));
+  assert.equal(cb.code, 400); // empty body rejected
+  const cb2 = parse(await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: payload }));
+  assert.equal(cb2.code, 200);
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  assert.deepEqual(meta.cutFiles, ["index.html", "projects/atlas.html"]);
+  assert.ok(ctx.s3._store.get(`arts/orders/${orderId}/cut/index.html`));
+  assert.ok(ctx.s3._store.get(`arts/orders/${orderId}/cut/projects/atlas.html`));
+  // no task token in fake flow: callback flipped it ready directly; publish the cut as a site release
+  assert.equal(meta.status, "ready");
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "dora-cut", title: "Dora" } }))).body.site;
+  const pubd = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { orderId } })));
+  assert.equal(pubd.code, 200);
+  assert.match(ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/index.html`), /the cut/);
+  assert.match(ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/projects/atlas.html`), /atlas case/);
 });
