@@ -12,6 +12,9 @@ import { ledger } from "../orders.js";
 
 const hasDraft = () => { try { return !!localStorage.getItem("cf.studioDraft"); } catch { return false; } };
 
+// honest aging: days since the live release premiered (loss framing, never fake)
+const ageOf = (s) => (s.publishedAt ? Math.floor((Date.now() - new Date(s.publishedAt).getTime()) / 86400000) : 0);
+
 const HISTORY_PREVIEW = 4;
 
 export default function Dashboard() {
@@ -144,7 +147,18 @@ export default function Dashboard() {
         <div className="panel glass" style={{ padding: 40 }}>
           <div className="mono" style={{ marginBottom: 8 }}>NOTHING IN PRODUCTION · THE FLOOR IS QUIET</div>
           <h2 style={{ marginBottom: 6 }}>Your first film, {user.email.split("@")[0]}.</h2>
-          <p className="dlgtext" style={{ marginBottom: 18 }}>Three steps from resume to a live premiere. Take them in any order; the studio keeps up.</p>
+          <p className="dlgtext" style={{ marginBottom: 14 }}>Three steps from resume to a live premiere. Take them in any order; the studio keeps up.</p>
+          {(() => {
+            const done = 1 + (firstRun.dossier ? 1 : 0) + (firstRun.draft ? 1 : 0);
+            return (
+              <div style={{ marginBottom: 18 }}>
+                <div className="mono" style={{ fontSize: 9, marginBottom: 6 }}>
+                  {done} OF 4 DONE · ACCOUNT CREATED ✓{firstRun.dossier ? " · DOSSIER FILLED ✓" : ""}{firstRun.draft ? " · TAKE DIRECTED ✓" : ""}
+                </div>
+                <div className="gauge" aria-hidden="true"><div className="gaugefill" style={{ width: `${(done / 4) * 100}%` }} /></div>
+              </div>
+            );
+          })()}
           <div className="steps3">
             <button className={`step3 ${firstRun.dossier ? "done" : ""}`} onClick={() => nav("profile")}>
               <span className="stepno" aria-hidden="true">{firstRun.dossier ? "✓" : "1"}</span>
@@ -178,6 +192,7 @@ export default function Dashboard() {
             <div className="mono" style={{ textTransform: "none", letterSpacing: ".06em" }}>
               {s.slug} · release {s.liveRelease ?? "·"}/{s.releases}
               {typeof views[s.siteId] === "number" ? ` · seen ${views[s.siteId]} times` : ""}
+              {s.status === "live" && ageOf(s) >= 60 ? ` · this cut is ${ageOf(s)} days old` : ""}
             </div>
             <div className="btnrow" style={{ marginTop: 8 }}>
               {s.status === "live" && (
