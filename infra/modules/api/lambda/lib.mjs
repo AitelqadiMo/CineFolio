@@ -63,7 +63,9 @@ export const ASSET_TYPES = {
   css: "text/css", js: "text/javascript", svg: "image/svg+xml", json: "application/json",
   png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", ico: "image/x-icon",
   woff: "font/woff", woff2: "font/woff2", mp4: "video/mp4", webm: "video/webm",
+  pdf: "application/pdf",
 };
+export const BUNDLE_ASSET_PATH_RE = /^(?:[a-z0-9_-]+\/){0,3}[a-z0-9_-]+\.[a-z0-9]{2,5}$/;
 export function assetTypeOf(path) {
   const ext = String(path || "").split(".").pop().toLowerCase();
   return ASSET_TYPES[ext] || null;

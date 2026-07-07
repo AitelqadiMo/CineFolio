@@ -365,6 +365,13 @@ export default function Studio() {
         ...projects.filter((p2) => p2.cover && !String(p2.cover).startsWith("data:")).map((p2) => ({ name: p2.name || "cover", url: p2.cover })),
         ...locker.filter((a) => a.url && !String(a.url).startsWith("data:")).map((a) => ({ name: a.name || "asset", url: a.url })),
       ].slice(0, 8);
+      // an image that never reached the studio cloud is a data: URL: warn out
+      // loud instead of silently filming without the client's own material
+      const droppedPhoto = photo && String(photo).startsWith("data:");
+      const droppedCovers = [...projects.filter((p2) => String(p2.cover || "").startsWith("data:")), ...locker.filter((a) => String(a.url || "").startsWith("data:"))].length;
+      if (droppedPhoto || droppedCovers) {
+        toast(`${droppedPhoto ? "Your headshot" : "Some images"} never reached the studio cloud (upload blocked), so the director can't use ${droppedPhoto && droppedCovers ? "them" : droppedPhoto ? "it" : "them"}. Re-add ${droppedPhoto ? "the photo" : "them"} in The Locker before ordering for a cut with your own pictures.`, { ttl: 9000 });
+      }
       const r = await api.order({
         email: profile.email || q.email, name: profile.name, role: "engineer",
         cvText: cvText || `${profile.name}, ${profile.headline}`,

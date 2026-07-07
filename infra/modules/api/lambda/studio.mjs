@@ -2,7 +2,7 @@
 // generate: create order (idempotent) -> fire agent webhook -> return instant rough cut
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
-import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf } from "./lib.mjs";
+import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE } from "./lib.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -189,6 +189,49 @@ async function setStatus(ctx, orderId, status, extra = {}) {
 }
 
 const ORDER_ID_RE = /^[a-f0-9-]{8,64}$/i;
+const MAX_ASSET_BYTES = 8 * 1024 * 1024; // per file; API Gateway caps requests near 10MB
+
+// POST /studio/asset?orderId=...&path=assets/hero.jpg — the agent ships every
+// generated image, video or pdf HERE as raw bytes BEFORE delivering the pages,
+// then references them by relative path. Same secret as the callback. Each
+// upload is its own DynamoDB row (ORDER#id / ASSET#path), so parallel uploads
+// never race, and the callback folds them into the cut's file manifest.
+export async function asset(event, ctx) {
+  const secrets = await ctx.secrets();
+  const given = event.headers?.["x-cf-secret"] || event.headers?.["X-CF-Secret"];
+  if (!secrets.CF_CALLBACK_SECRET || !safeEqual(given, secrets.CF_CALLBACK_SECRET)) return json(401, { ok: false });
+  const orderId = qs(event, "orderId");
+  if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
+  const path = String(qs(event, "path") || "").toLowerCase();
+  if (!BUNDLE_ASSET_PATH_RE.test(path) || isPagePath(path)) return bad("bad asset path (pages go to the callback)");
+  const contentType = assetTypeOf(path);
+  if (!contentType) return bad(`unsupported asset type: ${path}`);
+
+  const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
+  if (!order) return bad("unknown order", 404);
+
+  const bytes = event.isBase64Encoded
+    ? Buffer.from(event.body || "", "base64")
+    : Buffer.from(event.body || "", "utf8");
+  if (!bytes.length) return bad("empty asset body");
+  if (bytes.length > MAX_ASSET_BYTES) return bad("asset too large (8MB max per file)", 413);
+
+  await ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${path}`, bytes, contentType);
+  await ctx.ddb.put({
+    PK: `ORDER#${orderId}`, SK: `ASSET#${path}`, type: "orderasset",
+    path, contentType, bytes: bytes.length, createdAt: now(),
+  }); // idempotent by design: re-uploading a path overwrites both object and row
+  return ok({ ok: true, orderId, path, bytes: bytes.length });
+}
+
+// every asset the agent uploaded for an order, race-free
+async function uploadedAssets(ctx, orderId) {
+  const rows = await ctx.ddb.query({
+    KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+    ExpressionAttributeValues: { ":p": `ORDER#${orderId}`, ":s": "ASSET#" },
+  });
+  return rows.map((r) => r.path).filter(Boolean);
+}
 
 // POST /callback — the agent returns the director's cut (raw HTML body, secret header)
 export async function callback(event, ctx) {
@@ -218,11 +261,14 @@ export async function callback(event, ctx) {
   await Promise.all(files.map((f) => isPagePath(f.path)
     ? ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, f.html)
     : ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, Buffer.from(f.content, "base64"), assetTypeOf(f.path))));
-  // the file manifest rides on the order so publish and finalize need no state machine changes
+  // the file manifest rides on the order so publish and finalize need no state
+  // machine changes. Assets uploaded ahead via /studio/asset fold in here.
+  const uploaded = await uploadedAssets(ctx, orderId);
+  const manifest = [...new Set([...files.map((f) => f.path), ...uploaded])];
   await ctx.ddb.update({
     Key: { PK: `ORDER#${orderId}`, SK: "META" },
     UpdateExpression: "SET cutFiles = :f",
-    ExpressionAttributeValues: { ":f": files.map((f) => f.path) },
+    ExpressionAttributeValues: { ":f": manifest },
     ConditionExpression: "attribute_exists(PK)",
   });
 
@@ -266,12 +312,26 @@ export async function status(event, ctx) {
   return ok({ ok: true, orderId, status: order.status, production: order.production, failCause: order.failCause || null });
 }
 
-// GET /studio/cut?orderId=... — returns the director's cut HTML itself
+// GET /studio/cut?orderId=...&path=... — serves any file of the delivered cut,
+// so the pre-premiere preview resolves its relative images, video and pdf.
 export async function cut(event, ctx) {
   const orderId = qs(event, "orderId");
   if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
   const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
   if (!order?.cutKey || order.status !== "ready") return bad("cut not ready", 404);
-  const html = await ctx.s3.getObjectText(ctx.config.artifactsBucket, order.cutKey);
-  return { statusCode: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }, body: html };
+  const path = String(qs(event, "path") || "index.html").toLowerCase();
+  if (!BUNDLE_ASSET_PATH_RE.test(path)) return bad("bad path");
+  const known = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : ["index.html"];
+  if (!known.includes(path)) return bad("not part of this cut", 404);
+  if (isPagePath(path)) {
+    const html = await ctx.s3.getObjectText(ctx.config.artifactsBucket, `orders/${orderId}/cut/${path}`);
+    return { statusCode: 200, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }, body: html };
+  }
+  const bytes = await ctx.s3.getObjectBytes(ctx.config.artifactsBucket, `orders/${orderId}/cut/${path}`);
+  return {
+    statusCode: 200,
+    headers: { "content-type": assetTypeOf(path) || "application/octet-stream", "cache-control": "no-store" },
+    body: bytes.toString("base64"),
+    isBase64Encoded: true,
+  };
 }

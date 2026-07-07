@@ -27,6 +27,7 @@ export const ROUTES = {
   "GET /studio/status": studio.status,
   "GET /studio/cut": studio.cut,
   "POST /callback": studio.callback,
+  "POST /studio/asset": studio.asset,
   "GET /orders": orders.listOrders,
   "POST /orders/{id}/revision": orders.requestRevision,
   "GET /sites/{id}/stats": sites.stats,

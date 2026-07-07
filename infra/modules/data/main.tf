@@ -127,6 +127,20 @@ resource "aws_s3_bucket_cors_configuration" "assets" {
   }
 }
 
+# Client media (headshots, covers) presigns into published/media/*: the browser
+# PUT hits THIS bucket, so it needs the same CORS or every upload silently
+# falls back to an inline data URL and the pipeline never sees the image.
+resource "aws_s3_bucket_cors_configuration" "published" {
+  bucket = aws_s3_bucket.b["published"].id
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["PUT", "GET"]
+    allowed_origins = var.cors_allowed_origins
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
+}
+
 # Lifecycle: expire raw client assets 90 days after delivery (GDPR minimization)
 resource "aws_s3_bucket_lifecycle_configuration" "assets" {
   bucket = aws_s3_bucket.b["assets"].id
