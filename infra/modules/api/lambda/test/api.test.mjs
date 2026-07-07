@@ -63,6 +63,7 @@ function fakeCtx(overrides = {}) {
       async putObject(b, k, body) { s3store.set(`${b}/${k}`, body); },
       async getObjectText(b, k) { if (!s3store.has(`${b}/${k}`)) throw new Error("NoSuchKey"); return s3store.get(`${b}/${k}`); },
       async copyObject(b, from, to) { s3store.set(`${b}/${to}`, s3store.get(`${b}/${from}`)); },
+      async copyObjectAcross(fb, from, tb, to) { s3store.set(`${tb}/${to}`, s3store.get(`${fb}/${from}`)); },
       async deleteObject(b, k) { s3store.delete(`${b}/${k}`); },
       _store: s3store,
     },
@@ -349,7 +350,7 @@ test("w2: staged publish previews without flipping, go-live flips, duplicate cop
 
 // ---------- ZWIN pass 04: buyer backend ----------
 
-test("orders: buyer sees own orders; revision spends the single credit and requeues", async () => {
+test("orders: buyer sees own orders; three messages per order, then 409", async () => {
   const ctx = fakeCtx();
   const h = makeHandler(async () => ctx);
   const gen = parse(await h(ev("POST /studio/order", { claims: "u1", body: { email: "u1@x.io", name: "Dora Szabo", role: "designer", cvText: "2022 Accounts at Acme" } })));
@@ -360,7 +361,8 @@ test("orders: buyer sees own orders; revision spends the single credit and reque
   assert.equal(mine.code, 200);
   assert.equal(mine.body.orders.length, 1);
   assert.equal(mine.body.orders[0].orderId, orderId);
-  assert.equal(mine.body.orders[0].price, 149);
+  assert.equal(mine.body.orders[0].price, 0); // a free cut: the account entitlement paid for it
+  assert.equal(mine.body.orders[0].messagesLeft, 3);
   assert.equal(parse(await h(ev("GET /orders", { claims: "u2" }))).body.orders.length, 0);
 
   // not revisable before delivery
@@ -375,20 +377,67 @@ test("orders: buyer sees own orders; revision spends the single credit and reque
   // notes required
   assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "" } }))).code, 400);
 
-  // happy path: one credit, order re-enters the queue with notes riding on it
+  // happy path: message one of three, order re-enters the queue with notes riding on it
   const sentBefore = ctx.queue.sent.length;
   const rev = parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "warmer light, bolder hero" } })));
   assert.equal(rev.code, 200);
   assert.equal(rev.body.status, "queued");
+  assert.equal(rev.body.messagesLeft, 2);
   assert.equal(ctx.queue.sent.length, sentBefore + 1);
   const after = ctx.ddb._store.get(`ORDER#${orderId}|META`);
   assert.equal(after.revisionRequested, true);
   assert.match(after.revisionNotes, /warmer light/);
 
-  // the credit is spent, even after the revised cut delivers
+  // messages two and three spend the rest; the fourth is refused
+  for (const want of [1, 0]) {
+    after.status = "ready";
+    ctx.ddb._store.set(`ORDER#${orderId}|META`, after);
+    const r = parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: `note ${want}` } })));
+    assert.equal(r.code, 200);
+    assert.equal(r.body.messagesLeft, want);
+  }
   after.status = "ready";
   ctx.ddb._store.set(`ORDER#${orderId}|META`, after);
-  assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "again please" } }))).code, 409);
+  assert.equal(parse(await h(ev("POST /orders/{id}/revision", { claims: "u1", path: { id: orderId }, body: { notes: "a fourth" } }))).code, 409);
+});
+
+// ---------- ZWIN pass 06: asset bundles + the order-to-film bond ----------
+
+test("bundles: a cut ships pages plus base64 assets; publish copies assets and stamps the order's film", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "u1", body: { email: "a@x.io", name: "Asset Case", role: "designer", cvText: "2021 designer figma" } })));
+  const orderId = gen.body.orderId;
+
+  // the agent delivers pages AND a small image asset
+  const bundle = JSON.stringify({ files: [
+    { path: "index.html", html: "<!doctype html><html><body><img src=\"assets/hero.png\">CUT</body></html>" },
+    { path: "projects/one.html", html: "<!doctype html><html><body>case</body></html>" },
+    { path: "assets/hero.png", content: Buffer.from("fakepngbytes").toString("base64"), contentType: "image/png" },
+  ] });
+  const cb = await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: bundle });
+  assert.equal(cb.statusCode, 200);
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  meta.status = "ready"; meta.cutKey = `orders/${orderId}/cut/index.html`;
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, meta);
+  assert.deepEqual(meta.cutFiles.sort(), ["assets/hero.png", "index.html", "projects/one.html"]);
+
+  // premiere the cut: pages carry the beacon, the asset copies byte-for-byte
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "asset-case", title: "Asset Case" } }))).body.site;
+  const pubd = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { orderId } })));
+  assert.equal(pubd.code, 200);
+  // the order now remembers its film: revisions premiere HERE
+  assert.equal(ctx.ddb._store.get(`ORDER#${orderId}|META`).siteId, site.siteId);
+  const rel = ctx.ddb._store.get(`SITE#${site.siteId}|RELEASE#00001`);
+  assert.equal(rel.filePaths.includes("assets/hero.png"), true);
+
+  // a bundle with a bad asset type is refused at the door
+  const badBundle = JSON.stringify({ files: [
+    { path: "index.html", html: "<!doctype html><html><body>x</body></html>" },
+    { path: "assets/run.exe", content: "AAAA" },
+  ] });
+  const badCb = await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: badBundle });
+  assert.equal(badCb.statusCode, 400);
 });
 
 test("stats: sums the film's daily hit counters for the owner only", async () => {

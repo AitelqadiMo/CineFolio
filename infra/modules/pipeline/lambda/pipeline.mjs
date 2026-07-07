@@ -91,7 +91,8 @@ export const handler = async (event) => {
         "Likeness is sacred: the client's face may ONLY come from assets.photo and assets.covers. Use those exact URLs for any portrait or project imagery of them. Never generate, alter, or substitute a human likeness. If no photo is provided, art-direct without a face.",
         "Ship a working Download Resume affordance: render a print-clean resume.html from cvText with @media print styles, link it prominently from index.html, and wire a download or print button. A visitor must be able to leave with the resume in hand.",
         "Structure: index.html plus projects/{slug}.html case-study pages for the strongest work in the resume. Every file is a self-contained html document (inline CSS, Google Fonts links allowed, no external JS beyond inline scripts). Responsive at 375, 768 and 1440; honor prefers-reduced-motion with static fallbacks; real hrefs for email and links.",
-        "Deliver within 25 minutes: POST JSON {\"files\":[{\"path\":\"index.html\",\"html\":\"<!doctype html...\"}]} to deliver.url with deliver.headers. Max 20 files, 3MB total, index.html required.",
+        "When revisionNotes is set this is a REVISION of your earlier cut for the same client: evolve the existing film per the notes, keep what worked, never start a new concept from scratch.",
+        "Deliver within 25 minutes: POST JSON {\"files\":[...]} to deliver.url with deliver.headers. Pages: {\"path\":\"index.html\",\"html\":\"<!doctype html...\"}. Small binary assets (images, fonts, short loops) may ride the bundle as {\"path\":\"assets/hero.jpg\",\"content\":\"<base64>\",\"contentType\":\"image/jpeg\"} and are served next to the pages; reference them by relative path. Heavy video stays an external URL. Max 30 files, 3MB total, index.html required.",
       ].join("\n\n"),
       deliver: {
         method: "POST",

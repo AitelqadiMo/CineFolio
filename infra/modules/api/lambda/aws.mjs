@@ -36,6 +36,9 @@ export const s3 = {
   },
   copyObject: (Bucket, fromKey, toKey) =>
     s3c.send(new CopyObjectCommand({ Bucket, CopySource: `${Bucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
+  // cross-bucket byte-for-byte copy: how a cut's images and video reach the published release
+  copyObjectAcross: (fromBucket, fromKey, toBucket, toKey) =>
+    s3c.send(new CopyObjectCommand({ Bucket: toBucket, CopySource: `${fromBucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
   deleteObject: (Bucket, Key) => s3c.send(new DeleteObjectCommand({ Bucket, Key })),
 };
 

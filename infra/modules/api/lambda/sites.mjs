@@ -3,7 +3,7 @@
 // Pointer: CloudFront KVS  slug -> "{siteId}/releases/{n}"   (atomic flip, no invalidation)
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf } from "./lib.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -81,25 +81,46 @@ export async function publish(event, ctx) {
   let files = Array.isArray(b.files) && b.files.length ? b.files
     : typeof b.html === "string" && b.html ? [{ path: "index.html", html: b.html }] : null;
   let source = "direct";
+  let assetCopies = null; // assets from an order copy byte-for-byte, never through text
   if (!files && b.orderId) {
     const order = await ctx.ddb.get({ PK: `ORDER#${b.orderId}`, SK: "META" });
     if (order?.status !== "ready" || (!order.cutKey && !Array.isArray(order.cutFiles))) return bad("order cut not ready", 409);
-    const paths = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : null;
-    files = paths
-      ? await Promise.all(paths.map(async (p) => ({ path: p, html: await ctx.s3.getObjectText(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`) })))
-      : [{ path: "index.html", html: await ctx.s3.getObjectText(ctx.config.artifactsBucket, order.cutKey) }];
+    const paths = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : ["index.html"];
+    const pagePaths = paths.filter((p) => isPagePath(p));
+    assetCopies = paths.filter((p) => !isPagePath(p));
+    files = await Promise.all(pagePaths.map(async (p) => ({ path: p, html: await ctx.s3.getObjectText(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`) })));
     source = `order:${b.orderId}`;
   }
-  const problem = validateBundle(files, { maxTotal: 5 * 1024 * 1024 });
+  const pages = files.filter((f) => isPagePath(f.path));
+  if (!pages.length || !pages.some((f) => f.path === "index.html")) return bad("bundle must include index.html");
+  const problem = validateBundle(pages, { maxTotal: 5 * 1024 * 1024 });
   if (problem) return bad(problem, problem.includes("large") ? 413 : 400);
   const beaconBase = apiBaseOf(event, ctx);
-  files = files.map((f) => ({ path: f.path, html: withBeacon(f.html, beaconBase, site.slug) })); // every page carries the audience beacon
+  files = pages.map((f) => ({ path: f.path, html: withBeacon(f.html, beaconBase, site.slug) })); // every page carries the audience beacon
 
   const n = (site.releases || 0) + 1;
   const releasePrefix = `sites/${site.siteId}/releases/${n}`;
   await Promise.all(files.map((f) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${f.path}`, f.html)));
+  if (assetCopies?.length) {
+    // images/fonts/video from the cut: byte-for-byte cross-bucket copy, never through text
+    await Promise.all(assetCopies.map((p) => ctx.s3.copyObjectAcross
+      ? ctx.s3.copyObjectAcross(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`, ctx.config.publishedBucket, `${releasePrefix}/${p}`)
+      : ctx.s3.getObjectBytes(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`)
+        .then((bytes) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${p}`, bytes, assetTypeOf(p)))));
+  }
   const staged = b.stage === true;
-  await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now(), filePaths: files.map((f) => f.path) });
+  const allPaths = [...files.map((f) => f.path), ...(assetCopies || [])];
+  await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now(), filePaths: allPaths });
+  if (b.orderId) {
+    // the order remembers its film: every future revision premieres HERE,
+    // never as a second portfolio from scratch
+    await ctx.ddb.update({
+      Key: { PK: `ORDER#${b.orderId}`, SK: "META" },
+      UpdateExpression: "SET siteId = :sid, premieredAt = :t, updatedAt = :t",
+      ExpressionAttributeValues: { ":sid": site.siteId, ":t": now() },
+      ConditionExpression: "attribute_exists(PK)",
+    }).catch(() => { /* order row gone: the release still stands */ });
+  }
 
   if (staged) {
     // draft workflow: the release exists and is previewable, but the pointer

@@ -46,9 +46,22 @@ export default function Studio() {
   const [arrived, setArrived] = useState(null); // what rode in from a composer handoff
   const [previewKey, setPreviewKey] = useState(0);
   const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit } from /me
+  const [films, setFilms] = useState([]);     // the selector: which film is on the bench
   const projPop = usePopover();
+
+  useEffect(() => {
+    api.sites().then((r) => setFilms(r.sites || [])).catch(() => { /* selector stays lean */ });
+  }, []);
   const premiereRef = useRef(null);
   const polls = useRef(0);
+
+  // stale look ids from an old draft can no longer blank the screen: unknown
+  // template falls to the house default, unknown stock falls to the family's first
+  const safeLook = (tplId, palId) => {
+    const fam = TEMPLATES.find((t) => t.id === tplId) || TEMPLATES[0];
+    const stock = fam.palettes.some((p2) => p2.id === palId) ? palId : fam.palettes[0].id;
+    return { tpl: fam.id, pal: stock };
+  };
 
   const applyDraft = (d) => {
     if (!d) return;
@@ -58,8 +71,7 @@ export default function Studio() {
     if (d.testimonials) setTestimonials(d.testimonials);
     if (d.services) setServices(d.services);
     if (d.sections) setSections({ ...DEFAULT_SECTIONS, ...d.sections });
-    if (d.tpl) setTpl(d.tpl);
-    if (d.pal) setPal(d.pal);
+    if (d.tpl) { const lk = safeLook(d.tpl, d.pal); setTpl(lk.tpl); setPal(lk.pal); }
     if (d.locker) setLocker(d.locker);
     if (d.photo) setPhoto(d.photo);
   };
@@ -75,8 +87,7 @@ export default function Studio() {
         if (d.testimonials) setTestimonials(d.testimonials);
         if (d.services) setServices(d.services);
         if (d.sections) setSections({ ...DEFAULT_SECTIONS, ...d.sections });
-        if (d.tpl) setTpl(d.tpl);
-        if (d.pal) setPal(d.pal);
+        if (d.tpl) { const lk = safeLook(d.tpl, d.pal); setTpl(lk.tpl); setPal(lk.pal); }
         if (d.locker) setLocker(d.locker);
         if (d.photo) setPhoto(d.photo);
       }
@@ -128,6 +139,7 @@ export default function Studio() {
         focus: q0.focus || r.profile.story || "",
       }));
       setProjects((p0) => (p0.length ? p0 : (r.profile.projects || []).slice(0, 8)));
+      if (idn.photo) setPhoto((ph) => ph || idn.photo);
     }).catch(() => { /* the dossier is optional; the set works without it */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -175,6 +187,46 @@ export default function Studio() {
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
 
+  // upload once, keep forever: the first real resume (and headshot) seeds the
+  // dossier so every future film casts from it. Only blanks are filled; a
+  // dossier the client already curated is never overwritten.
+  const dossierSaved = useRef(false);
+  useEffect(() => {
+    if (dossierSaved.current || cvText.trim().length < 200) return;
+    if (dossier && (dossier.identity?.name || dossier.story)) {
+      // dossier exists: only backfill a missing headshot
+      if (photo && !String(photo).startsWith("data:") && !dossier.identity?.photo) {
+        dossierSaved.current = true;
+        const next = { ...dossier, identity: { ...(dossier.identity || {}), photo } };
+        api.putProfile(next).then(() => setDossier(next)).catch(() => { dossierSaved.current = false; });
+      }
+      return;
+    }
+    dossierSaved.current = true;
+    const t = setTimeout(() => {
+      const p2 = profile;
+      const next = {
+        identity: {
+          name: p2.name || q.name || "",
+          headline: p2.headline || q.headline || "",
+          email: p2.email || q.email || "",
+          ...(photo && !String(photo).startsWith("data:") ? { photo } : {}),
+        },
+        links: { ...(q.website ? { website: q.website } : {}), ...(p2.links || {}) },
+        story: q.focus || p2.summary || "",
+        ...(p2.skills?.length ? { skills: p2.skills } : {}),
+        ...(p2.experience?.length ? { experience: p2.experience } : {}),
+        ...(projects.length ? { projects: projects.slice(0, 8) } : {}),
+      };
+      api.putProfile(next).then(() => {
+        setDossier(next);
+        toast("Dossier filled from your resume. Every future film casts from it.");
+      }).catch(() => { dossierSaved.current = false; });
+    }, 2000);
+    return () => { clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cvText, photo, dossier]);
+
   // ---------- the engine (defensive: a compile error can never drop the set) ----------
   const profile = useMemo(() => {
     try {
@@ -198,7 +250,15 @@ export default function Studio() {
   }), [profile, projects, testimonials, services, dossier]);
 
   const html = useMemo(() => {
-    try { return compile(tpl, pal, fullProfile, { sections }); } catch (e) { console.error(e); return "<!DOCTYPE html><html><body style='font-family:monospace;padding:40px'>compile error, adjust the brief</body></html>"; }
+    try { return compile(tpl, pal, fullProfile, { sections }); }
+    catch (e) {
+      console.error("compile failed, falling back to the house look", e);
+      try { return compile(TEMPLATES[0].id, TEMPLATES[0].palettes[0].id, fullProfile, { sections: { ...DEFAULT_SECTIONS } }); }
+      catch (e2) {
+        console.error("fallback compile failed", e2);
+        return "<!DOCTYPE html><html><body style=\"margin:0;min-height:100vh;display:grid;place-items:center;background:#0E1C3F;color:#F4EFE6;font-family:monospace;text-align:center;padding:40px\"><div><div style=\"color:#D9A441;letter-spacing:.3em;font-size:10px;margin-bottom:14px\">THE PROJECTOR JAMMED</div>Adjust the brief on the left and the screen relights.</div></body></html>";
+      }
+    }
   }, [tpl, pal, fullProfile, sections]);
 
   // live posters: each template rendered with the CLIENT'S data
@@ -356,11 +416,25 @@ export default function Studio() {
             <span className="chev" aria-hidden="true">▾</span>
           </button>
           {projPop.open && (
-            <div className="bkmenu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0 }} role="menu">
+            <div className="bkmenu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, maxHeight: 380, overflowY: "auto", minWidth: 270 }} role="menu">
+              <button role="menuitem" onClick={() => { projPop.close(true); setEditTarget(null); }}>
+                <span className="mi" aria-hidden="true">{editTarget ? "◌" : "✓"}</span>New film
+              </button>
+              {films.length > 0 && <div className="navlbl" style={{ padding: "10px 12px 4px" }}>Edit a film</div>}
+              {films.map((f) => (
+                <button key={f.siteId} role="menuitem" onClick={() => {
+                  projPop.close(true);
+                  if (f.orderId) { nav(`film/${f.siteId}`); return; } // AI films are directed by message, in the workspace
+                  setEditTarget({ siteId: f.siteId, slug: f.slug, title: f.title });
+                }} title={f.orderId ? "AI generated: attach files or message the director in the workspace" : "Manual: edits premiere as the next release"}>
+                  <span className="mi" aria-hidden="true">{editTarget?.siteId === f.siteId ? "✓" : f.orderId ? "◈" : "▦"}</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.title || f.slug}</span>
+                  {f.orderId && <span className="bkchip plain gold" style={{ marginLeft: "auto", flex: "0 0 auto" }}>AI</span>}
+                </button>
+              ))}
+              <div className="msep" />
               <button role="menuitem" onClick={() => nav("")}><span className="mi" aria-hidden="true">←</span>Go to Dashboard</button>
               <button role="menuitem" onClick={() => nav("films")}><span className="mi" aria-hidden="true">▦</span>All films</button>
-              <button role="menuitem" onClick={() => nav("resources")}><span className="mi" aria-hidden="true">◈</span>Resources</button>
-              <div className="msep" />
               <button role="menuitem" onClick={() => nav("profile")}><span className="mi" aria-hidden="true">▣</span>My dossier</button>
             </div>
           )}

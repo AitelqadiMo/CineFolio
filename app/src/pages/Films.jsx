@@ -69,8 +69,8 @@ export default function Films() {
     try { await fn(); await load(); } catch (e) { setErr(friendly(e.message)); } finally { setBusyId(null); }
   };
 
-  const premiereCutTo = async (siteId) => {
-    const o = premiereCut; setBusyId(siteId); setErr("");
+  const premiereCutTo = async (siteId, order) => {
+    const o = order || premiereCut; setBusyId(siteId); setErr("");
     try {
       await api.publish(siteId, { orderId: o.orderId });
       ledger.acknowledge(o.orderId); setPremiereCut(null); setDelivery(null);
@@ -159,7 +159,9 @@ export default function Films() {
           <b>Your Director&apos;s Cut is ready.</b>
           <p>Order {delivery.orderId.slice(0, 8).toUpperCase()} is in. Premiere it onto one of your films as the next release, or as a brand new film.</p>
           <div className="facts">
-            <button className="bkbtn primary" onClick={() => setPremiereCut(delivery)}>Premiere this cut</button>
+            {delivery.siteId
+              ? <button className="bkbtn primary" disabled={busyId === delivery.siteId} onClick={() => premiereCutTo(delivery.siteId, delivery)}>Premiere onto its film</button>
+              : <button className="bkbtn primary" onClick={() => setPremiereCut(delivery)}>Premiere this cut</button>}
             <a className="flink" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(delivery.orderId)}`} target="_blank" rel="noopener noreferrer">Watch the cut ↗</a>
             <button className="flink" onClick={() => { ledger.acknowledge(delivery.orderId); setDelivery(null); }}>Later</button>
           </div>
@@ -222,7 +224,9 @@ export default function Films() {
                 </button>
                 {o.status === "ready" && (
                   <div className="facts" style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                    <button className="bkbtn primary" style={{ padding: "5px 14px", fontSize: 12 }} onClick={() => setPremiereCut(o)}>Premiere</button>
+                    {o.siteId
+                      ? <button className="bkbtn primary" style={{ padding: "5px 14px", fontSize: 12 }} disabled={busyId === o.siteId} onClick={() => premiereCutTo(o.siteId, o)}>Premiere onto its film</button>
+                      : <button className="bkbtn primary" style={{ padding: "5px 14px", fontSize: 12 }} onClick={() => setPremiereCut(o)}>Premiere</button>}
                     <a className="flink" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(o.orderId)}`} target="_blank" rel="noopener noreferrer">Watch ↗</a>
                   </div>
                 )}
