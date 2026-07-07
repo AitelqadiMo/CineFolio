@@ -41,8 +41,10 @@ export default function Films() {
 
   useEffect(() => {
     const h = (e) => { if (kebabRef.current && !kebabRef.current.contains(e.target)) setKebab(null); };
+    const k = (e) => { if (e.key === "Escape") setKebab(null); };
     document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => { document.removeEventListener("mousedown", h); document.removeEventListener("keydown", k); };
   }, []);
 
   const act = async (id, fn) => {
@@ -93,10 +95,10 @@ export default function Films() {
 
   const Card = ({ s }) => (
     <div className="bkfilm" style={{ position: "relative" }}>
-      <button className="bkfilm" onClick={() => nav(`film/${s.siteId}`)} aria-label={`Open ${s.title || s.slug}`}>
-        <span className="bkthumb">
+      <button className="bkfilmbtn" onClick={() => nav(`film/${s.siteId}`)} aria-label={`Open ${s.title || s.slug}`}>
+        <span className="bkthumb" aria-hidden="true">
           {s.status === "live" && s.previewUrl
-            ? <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} aria-hidden="true" />
+            ? <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />
             : <span className="ghost">{(s.title || s.slug || "FILM").toUpperCase()}</span>}
           {s.status === "live" && <span className="pubbadge">Published</span>}
           {s.stagedRelease && <span className="pubbadge staged" style={s.status === "live" ? { left: "auto", right: 10 } : undefined}>Staged #{s.stagedRelease}</span>}
@@ -113,14 +115,14 @@ export default function Films() {
       </span>
       {kebab === s.siteId && (
         <div className="bkmenu" ref={kebabRef} style={{ position: "absolute", right: 0, top: "100%", marginTop: 4 }} role="menu">
-          <button onClick={() => { setKebab(null); nav(`film/${s.siteId}`); }}><span className="mi">◉</span>Open in the workspace</button>
-          {s.status === "live" && <a href={s.previewUrl} target="_blank" rel="noopener noreferrer" onClick={() => setKebab(null)}><span className="mi">↗</span>Watch live</a>}
-          {s.status === "live" && <button onClick={() => { setKebab(null); setSharing(s); }}><span className="mi">◈</span>Share</button>}
-          {s.liveRelease && s.status === "live" && <button onClick={() => { setKebab(null); setDuping(s); }}><span className="mi">▦</span>Duplicate</button>}
-          {s.status === "taken_down" && s.liveRelease && <button onClick={() => act(s.siteId, () => api.rollback(s.siteId, s.liveRelease))}><span className="mi">☀</span>Relight</button>}
+          <button role="menuitem" onClick={() => { setKebab(null); nav(`film/${s.siteId}`); }}><span className="mi" aria-hidden="true">◉</span>Open in the workspace</button>
+          {s.status === "live" && <a role="menuitem" href={s.previewUrl} target="_blank" rel="noopener noreferrer" onClick={() => setKebab(null)}><span className="mi" aria-hidden="true">↗</span>Watch live</a>}
+          {s.status === "live" && <button role="menuitem" onClick={() => { setKebab(null); setSharing(s); }}><span className="mi" aria-hidden="true">◈</span>Share</button>}
+          {s.liveRelease && s.status === "live" && <button role="menuitem" onClick={() => { setKebab(null); setDuping(s); }}><span className="mi" aria-hidden="true">▦</span>Duplicate</button>}
+          {s.status === "taken_down" && s.liveRelease && <button role="menuitem" onClick={() => act(s.siteId, () => api.rollback(s.siteId, s.liveRelease))}><span className="mi" aria-hidden="true">☀</span>Relight</button>}
           <div className="msep" />
-          {s.status !== "taken_down" && <button onClick={() => { setKebab(null); setConfirmDown(s); }}><span className="mi">◐</span>Take down</button>}
-          {s.status === "taken_down" && <button onClick={() => { setKebab(null); setConfirmDelete(s); }} style={{ color: "var(--bk-red)" }}><span className="mi">✕</span>Delete forever</button>}
+          {s.status !== "taken_down" && <button role="menuitem" onClick={() => { setKebab(null); setConfirmDown(s); }}><span className="mi" aria-hidden="true">◐</span>Take down</button>}
+          {s.status === "taken_down" && <button role="menuitem" onClick={() => { setKebab(null); setConfirmDelete(s); }} style={{ color: "var(--bk-red)" }}><span className="mi" aria-hidden="true">✕</span>Delete forever</button>}
         </div>
       )}
     </div>
@@ -165,8 +167,12 @@ export default function Films() {
         </div>
       </div>
 
-      {err && <div className="fentry" style={{ borderColor: "rgba(230,57,70,.5)", marginBottom: 16 }}><p style={{ color: "var(--bk-red)" }}>{err}</p></div>}
-      {sites === null && <div className="bkempty mono">LOADING THE VAULT…</div>}
+      {err && <div className="fentry" role="alert" style={{ borderColor: "rgba(230,57,70,.5)", marginBottom: 16 }}><p style={{ color: "var(--bk-red)" }}>{err}</p></div>}
+      {sites === null && (
+        <div className="bkcards" aria-hidden="true">
+          <div className="bkskel" /><div className="bkskel" /><div className="bkskel" />
+        </div>
+      )}
       {sites?.length === 0 && (
         <div className="bkempty">
           <span className="mono">NOTHING IN PRODUCTION</span>
@@ -189,10 +195,14 @@ export default function Films() {
         <div className="bklist">
           {shown.map((s) => (
             <div key={s.siteId} className="bklistrow" onClick={() => nav(`film/${s.siteId}`)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter") nav(`film/${s.siteId}`); }}>
-              <span className="fava" aria-hidden="true" />
+              <span className="bkthumb" aria-hidden="true" style={{ width: 92, flex: "0 0 auto", borderRadius: 8 }}>
+                {s.status === "live" && s.previewUrl
+                  ? <iframe title={`row-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />
+                  : <span className="ghost" style={{ fontSize: 7 }}>{(s.title || s.slug || "F").slice(0, 1).toUpperCase()}</span>}
+              </span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <b style={{ display: "block", fontSize: 14 }}>{s.title || s.slug}</b>
-                <i style={{ fontStyle: "normal", fontSize: 12, color: "var(--bk-faint)" }}>{s.slug}.cinefolio.site · {edited(s)}</i>
+                <i style={{ fontStyle: "normal", fontSize: 12, color: "var(--bk-faint)" }}>{s.slug}.cinefolio.site · {edited(s)} · release {s.liveRelease ?? "·"}/{s.releases ?? 0}</i>
               </span>
               <span className="bkchip plain" style={{ color: s.status === "live" ? "var(--bk-green)" : undefined }}>{(s.status || "").replace("_", " ")}</span>
             </div>
