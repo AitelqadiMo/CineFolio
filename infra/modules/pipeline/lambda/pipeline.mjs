@@ -87,9 +87,11 @@ export const handler = async (event) => {
       revisionNotes: order.revisionNotes || null, // set when this run is the included revision
       instructions: [
         "You are the director on a commissioned portfolio film. The client's resume (cvText), their photo and project shots (assets), and their creative brief ride on this order. Build the portfolio that gets this specific person hired: read the resume for the arc of the career, pick the register their industry respects, and art-direct with conviction. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint.",
-        "Cinematic motion is the product. Generate imagery with your image tools where it elevates the story (hero atmospheres, section backdrops, project mood frames) and build at least one video-as-frames sequence: a short run of generated stills scrubbed on scroll or crossfaded on a timer as the hero, the way award sites fake film with frames. Reference generated media by URL from your generation tools; keep the documents lean.",
+        "Cinematic motion is the product. Generate imagery with your image tools where it elevates the story (hero atmospheres, section backdrops, project mood frames) and build at least one video-as-frames sequence: a short run of generated stills scrubbed on scroll or crossfaded on a timer as the hero, the way award sites fake film with frames.",
+        "HOW MEDIA SHIPS, this is a hard contract: your platform's own media URLs are NOT publicly reachable and will 404 for visitors. Every image, video or pdf you generate must be UPLOADED via upload.url before you deliver the pages: one POST per file, append the relative path to the url (example: upload.url + 'assets/hero-01.jpg'), send the raw file bytes as the request body with the file's content-type header and upload.headers. Then reference each file in your html by that same relative path (src=\"assets/hero-01.jpg\"). Allowed types: jpg, png, webp, gif, svg, mp4, webm, woff2, pdf. 8MB per file. The client's own photos (assets.photo, assets.covers) are already public URLs, use them directly.",
+        "NEVER reference a file you did not upload or deliver: every src and href in your pages must resolve, either to a relative path you uploaded via upload.url or delivered in the bundle, or to a public URL you know serves bytes (the client's asset URLs, Google Fonts). A dead link or broken image is a failed delivery.",
         "Likeness is sacred: the client's face may ONLY come from assets.photo and assets.covers. Use those exact URLs for any portrait or project imagery of them. Never generate, alter, or substitute a human likeness. If no photo is provided, art-direct without a face.",
-        "Ship a working Download Resume affordance: render a print-clean resume.html from cvText with @media print styles, link it prominently from index.html, and wire a download or print button. A visitor must be able to leave with the resume in hand.",
+        "Ship a working Download Resume affordance: render a print-clean resume.html from cvText with @media print styles, link it prominently from index.html, and wire a download or print button. If you can render a true PDF, also upload it as resume.pdf via upload.url and link that; if you cannot, link ONLY resume.html, never a pdf that does not exist. A visitor must be able to leave with the resume in hand.",
         "Structure: index.html plus projects/{slug}.html case-study pages for the strongest work in the resume. Every file is a self-contained html document (inline CSS, Google Fonts links allowed, no external JS beyond inline scripts). Responsive at 375, 768 and 1440; honor prefers-reduced-motion with static fallbacks; real hrefs for email and links.",
         "When revisionNotes is set this is a REVISION of your earlier cut for the same client: evolve the existing film per the notes, keep what worked, never start a new concept from scratch.",
         "Deliver within 25 minutes: POST JSON {\"files\":[...]} to deliver.url with deliver.headers. Pages: {\"path\":\"index.html\",\"html\":\"<!doctype html...\"}. Small binary assets (images, fonts, short loops) may ride the bundle as {\"path\":\"assets/hero.jpg\",\"content\":\"<base64>\",\"contentType\":\"image/jpeg\"} and are served next to the pages; reference them by relative path. Heavy video stays an external URL. Max 30 files, 3MB total, index.html required.",
@@ -98,6 +100,12 @@ export const handler = async (event) => {
         method: "POST",
         url: `https://${process.env.API_DOMAIN}/callback`,
         headers: { "X-CF-Secret": sec.CF_CALLBACK_SECRET, "X-CF-Order": orderId, "content-type": "application/json" },
+      },
+      upload: {
+        method: "POST",
+        url: `https://${process.env.API_DOMAIN}/studio/asset?orderId=${orderId}&path=`,
+        headers: { "X-CF-Secret": sec.CF_CALLBACK_SECRET },
+        note: "append the relative file path to url; body = raw file bytes; set the file's content-type header; upload every generated asset BEFORE delivering pages",
       },
     };
     const r = await fetch(sec.AGENT_WEBHOOK_URL, {
