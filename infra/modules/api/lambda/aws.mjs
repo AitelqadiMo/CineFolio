@@ -2,7 +2,7 @@
 // tests inject fakes instead, so nothing else in the codebase imports the SDK.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
-import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
@@ -49,6 +49,15 @@ export const s3 = {
       ServerSideEncryption: "AES256", MetadataDirective: "COPY",
     })),
   deleteObject: (Bucket, Key) => s3c.send(new DeleteObjectCommand({ Bucket, Key })),
+  listPrefix: async (Bucket, Prefix) => {
+    const out = []; let ContinuationToken;
+    do {
+      const r = await s3c.send(new ListObjectsV2Command({ Bucket, Prefix, ContinuationToken, MaxKeys: 1000 }));
+      for (const o of r.Contents || []) out.push({ key: o.Key, bytes: o.Size, at: o.LastModified });
+      ContinuationToken = r.IsTruncated ? r.NextContinuationToken : undefined;
+    } while (ContinuationToken);
+    return out;
+  },
 };
 
 export const presign = {

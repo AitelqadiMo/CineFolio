@@ -302,6 +302,53 @@ export async function stats(event, ctx) {
   return ok({ ok: true, siteId: site.siteId, slug: site.slug, views, week, daily });
 }
 
+// GET /sites/{id}/inspect — the film's release truth: for each release, the
+// manifest we recorded at publish time vs the objects that actually exist in
+// S3 right now, plus any assets the cut order uploaded. Owner or admin only.
+// Answers the "why is my image 404ing" question without SSH into the console.
+export async function inspect(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  const releaseRows = await ctx.ddb.query({
+    KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+    ExpressionAttributeValues: { ":p": site.PK, ":s": "RELEASE#" },
+    ScanIndexForward: false,
+    Limit: 5,
+  });
+  const releases = await Promise.all(releaseRows.map(async (r) => {
+    const prefix = `sites/${site.siteId}/releases/${r.n}/`;
+    let live = [];
+    try { live = await ctx.s3.listPrefix(ctx.config.publishedBucket, prefix); } catch { /* bucket ACL flake, keep going */ }
+    const liveKeys = new Set(live.map((o) => o.key.replace(prefix, "")));
+    const manifest = Array.isArray(r.filePaths) && r.filePaths.length ? r.filePaths : ["index.html"];
+    const missing = manifest.filter((p) => !liveKeys.has(p));
+    const extra = [...liveKeys].filter((k) => !manifest.includes(k));
+    return {
+      n: r.n, createdAt: r.createdAt, source: r.source || null,
+      manifest,
+      inS3: [...liveKeys],
+      missing, // files the manifest promised but S3 doesn't have -> copy step failed for these
+      extra,   // files in S3 that the manifest didn't list -> stale or manual
+    };
+  }));
+  // if this film was born from an order, what did the agent actually ship?
+  let orderAssets = null;
+  if (site.orderId) {
+    const rows = await ctx.ddb.query({
+      KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+      ExpressionAttributeValues: { ":p": `ORDER#${site.orderId}`, ":s": "ASSET#" },
+    });
+    const order = await ctx.ddb.get({ PK: `ORDER#${site.orderId}`, SK: "META" });
+    orderAssets = {
+      orderId: site.orderId,
+      cutFiles: order?.cutFiles || null,
+      uploadedAssets: rows.map((r) => ({ path: r.path, bytes: r.bytes, contentType: r.contentType, at: r.createdAt })),
+    };
+  }
+  return ok({ ok: true, siteId: site.siteId, slug: site.slug, liveRelease: site.liveRelease, releases, orderAssets });
+}
+
 // POST /sites/{id}/domain { domain } — records domain intent; DNS guidance is
 // client-side and the TLS handshake finishes operator-side (dev scope).
 export async function connectDomain(event, ctx) {

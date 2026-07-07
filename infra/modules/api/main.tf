@@ -69,6 +69,7 @@ locals {
     "GET /sites"                    = true
     "GET /sites/{id}"               = true
     "GET /sites/{id}/stats"         = true
+    "GET /sites/{id}/inspect"       = true # owner or admin: release truth vs manifest, for debugging
     "GET /sites/{id}/source"        = true
     "POST /sites/{id}/publish"      = true
     "POST /sites/{id}/rollback"     = true
