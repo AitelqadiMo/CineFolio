@@ -41,6 +41,7 @@ export const api = {
   deleteSite: (id) => req(`/sites/${id}/delete`, { method: "POST", auth: true }),
 
   media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
+  mediaDirect: (contentType, dataBase64) => req("/media/direct", { method: "POST", body: { contentType, dataBase64 }, auth: true }), // CORS-immune fallback
   getDraft: () => req("/draft", { auth: true }),
   putDraft: (draft) => req("/draft", { method: "PUT", body: { draft }, auth: true }),
   getProfile: () => req("/profile", { auth: true }),

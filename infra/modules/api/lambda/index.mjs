@@ -12,6 +12,7 @@ export const ROUTES = {
   "GET /me": misc.getMe,
   "PUT /me": misc.putMe,
   "POST /media": misc.mediaUpload,
+  "POST /media/direct": misc.mediaDirect,
   "GET /draft": misc.getDraft,
   "PUT /draft": misc.putDraft,
   "GET /profile": misc.getProfile,
