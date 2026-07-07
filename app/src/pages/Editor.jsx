@@ -9,8 +9,47 @@ import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { friendly, ConfirmDialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
+import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
+import AssetChips from "../shell/Intake.jsx";
 
 const fmt = (d) => (d ? new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+
+// Sparkline: a real chart the moment the stats route returns a series, drawn
+// in the jersey gradient. Accepts [{ date, count }] or plain numbers.
+function Sparkline({ data }) {
+  const pts = data.map((d) => (typeof d === "number" ? d : Number(d.count ?? d.views ?? 0)));
+  if (!pts.length) return null;
+  const W = 720, H = 220, PAD = 8;
+  const max = Math.max(...pts, 1);
+  const step = pts.length > 1 ? (W - PAD * 2) / (pts.length - 1) : 0;
+  const y = (v) => H - PAD - (v / max) * (H - PAD * 2);
+  const line = pts.map((v, i) => `${(PAD + i * step).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const area = `${PAD},${H - PAD} ${line} ${(PAD + (pts.length - 1) * step).toFixed(1)},${H - PAD}`;
+  const first = data[0]; const last = data[data.length - 1];
+  const lbl = (d) => (typeof d === "object" && (d.date || d.d) ? String(d.date || d.d).slice(5) : "");
+  return (
+    <div className="sparkwrap">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Views over time, peaking at ${max}`}>
+        <defs>
+          <linearGradient id="spark" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#C8102E" /><stop offset="50%" stopColor="#D9A441" /><stop offset="100%" stopColor="#0E9E62" />
+          </linearGradient>
+          <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(217,164,65,.25)" /><stop offset="100%" stopColor="rgba(217,164,65,0)" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line key={f} x1={PAD} x2={W - PAD} y1={H * f} y2={H * f} stroke="rgba(244,239,230,.08)" strokeWidth="1" />
+        ))}
+        <polygon points={area} fill="url(#sparkfill)" />
+        <polyline points={line} fill="none" stroke="url(#spark)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        <text className="sparkaxis" x={PAD} y={H - 2}>{lbl(first)}</text>
+        <text className="sparkaxis" x={W - PAD} y={H - 2} textAnchor="end">{lbl(last)}</text>
+        <text className="sparkaxis" x={W - PAD} y={12} textAnchor="end">{max}</text>
+      </svg>
+    </div>
+  );
+}
 
 export default function Editor({ siteId }) {
   const { nav } = useAuth();
@@ -19,8 +58,8 @@ export default function Editor({ siteId }) {
   const [view, setView] = useState("preview");   // preview | code | more
   const [device, setDevice] = useState("desktop");
   const [relSel, setRelSel] = useState("live");  // "live" | release number
-  const [relOpen, setRelOpen] = useState(false);
-  const [projOpen, setProjOpen] = useState(false);
+  const relPop = usePopover();
+  const projPop = usePopover();
   const [source, setSource] = useState(null);    // HTML string for code/release view
   const [srcBusy, setSrcBusy] = useState(false);
   const [stats, setStats] = useState(null);
@@ -30,7 +69,9 @@ export default function Editor({ siteId }) {
   const [confirmDown, setConfirmDown] = useState(false);
   const [copied, setCopied] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const relRef = useRef(null); const projRef = useRef(null);
+  const fileRef = useRef(null);
+  const intake = useIntakeAssets();
+  const { over, dropProps } = useDropzone(intake.addFiles);
 
   const load = () => api.site(siteId)
     .then((r) => { setData(r); setErr(""); })
@@ -40,15 +81,6 @@ export default function Editor({ siteId }) {
   useEffect(() => {
     api.siteStats(siteId).then(setStats).catch((e) => { if (notWired(e)) setStats(null); });
   }, [siteId]);
-
-  useEffect(() => {
-    const h = (e) => {
-      if (relRef.current && !relRef.current.contains(e.target)) setRelOpen(false);
-      if (projRef.current && !projRef.current.contains(e.target)) setProjOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
 
   // source is needed for the code view, and for previewing a non-live release
   useEffect(() => {
@@ -96,8 +128,17 @@ export default function Editor({ siteId }) {
   const fileChange = () => {
     try {
       sessionStorage.setItem("cf.editSite", JSON.stringify({ siteId, slug: site?.slug, title: site?.title }));
-      if (note.trim()) sessionStorage.setItem("cf.brief", JSON.stringify({ text: note.trim(), tpl: null }));
     } catch { /* noop */ }
+    if (note.trim() || intake.hasAssets) {
+      packBrief({
+        text: note.trim(),
+        tpl: null,
+        cvRaw: intake.resume?.text || "",
+        cvName: intake.resume?.name || "",
+        photo: intake.photo?.url || "",
+        covers: intake.covers.map((c) => ({ name: c.name, url: c.url })),
+      });
+    }
     nav("studio");
   };
   const copyLink = () => {
@@ -118,20 +159,20 @@ export default function Editor({ siteId }) {
   return (
     <div className="edshell">
       <div className="edbar">
-        <div style={{ position: "relative" }} ref={projRef}>
-          <button className="edproj" onClick={() => setProjOpen(!projOpen)} aria-haspopup="menu" aria-expanded={projOpen}>
-            <span className="lens" aria-hidden="true" /><span>{site?.title || "…"}</span><span className="chev">▾</span>
+        <div style={{ position: "relative" }} ref={projPop.ref}>
+          <button className="edproj" onClick={projPop.toggle} aria-haspopup="menu" aria-expanded={projPop.open}>
+            <span className="lens" aria-hidden="true" /><span>{site?.title || "…"}</span><span className="chev" aria-hidden="true">▾</span>
           </button>
-          {projOpen && (
+          {projPop.open && (
             <div className="bkmenu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0 }} role="menu">
-              <button onClick={() => nav("")}><span className="mi">←</span>Go to Dashboard</button>
-              <button onClick={() => nav("films")}><span className="mi">▦</span>All films</button>
+              <button role="menuitem" onClick={() => nav("")}><span className="mi" aria-hidden="true">←</span>Go to Dashboard</button>
+              <button role="menuitem" onClick={() => nav("films")}><span className="mi" aria-hidden="true">▦</span>All films</button>
               <div className="msep" />
-              <button onClick={fileChange}><span className="mi">◉</span>Edit in The Set</button>
-              <button onClick={() => { setProjOpen(false); setView("more"); setMoreTab("releases"); }}><span className="mi">≡</span>Releases</button>
-              <button onClick={() => { setProjOpen(false); setView("more"); setMoreTab("settings"); }}><span className="mi">⚙</span>Film settings</button>
+              <button role="menuitem" onClick={fileChange}><span className="mi" aria-hidden="true">◉</span>Edit in The Set</button>
+              <button role="menuitem" onClick={() => { projPop.close(true); setView("more"); setMoreTab("releases"); }}><span className="mi" aria-hidden="true">≡</span>Releases</button>
+              <button role="menuitem" onClick={() => { projPop.close(true); setView("more"); setMoreTab("settings"); }}><span className="mi" aria-hidden="true">⚙</span>Film settings</button>
               <div className="msep" />
-              <button onClick={() => nav("settings")}><span className="mi">✦</span>Account</button>
+              <button role="menuitem" onClick={() => nav("settings")}><span className="mi" aria-hidden="true">✦</span>Account</button>
             </div>
           )}
         </div>
@@ -142,17 +183,17 @@ export default function Editor({ siteId }) {
           <button role="tab" aria-selected={view === "more"} className={view === "more" ? "on" : ""} onClick={() => setView("more")}>≡ More</button>
         </div>
 
-        <div style={{ position: "relative" }} ref={relRef}>
-          <button className="edpagesel" onClick={() => setRelOpen(!relOpen)} aria-haspopup="menu" aria-expanded={relOpen}>
-            {relSel === "live" ? `Live · release ${site?.liveRelease ?? "·"}` : `Release #${relSel}`} <span style={{ fontSize: 9 }}>▾</span>
+        <div style={{ position: "relative" }} ref={relPop.ref}>
+          <button className="edpagesel" onClick={relPop.toggle} aria-haspopup="menu" aria-expanded={relPop.open}>
+            {relSel === "live" ? `Live · release ${site?.liveRelease ?? "·"}` : `Release #${relSel}`} <span style={{ fontSize: 9 }} aria-hidden="true">▾</span>
           </button>
-          {relOpen && (
+          {relPop.open && (
             <div className="bkmenu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, maxHeight: 300, overflowY: "auto" }} role="menu">
-              <button onClick={() => { setRelSel("live"); setRelOpen(false); }}><span className="mi">{relSel === "live" ? "✓" : "●"}</span>Live · release {site?.liveRelease ?? "·"}</button>
+              <button role="menuitem" onClick={() => { setRelSel("live"); relPop.close(true); }}><span className="mi" aria-hidden="true">{relSel === "live" ? "✓" : "●"}</span>Live · release {site?.liveRelease ?? "·"}</button>
               <div className="msep" />
               {[...releases].reverse().map((r) => (
-                <button key={r.n} onClick={() => { setRelSel(r.n); setRelOpen(false); }}>
-                  <span className="mi">{relSel === r.n ? "✓" : "#"}</span>Release #{r.n} · {fmt(r.createdAt)}
+                <button key={r.n} role="menuitem" onClick={() => { setRelSel(r.n); relPop.close(true); }}>
+                  <span className="mi" aria-hidden="true">{relSel === r.n ? "✓" : "#"}</span>Release #{r.n} · {fmt(r.createdAt)}
                 </button>
               ))}
             </div>
@@ -173,7 +214,7 @@ export default function Editor({ siteId }) {
         <div className="edsplit">
           <div className="edcfg">
             <div className="edfeed">
-              {err && <div className="fentry" style={{ borderColor: "rgba(230,57,70,.5)" }}><p style={{ color: "var(--bk-red)" }}>{err}</p></div>}
+              {err && <div className="fentry" role="alert" style={{ borderColor: "rgba(230,57,70,.5)" }}><p style={{ color: "var(--bk-red)" }}>{err}</p></div>}
               {!data && !err && <div className="fentry"><p>Loading the production record…</p></div>}
               {site && (
                 <div className="fentry">
@@ -197,21 +238,38 @@ export default function Editor({ siteId }) {
               ))}
             </div>
             <div className="edhint">
-              <span>Change orders reopen this film in The Set with your note attached.</span>
+              <span>Your note and files reopen this film in The Set.</span>
             </div>
-            <div className="edcomposer">
+            <div className={`edcomposer ${over ? "over" : ""}`} {...dropProps}>
+              <input
+                ref={fileRef} type="file" multiple hidden
+                accept=".pdf,.txt,text/plain,application/pdf,image/*"
+                onChange={(e) => { intake.addFiles(e.target.files); e.target.value = ""; }}
+                aria-hidden="true" tabIndex={-1}
+              />
+              {!intake.hasAssets && (
+                <button className="bkdrop compact" type="button" onClick={() => fileRef.current?.click()}>
+                  <span className="glyph" aria-hidden="true">◉</span>
+                  <span>{over ? <b>Drop to attach</b> : <>Attach a new headshot, cover or an updated resume</>}</span>
+                </button>
+              )}
+              <AssetChips intake={intake} />
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
+                onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); intake.addFiles(f); } }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fileChange(); } }}
-                placeholder="Direct a change: what should the next release do differently?"
+                placeholder="Note the change for the next release."
                 rows={2}
                 aria-label="Change order"
               />
+              {intake.busy && <div className="bkprogress" aria-hidden="true"><div className="fill" /></div>}
+              {intake.error && <div className="bkerr" role="alert">{intake.error}</div>}
+              <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : ""}</span>
               <div className="bkcomprow">
-                <button className="bkplus" title="Open The Set" aria-label="Open The Set" onClick={fileChange}>+</button>
-                <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--bk-faint)" }}>Files into The Set</span>
-                <button className="bksend" onClick={fileChange} aria-label="File the change order">↑</button>
+                <button className="bkplus" title="Attach a headshot, cover or resume" aria-label="Attach a headshot, cover or resume" onClick={() => fileRef.current?.click()}>+</button>
+                <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--bk-faint)" }}>Files the change order into The Set</span>
+                <button className="bksend" onClick={fileChange} disabled={intake.busy} aria-label="File the change order">↑</button>
               </div>
             </div>
           </div>
@@ -280,9 +338,10 @@ export default function Editor({ siteId }) {
                   <div className="kpi"><span>Visit duration</span><b>—</b></div>
                   <div className="kpi"><span>Bounce rate</span><b>—</b></div>
                 </div>
-                {stats === null
-                  ? <div className="nodata">Per-film analytics wire up with the stats route. Until then the live view counter on All films is the source of truth.</div>
-                  : <div className="chartempty" aria-hidden="true"><i style={{ left: 0 }}>launch</i><i style={{ right: 0 }}>today</i></div>}
+                {stats === null && <div className="nodata">Per-film analytics wire up with the stats route. Until then the live view counter on All films is the source of truth.</div>}
+                {stats !== null && (Array.isArray(stats?.series || stats?.daily) && (stats.series || stats.daily).length
+                  ? <Sparkline data={stats.series || stats.daily} />
+                  : <div className="chartempty" aria-hidden="true"><i style={{ left: 0 }}>launch</i><i style={{ right: 0 }}>today</i></div>)}
               </div>
             )}
             {moreTab === "releases" && (
