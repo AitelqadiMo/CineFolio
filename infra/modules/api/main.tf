@@ -60,6 +60,7 @@ locals {
     "GET /me"                       = true
     "PUT /me"                       = true
     "POST /media"                   = true
+    "POST /media/direct"            = true # CORS-immune upload fallback through the API
     "GET /draft"                    = true
     "PUT /draft"                    = true
     "GET /admin/orders"             = true # + admin group check in-handler
