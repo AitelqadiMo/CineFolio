@@ -6,9 +6,15 @@ import { sendOrderEmail } from "./email.mjs";
 
 const ORDER_ID_RE = /^[a-f0-9-]{8,64}$/i;
 
+// every AI order carries three messages to the director: revisions spend them
+export const REVISION_LIMIT = 3;
+
 const pub = (o) => ({
   orderId: o.orderId, name: o.name || null, status: o.status, production: !!o.production,
-  price: o.production ? 149 : 0, revisionRequested: !!o.revisionRequested,
+  price: o.freeCut ? 0 : o.production ? 149 : 0, revisionRequested: !!o.revisionRequested,
+  revisionsUsed: o.revisionsUsed || 0,
+  messagesLeft: Math.max(0, REVISION_LIMIT - (o.revisionsUsed || 0)),
+  siteId: o.siteId || null, // the film this cut premiered onto; revisions land there
   createdAt: o.createdAt, updatedAt: o.updatedAt,
 });
 
@@ -27,9 +33,10 @@ export async function listOrders(event, ctx) {
   return ok({ ok: true, orders: mine.map(pub) });
 }
 
-// POST /orders/{id}/revision { notes } — one included revision, enforced with a
-// conditional update so a double-click can never spend two credits. The order
-// re-enters the pipeline queue with the notes riding on it.
+// POST /orders/{id}/revision { notes } — a message to the director. Three per
+// order, enforced with a conditional counter so a double-click can never spend
+// two. The order re-enters the pipeline queue with the notes riding on it and
+// the revised cut premieres onto the SAME film (order.siteId), never a new one.
 export async function requestRevision(event, ctx) {
   const claims = claimsOf(event);
   const orderId = pathParam(event, "id");
@@ -46,21 +53,25 @@ export async function requestRevision(event, ctx) {
     (claims.email && order.email && order.email === String(claims.email).toLowerCase());
   if (!owns && !isAdmin(claims)) return json(403, { ok: false, error: "not your order" });
   if (order.status !== "ready") return bad(`status ${order.status} is not revisable`, 409);
-  if (order.revisionRequested) return bad("the included revision was already used", 409);
+  if ((order.revisionsUsed || 0) >= REVISION_LIMIT) return bad("no messages left on this order", 409);
 
+  let used = (order.revisionsUsed || 0) + 1;
   try {
-    await ctx.ddb.update({
+    const updated = await ctx.ddb.update({
       Key: { PK: `ORDER#${orderId}`, SK: "META" },
       UpdateExpression:
-        "SET revisionRequested = :t, revisionNotes = :n, revisionAt = :a, updatedAt = :a, #s = :q, GSI2PK = :g, taskToken = :none",
-      ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(revisionRequested)",
+        "SET revisionRequested = :t, revisionNotes = :n, revisionAt = :a, updatedAt = :a, #s = :q, GSI2PK = :g, taskToken = :none ADD revisionsUsed :one",
+      ConditionExpression: "attribute_exists(PK) AND (attribute_not_exists(revisionsUsed) OR revisionsUsed < :max)",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
         ":t": true, ":n": notes, ":a": now(), ":q": "queued", ":g": "STATUS#queued", ":none": null,
+        ":one": 1, ":max": REVISION_LIMIT,
       },
+      ReturnValues: "ALL_NEW",
     });
+    used = updated?.revisionsUsed ?? used;
   } catch (e) {
-    if (e?.name === "ConditionalCheckFailedException") return bad("the included revision was already used", 409);
+    if (e?.name === "ConditionalCheckFailedException") return bad("no messages left on this order", 409);
     throw e;
   }
 
@@ -72,5 +83,5 @@ export async function requestRevision(event, ctx) {
     }
   }
   await sendOrderEmail(ctx, "revision", { ...order, revisionNotes: notes });
-  return ok({ ok: true, orderId, status: "queued", revisionRequested: true });
+  return ok({ ok: true, orderId, status: "queued", revisionRequested: true, revisionsUsed: used, messagesLeft: Math.max(0, REVISION_LIMIT - used) });
 }
