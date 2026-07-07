@@ -3,19 +3,21 @@ import { getUser, onAuthChange, restore, signOut } from "./cognito.js";
 import { CONFIG } from "./config.js";
 import Landing from "./marketing/Landing.jsx";
 import Login from "./pages/Login.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
+import Home from "./pages/Home.jsx";
+import Films from "./pages/Films.jsx";
+import Resources from "./pages/Resources.jsx";
+import Editor from "./pages/Editor.jsx";
+import Settings from "./pages/Settings.jsx";
 import Studio from "./pages/Studio.jsx";
 import Admin from "./pages/Admin.jsx";
-import Account from "./pages/Account.jsx";
 import Profile from "./pages/Profile.jsx";
+import Sidebar from "./shell/Sidebar.jsx";
 import CmdK from "./CmdK.jsx";
 import { api } from "./api.js";
 import { ledger } from "./orders.js";
 
 export const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
-
-const PAGES = { dashboard: Dashboard, studio: Studio, admin: Admin, account: Account, profile: Profile };
 
 // A page crash must never white-screen the console: kill the lights, not the set.
 class SetBoundary extends Component {
@@ -25,11 +27,11 @@ class SetBoundary extends Component {
   render() {
     if (!this.state.err) return this.props.children;
     return (
-      <div className="authwrap"><div style={{ textAlign: "center", maxWidth: 460 }}>
-        <div className="mono" style={{ color: "var(--red)", marginBottom: 12 }}>⚡ THE SET LOST POWER</div>
-        <h2 style={{ marginBottom: 10 }}>A fuse blew on <em>this scene.</em></h2>
-        <p style={{ color: "var(--dim)", marginBottom: 18 }}>The rest of the studio is fine. Relight the floor, and if this repeats, the crew is already alarmed about it.</p>
-        <button className="btn primary" onClick={() => { this.setState({ err: null }); location.reload(); }}>Relight the set</button>
+      <div className="authwrap" style={{ background: "var(--bk-bg)", color: "var(--bk-ink)" }}><div style={{ textAlign: "center", maxWidth: 460 }}>
+        <div className="mono" style={{ color: "var(--bk-red)", marginBottom: 12 }}>⚡ THE SET LOST POWER</div>
+        <h2 style={{ marginBottom: 10, color: "var(--bk-ink)" }}>A fuse blew on <em>this scene.</em></h2>
+        <p style={{ color: "var(--bk-dim)", marginBottom: 18 }}>The rest of the studio is fine. Relight the floor, and if this repeats, the crew is already alarmed about it.</p>
+        <button className="bkbtn primary" onClick={() => { this.setState({ err: null }); location.reload(); }}>Relight the set</button>
       </div></div>
     );
   }
@@ -43,8 +45,8 @@ export default function App() {
   const [user, setUser] = useState(getUser());
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState(path());
-  const [edge, setEdge] = useState(null); // { ms } ambient status, platform-style
-  const [prod, setProd] = useState(null); // global director's-cut tracking (survives navigation)
+  const [edge, setEdge] = useState(null); // { ms } ambient status
+  const [prod, setProd] = useState(null); // global director's-cut tracking
   const [credits, setCredits] = useState(() => ledger.credits());
 
   useEffect(() => {
@@ -68,7 +70,7 @@ export default function App() {
     return () => { alive = false; clearInterval(t); };
   }, [user]);
 
-  // global production tracker: Studio stores cf.activeOrder; the shell owns polling
+  // global production tracker: The Set stores cf.activeOrder; the shell owns polling
   useEffect(() => {
     if (!user) return;
     let alive = true;
@@ -81,7 +83,6 @@ export default function App() {
         if (!alive) return;
         setProd({ ...o, status: st.status, failCause: st.failCause });
         ledger.setStatus(o.orderId, st.status);
-        // the chip persists until the delivery is acknowledged in My Films or Account
       } catch { /* transient */ }
     };
     tick();
@@ -106,56 +107,82 @@ export default function App() {
     return <Landing onEnter={() => nav("login")} />;
   }
 
-  /* ---------- authenticated: studio console ---------- */
-  const Page = PAGES[route] || Dashboard;
+  /* ---------- authenticated: the backlot ---------- */
+  const seg = route.split("/");
+  const head = seg[0];
+  const openCmdK = () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+  const doSignOut = () => { signOut(); nav(""); };
+
+  const statusChips = (
+    <div className="bkstatus">
+      {prod && (
+        <button className={`bkchip ${prod.status === "ready" ? "green" : ["human_review", "dispatch_failed"].includes(prod.status) ? "red" : "gold"}`}
+          onClick={() => nav(prod.status === "ready" ? "films" : "settings")} title="Director's cut order status">
+          {prod.status === "ready" ? "🎬 CUT READY" : ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" : prod.status === "filming" ? "● CAMERAS ROLLING" : "● IN THE QUEUE"}
+        </button>
+      )}
+      {credits.cuts > 0 && (
+        <button className="bkchip gold" onClick={() => nav("settings")} title="Studio credits">◈ {credits.revisions} REVISION{credits.revisions === 1 ? "" : "S"} LEFT</button>
+      )}
+      <span className="bkchip plain">{CONFIG.env.toUpperCase()}</span>
+      {edge && (edge.ms >= 0
+        ? <span className="bkchip plain green">{edge.ms}MS</span>
+        : <span className="bkchip plain red">OFFLINE</span>)}
+    </div>
+  );
+
+  /* editor routes screen full-bleed, exactly like the reference */
+  if (head === "film" && seg[1]) {
+    return (
+      <AuthCtx.Provider value={{ user, nav }}>
+        <CmdK nav={nav} admin={user.admin} />
+        <SetBoundary key={route}><Editor siteId={seg[1]} /></SetBoundary>
+      </AuthCtx.Provider>
+    );
+  }
+  if (head === "studio") {
+    return (
+      <AuthCtx.Provider value={{ user, nav }}>
+        <CmdK nav={nav} admin={user.admin} />
+        <SetBoundary key={route}>
+          <div className="edshell">
+            <div className="edbar">
+              <button className="edproj" onClick={() => nav("")}>
+                <span className="lens" aria-hidden="true" /><span>The Set · new film</span>
+              </button>
+              <div className="grow" />
+              <button className="bkbtn ghost" style={{ padding: "6px 14px" }} onClick={() => nav("films")}>My films</button>
+              <button className="bkbtn ghost" style={{ padding: "6px 14px" }} onClick={() => nav("")}>Dashboard</button>
+            </div>
+            <div className="setbody"><Studio /></div>
+          </div>
+        </SetBoundary>
+      </AuthCtx.Provider>
+    );
+  }
+
+  /* dashboard routes share the one sidebar */
+  const PAGES = {
+    "": Home, dashboard: Home, films: Films, resources: Resources,
+    settings: Settings, account: Settings, admin: Admin, profile: Profile,
+  };
+  const Page = PAGES[head] || Home;
+  const onCanvas = head === "admin" || head === "profile";
+
   return (
     <AuthCtx.Provider value={{ user, nav }}>
       <CmdK nav={nav} admin={user.admin} />
-      <div className="shell">
-        <aside className="side">
-          <div className="brand" style={{ padding: "18px 16px" }}><span className="lens" />CINEFOLIO</div>
-          <nav className="sidenav" aria-label="Primary">
-            <div className="mono sidelabel">PRODUCTION</div>
-            <button className={route === "dashboard" || route === "" ? "on" : ""} aria-current={route === "dashboard" || route === "" ? "page" : undefined} onClick={() => nav("dashboard")}><i>▦</i> My Films</button>
-            <button className={route === "studio" ? "on" : ""} aria-current={route === "studio" ? "page" : undefined} onClick={() => nav("studio")}><i>◉</i> The Set</button>
-            <button className={route === "profile" ? "on" : ""} aria-current={route === "profile" ? "page" : undefined} onClick={() => nav("profile")}><i>▣</i> My Profile</button>
-            {user.admin && (<>
-              <div className="mono sidelabel">OPERATIONS</div>
-              <button className={route === "admin" ? "on" : ""} aria-current={route === "admin" ? "page" : undefined} onClick={() => nav("admin")}><i>⛬</i> Floor</button>
-            </>)}
-            <div className="mono sidelabel">STUDIO</div>
-            <button className={route === "account" ? "on" : ""} aria-current={route === "account" ? "page" : undefined} onClick={() => nav("account")}><i>✦</i> Account</button>
-            <button onClick={() => { sessionStorage.setItem("cf.openSupport", "1"); nav("account"); }}><i>◍</i> Get Help</button>
-          </nav>
-          <div className="sideuser">
-            <div className="mono" style={{ textTransform: "none", letterSpacing: ".04em", overflow: "hidden", textOverflow: "ellipsis" }}>{user.email}</div>
-            <button className="mono sideout" onClick={() => { signOut(); nav(""); }}>SIGN OUT</button>
-          </div>
-        </aside>
-        <div className="shellmain">
-          <header className="shellhead">
-            <span className="mono crumb">{route === "studio" ? "THE SET" : route === "admin" ? "PRODUCTION FLOOR" : route === "account" ? "ACCOUNT" : route === "profile" ? "THE DOSSIER" : "MY FILMS"}</span>
-            <span style={{ flex: 1 }} />
-            {prod && (
-              <button className={`prodchip mono ${prod.status}`} onClick={() => nav(prod.status === "ready" ? "dashboard" : "account")} title="Director's cut order status">
-                {prod.status === "ready" ? "🎬 CUT READY" :
-                 ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" :
-                 <><i className="recdot" />{prod.status === "filming" ? "CAMERAS ROLLING" : "IN THE QUEUE"}</>}
-              </button>
-            )}
-            {credits.cuts > 0 && (
-              <button className="mono credchip" onClick={() => nav("account")} title="Studio credits">
-                ◈ {credits.revisions} REVISION{credits.revisions === 1 ? "" : "S"} LEFT
-              </button>
-            )}
-            <span className="mono envbadge">{CONFIG.env.toUpperCase()}</span>
-            {edge && (edge.ms >= 0
-              ? <span className="mono edgetag"><i className="edgedot ok" />{edge.ms}MS</span>
-              : <span className="mono edgetag"><i className="edgedot bad" />OFFLINE</span>)}
-            <span className="kbdhint mono" title="Command palette">⌘K</span>
-            <button className="mono headout" onClick={() => { signOut(); nav(""); }} aria-label="Sign out">SIGN OUT</button>
-          </header>
-          <main className={route === "studio" ? "page pagewide" : "page"}><SetBoundary key={route}><Page /></SetBoundary></main>
+      <div className="backlot">
+        <Sidebar user={user} route={head} nav={nav} onSignOut={doSignOut} onCmdK={openCmdK} />
+        <div className="bkmain">
+          {statusChips}
+          <main className="bkpage">
+            <SetBoundary key={route}>
+              {onCanvas
+                ? <div className="bkpad"><div className="bkcanvaspage"><Page /></div></div>
+                : <Page />}
+            </SetBoundary>
+          </main>
         </div>
       </div>
     </AuthCtx.Provider>
