@@ -85,7 +85,16 @@ export async function publish(event, ctx) {
   if (!files && b.orderId) {
     const order = await ctx.ddb.get({ PK: `ORDER#${b.orderId}`, SK: "META" });
     if (order?.status !== "ready" || (!order.cutKey && !Array.isArray(order.cutFiles))) return bad("order cut not ready", 409);
-    const paths = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : ["index.html"];
+    // the manifest is the callback's view; union it with the asset rows so an
+    // asset uploaded after delivery (or before an older lambda) still ships
+    const assetRows = await ctx.ddb.query({
+      KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+      ExpressionAttributeValues: { ":p": `ORDER#${b.orderId}`, ":s": "ASSET#" },
+    });
+    const paths = [...new Set([
+      ...(Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : ["index.html"]),
+      ...assetRows.map((r) => r.path).filter(Boolean),
+    ])];
     const pagePaths = paths.filter((p) => isPagePath(p));
     assetCopies = paths.filter((p) => !isPagePath(p));
     files = await Promise.all(pagePaths.map(async (p) => ({ path: p, html: await ctx.s3.getObjectText(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`) })));
