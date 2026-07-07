@@ -13,6 +13,7 @@ import Admin from "./pages/Admin.jsx";
 import Profile from "./pages/Profile.jsx";
 import Sidebar from "./shell/Sidebar.jsx";
 import CmdK from "./CmdK.jsx";
+import ToastHost from "./shell/Toast.jsx";
 import { api } from "./api.js";
 import { ledger } from "./orders.js";
 
@@ -136,6 +137,7 @@ export default function App() {
     return (
       <AuthCtx.Provider value={{ user, nav }}>
         <CmdK nav={nav} admin={user.admin} />
+        <ToastHost />
         <SetBoundary key={route}><Editor siteId={seg[1]} /></SetBoundary>
       </AuthCtx.Provider>
     );
@@ -144,6 +146,7 @@ export default function App() {
     return (
       <AuthCtx.Provider value={{ user, nav }}>
         <CmdK nav={nav} admin={user.admin} />
+        <ToastHost />
         <SetBoundary key={route}>
           <div className="edshell">
             <div className="edbar">
@@ -172,6 +175,7 @@ export default function App() {
   return (
     <AuthCtx.Provider value={{ user, nav }}>
       <CmdK nav={nav} admin={user.admin} />
+      <ToastHost />
       <div className="backlot">
         <Sidebar user={user} route={head} nav={nav} onSignOut={doSignOut} onCmdK={openCmdK} />
         <div className="bkmain">

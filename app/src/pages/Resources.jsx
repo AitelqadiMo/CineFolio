@@ -1,7 +1,7 @@
 // Resources: the style gallery. Every look the engine can film, rendered
 // live with a fictional cast (never the founder's data), and a detail modal
 // with one honest CTA: use this template in The Set.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
 
@@ -31,6 +31,20 @@ export default function Resources() {
   const { nav } = useAuth();
   const [open, setOpen] = useState(null); // template id | null
   const [pal, setPal] = useState(null);
+  const openerRef = useRef(null);
+
+  // the modal closes on Escape and hands focus back to the card that opened it
+  useEffect(() => {
+    if (!open) return;
+    const key = (e) => {
+      if (e.key === "Escape") {
+        setOpen(null);
+        if (openerRef.current?.focus) openerRef.current.focus();
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [open]);
 
   const posters = useMemo(() => TEMPLATES.map((t) => {
     try { return { ...t, html: compile(t.id, t.palettes[0].id, DEMO, {}) }; }
@@ -55,7 +69,7 @@ export default function Resources() {
       <p className="sub">Start from a look to film your next portfolio. Every poster below is the real engine rendering a fictional cast.</p>
       <div className="bkrescards">
         {posters.map((t) => (
-          <button key={t.id} className="bkrescard" onClick={() => { setOpen(t.id); setPal(null); }}>
+          <button key={t.id} className="bkrescard" onClick={(e) => { openerRef.current = e.currentTarget; setOpen(t.id); setPal(null); }}>
             <span className="bkthumb">
               {t.html ? <iframe title={t.name} sandbox="allow-scripts" scrolling="no" srcDoc={t.html} loading="lazy" tabIndex={-1} aria-hidden="true" /> : <span className="ghost">{t.name.toUpperCase()}</span>}
             </span>

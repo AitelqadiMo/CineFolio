@@ -1,37 +1,51 @@
-// Home: the greeting over the jersey aurora. One composer, one gallery.
-// The composer is honest: it files a film brief and opens The Set with the
-// brief loaded. No AI theater; the studio's real pipeline does the work.
+// Home: the greeting over the jersey aurora. The composer is not a chatbot,
+// it is the studio's intake window: drop a resume, a headshot and project
+// shots, add a note, hit Roll. Everything lands in The Set prefilled. The
+// gallery below carries the vault.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
+import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
+import AssetChips from "../shell/Intake.jsx";
 
 const DEMO = parseProfile("", { name: "Jordan Vega", headline: "Product Designer, systems and story" });
 
 export default function Home() {
   const { user, nav } = useAuth();
   const [brief, setBrief] = useState("");
-  const [styleOpen, setStyleOpen] = useState(false);
   const [style, setStyle] = useState(null); // template id or null = studio's choice
   const [tab, setTab] = useState("films");  // films | recent | templates
   const [sites, setSites] = useState(null);
-  const styleRef = useRef(null);
+  const stylePop = usePopover();
+  const fileRef = useRef(null);
+  const intake = useIntakeAssets();
+  const { over, dropProps } = useDropzone(intake.addFiles);
+
+  const [firstRun, setFirstRun] = useState({ dossier: false, draft: false });
 
   useEffect(() => {
     api.sites().then((r) => setSites(r.sites || [])).catch(() => setSites([]));
+    api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => { /* optional */ });
+    try { setFirstRun((f) => ({ ...f, draft: !!localStorage.getItem("cf.studioDraft") })); } catch { /* noop */ }
   }, []);
 
-  useEffect(() => {
-    const h = (e) => { if (styleRef.current && !styleRef.current.contains(e.target)) setStyleOpen(false); };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-
-  const start = () => {
-    try {
-      sessionStorage.setItem("cf.brief", JSON.stringify({ text: brief.trim(), tpl: style }));
-    } catch { /* noop */ }
+  const roll = () => {
+    packBrief({
+      text: brief.trim(),
+      tpl: style,
+      pal: null,
+      cvRaw: intake.resume?.text || "",
+      cvName: intake.resume?.name || "",
+      photo: intake.photo?.url || "",
+      covers: intake.covers.map((c) => ({ name: c.name, url: c.url })),
+    });
     nav("studio");
+  };
+
+  const onPaste = (e) => {
+    const files = e.clipboardData?.files;
+    if (files?.length) { e.preventDefault(); intake.addFiles(files); }
   };
 
   const who = user.email.split("@")[0];
@@ -53,62 +67,104 @@ export default function Home() {
     <div>
       <div className="bkhero">
         <h1 className="bkgreet">What story are we filming today, <em>{who}</em>?</h1>
-        <div className="bkcomposer">
+
+        <div className={`bkcomposer ${over ? "over" : ""}`} {...dropProps}>
+          <input
+            ref={fileRef} type="file" multiple hidden
+            accept=".pdf,.txt,text/plain,application/pdf,image/*"
+            onChange={(e) => { intake.addFiles(e.target.files); e.target.value = ""; }}
+            aria-hidden="true" tabIndex={-1}
+          />
+          {!intake.hasAssets && (
+            <button className="bkdrop hero" type="button" onClick={() => fileRef.current?.click()}>
+              <span className="glyph" aria-hidden="true">◉</span>
+              <span>{over ? <b>Drop to attach</b> : <><b>Drop your resume, headshot and project shots</b> or click to browse</>}</span>
+            </button>
+          )}
+          <AssetChips intake={intake} />
           <textarea
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); start(); } }}
-            placeholder="Describe the film: who it's about, the role it should land, the mood…"
+            onPaste={onPaste}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); roll(); } }}
+            placeholder={intake.hasAssets ? "Add a note on the role you're chasing, if you like." : "Or start with a note: who this film is about, the role it should land."}
             rows={2}
             aria-label="Film brief"
           />
+          {intake.busy && <div className="bkprogress" aria-hidden="true"><div className="fill" /></div>}
+          {intake.error && <div className="bkerr" role="alert">{intake.error}</div>}
+          <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : ""}</span>
           <div className="bkcomprow" style={{ position: "relative" }}>
-            <button className="bkplus" title="Open The Set to attach a resume" aria-label="Open The Set" onClick={start}>+</button>
-            <div ref={styleRef} style={{ marginLeft: "auto", position: "relative" }}>
-              <button className="bkstyle" onClick={() => setStyleOpen(!styleOpen)} aria-haspopup="menu" aria-expanded={styleOpen}>
-                {style ? (TEMPLATES.find((t) => t.id === style)?.name || "Look") : "Look"} <span style={{ fontSize: 9 }}>▾</span>
+            <button className="bkplus" title="Attach resume, headshot or project shots" aria-label="Attach resume, headshot or project shots" onClick={() => fileRef.current?.click()}>+</button>
+            <div ref={stylePop.ref} style={{ marginLeft: "auto", position: "relative" }}>
+              <button className="bkstyle" onClick={stylePop.toggle} aria-haspopup="menu" aria-expanded={stylePop.open}>
+                {style ? (TEMPLATES.find((t) => t.id === style)?.name || "Look") : "Look"} <span style={{ fontSize: 9 }} aria-hidden="true">▾</span>
               </button>
-              {styleOpen && (
+              {stylePop.open && (
                 <div className="bkmenu" style={{ position: "absolute", right: 0, bottom: "calc(100% + 8px)", minWidth: 210 }} role="menu">
-                  <button onClick={() => { setStyle(null); setStyleOpen(false); }}><span className="mi">✦</span>Studio&apos;s choice</button>
+                  <button role="menuitem" onClick={() => { setStyle(null); stylePop.close(true); }}><span className="mi" aria-hidden="true">✦</span>Studio&apos;s choice</button>
                   <div className="msep" />
                   {TEMPLATES.map((t) => (
-                    <button key={t.id} onClick={() => { setStyle(t.id); setStyleOpen(false); }}>
-                      <span className="mi">{style === t.id ? "✓" : "◈"}</span>{t.name}
+                    <button key={t.id} role="menuitem" onClick={() => { setStyle(t.id); stylePop.close(true); }}>
+                      <span className="mi" aria-hidden="true">{style === t.id ? "✓" : "◈"}</span>{t.name}
                     </button>
                   ))}
                 </div>
               )}
             </div>
-            <button className="bksend" onClick={start} disabled={false} aria-label="Start filming">↑</button>
+            <button className="bksend" onClick={roll} disabled={intake.busy} aria-label="Roll camera: open The Set with everything attached">↑</button>
           </div>
         </div>
+        <p className="bkhelper">Resume as PDF or TXT, images up to 10MB. We read everything here in your browser. Nothing is filed until you hit Roll.</p>
       </div>
 
       <div className="bkgallery">
-        <div className="bktabs">
+        <div className="bktabs" role="tablist" aria-label="Vault">
           <button className="tsearch" onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}>◌ Search</button>
-          <button className={`tab ${tab === "films" ? "on" : ""}`} onClick={() => setTab("films")}>My films</button>
-          <button className={`tab ${tab === "recent" ? "on" : ""}`} onClick={() => setTab("recent")}>Recently viewed</button>
-          <button className={`tab ${tab === "templates" ? "on" : ""}`} onClick={() => setTab("templates")}>Studio templates</button>
+          <button role="tab" aria-selected={tab === "films"} className={`tab ${tab === "films" ? "on" : ""}`} onClick={() => setTab("films")}>My films</button>
+          <button role="tab" aria-selected={tab === "recent"} className={`tab ${tab === "recent" ? "on" : ""}`} onClick={() => setTab("recent")}>Recently viewed</button>
+          <button role="tab" aria-selected={tab === "templates"} className={`tab ${tab === "templates" ? "on" : ""}`} onClick={() => setTab("templates")}>Studio templates</button>
           <button className="browseall" onClick={() => nav(tab === "templates" ? "resources" : "films")}>Browse all →</button>
         </div>
 
         {tab !== "templates" && (
           <>
-            {sites === null && <div className="bkempty mono">LOADING THE VAULT…</div>}
-            {sites?.length === 0 && (
-              <div className="bkempty">
-                <span className="mono">THE VAULT IS EMPTY</span>
-                Your first film starts above: describe it, or open The Set.
+            {sites === null && (
+              <div className="bkcards" aria-hidden="true">
+                <div className="bkskel" /><div className="bkskel" /><div className="bkskel" />
               </div>
             )}
+            {sites?.length === 0 && (() => {
+              const done = 1 + (firstRun.dossier ? 1 : 0) + (firstRun.draft ? 1 : 0);
+              return (
+                <div style={{ padding: "10px 4px 6px" }}>
+                  <div className="mono" style={{ fontSize: 9.5 }}>
+                    {done} OF 4 DONE · ACCOUNT CREATED ✓{firstRun.dossier ? " · DOSSIER FILLED ✓" : ""}{firstRun.draft ? " · TAKE DIRECTED ✓" : ""}
+                  </div>
+                  <div className="bkgauge" aria-hidden="true"><div className="fill" style={{ width: `${(done / 4) * 100}%` }} /></div>
+                  <div className="bksteps">
+                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav("profile")}>
+                      <span className="no" aria-hidden="true">{firstRun.dossier ? "✓" : "1"}</span>
+                      <span><b>Fill your dossier</b><i>Upload a resume once; every film casts from it.</i></span>
+                    </button>
+                    <button className={`bkstep ${firstRun.draft ? "done" : ""}`} onClick={() => nav("studio")}>
+                      <span className="no" aria-hidden="true">{firstRun.draft ? "✓" : "2"}</span>
+                      <span><b>Direct your free take</b><i>Drop assets above, or open The Set; it renders as you type.</i></span>
+                    </button>
+                    <button className="bkstep" onClick={() => nav("studio")}>
+                      <span className="no" aria-hidden="true">3</span>
+                      <span><b>Premiere it</b><i>One click, live on yourname.cinefolio.site.</i></span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
             <div className="bkcards">
               {shown.map((s) => (
-                <button key={s.siteId} className="bkfilm" onClick={() => nav(`film/${s.siteId}`)}>
-                  <span className="bkthumb">
+                <button key={s.siteId} className="bkfilmbtn" onClick={() => nav(`film/${s.siteId}`)}>
+                  <span className="bkthumb" aria-hidden="true">
                     {s.status === "live" && s.previewUrl
-                      ? <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} aria-hidden="true" />
+                      ? <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />
                       : <span className="ghost">{(s.title || s.slug || "FILM").toUpperCase()}</span>}
                     {s.status === "live" && <span className="pubbadge">Published</span>}
                     {s.stagedRelease && s.status !== "live" && <span className="pubbadge staged">Staged</span>}
@@ -130,9 +186,9 @@ export default function Home() {
         {tab === "templates" && (
           <div className="bkcards">
             {templatePosters.map((t) => (
-              <button key={t.id} className="bkfilm" onClick={() => { try { sessionStorage.setItem("cf.brief", JSON.stringify({ text: "", tpl: t.id })); } catch { /* noop */ } nav("studio"); }}>
-                <span className="bkthumb">
-                  {t.html ? <iframe title={t.name} sandbox="allow-scripts" scrolling="no" srcDoc={t.html} loading="lazy" tabIndex={-1} aria-hidden="true" /> : <span className="ghost">{t.name.toUpperCase()}</span>}
+              <button key={t.id} className="bkfilmbtn" onClick={() => { packBrief({ text: "", tpl: t.id }); nav("studio"); }}>
+                <span className="bkthumb" aria-hidden="true">
+                  {t.html ? <iframe title={t.name} sandbox="allow-scripts" scrolling="no" srcDoc={t.html} loading="lazy" tabIndex={-1} /> : <span className="ghost">{t.name.toUpperCase()}</span>}
                 </span>
                 <span className="bkfilmmeta">
                   <span className="fava" aria-hidden="true" />
