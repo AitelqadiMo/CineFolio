@@ -40,9 +40,14 @@ export const s3 = {
   },
   copyObject: (Bucket, fromKey, toKey) =>
     s3c.send(new CopyObjectCommand({ Bucket, CopySource: `${Bucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
-  // cross-bucket byte-for-byte copy: how a cut's images and video reach the published release
+  // cross-bucket byte-for-byte copy: how a cut's images and video reach the
+  // published release. SSE is pinned to AES256: CloudFront OAC cannot decrypt
+  // KMS objects, and the source bucket (artifacts) is KMS-encrypted.
   copyObjectAcross: (fromBucket, fromKey, toBucket, toKey) =>
-    s3c.send(new CopyObjectCommand({ Bucket: toBucket, CopySource: `${fromBucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
+    s3c.send(new CopyObjectCommand({
+      Bucket: toBucket, CopySource: `${fromBucket}/${encodeURIComponent(fromKey)}`, Key: toKey,
+      ServerSideEncryption: "AES256", MetadataDirective: "COPY",
+    })),
   deleteObject: (Bucket, Key) => s3c.send(new DeleteObjectCommand({ Bucket, Key })),
 };
 
