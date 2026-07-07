@@ -32,6 +32,7 @@ export const ROUTES = {
   "GET /orders": orders.listOrders,
   "POST /orders/{id}/revision": orders.requestRevision,
   "GET /sites/{id}/stats": sites.stats,
+  "GET /sites/{id}/inspect": sites.inspect,
   "POST /sites/{id}/domain": sites.connectDomain,
   "POST /sites": sites.createSite,
   "GET /sites": sites.listSites,
