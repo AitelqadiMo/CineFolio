@@ -221,6 +221,16 @@ export async function asset(event, ctx) {
     PK: `ORDER#${orderId}`, SK: `ASSET#${path}`, type: "orderasset",
     path, contentType, bytes: bytes.length, createdAt: now(),
   }); // idempotent by design: re-uploading a path overwrites both object and row
+  // pages already delivered? fold this late arrival into the manifest so the
+  // next premiere ships it without depending on upload order
+  if (Array.isArray(order.cutFiles) && !order.cutFiles.includes(path)) {
+    await ctx.ddb.update({
+      Key: { PK: `ORDER#${orderId}`, SK: "META" },
+      UpdateExpression: "SET cutFiles = :f",
+      ExpressionAttributeValues: { ":f": [...order.cutFiles, path] },
+      ConditionExpression: "attribute_exists(PK)",
+    }).catch(() => { /* concurrent callback wins; publish unions the rows anyway */ });
+  }
   return ok({ ok: true, orderId, path, bytes: bytes.length });
 }
 
