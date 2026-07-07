@@ -10,7 +10,7 @@ import { useAuth } from "../App.jsx";
 import { confetti, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
 import { parseProfile, compile, compileBundle, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
-import { readResume, compressAndUpload, takeBrief } from "../media.js";
+import { readResume, compressAndUpload, takeBrief, usePopover } from "../media.js";
 import { toast } from "../shell/Toast.jsx";
 
 const POLL_MS = 8000, POLL_MAX = 220;
@@ -44,6 +44,9 @@ export default function Studio() {
   const [editTarget, setEditTarget] = useState(null); // { siteId, slug, title } re-premiere target from My Films
   const [locker, setLocker] = useState([]);   // unassigned assets: { name, url }
   const [arrived, setArrived] = useState(null); // what rode in from a composer handoff
+  const [previewKey, setPreviewKey] = useState(0);
+  const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit } from /me
+  const projPop = usePopover();
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
@@ -101,6 +104,13 @@ export default function Studio() {
     }, 2500);
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal, locker, photo]);
+
+  // the account's AI cut entitlement: three free, then the paid path
+  useEffect(() => {
+    api.me().then((r) => {
+      if (typeof r?.user?.freeCutsLeft === "number") setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3 });
+    }).catch(() => { /* chip stays quiet */ });
+  }, []);
 
   // the dossier (My Profile) is the casting source of truth: prefill once, never clobber
   const [dossier, setDossier] = useState(null);
@@ -290,17 +300,33 @@ export default function Studio() {
   const directorsCut = async () => {
     setErr("");
     try {
-      const r = await api.generate({
+      const isFree = (ent?.freeCutsLeft ?? 1) > 0;
+      const coverUrls = [
+        ...projects.filter((p2) => p2.cover && !String(p2.cover).startsWith("data:")).map((p2) => ({ name: p2.name || "cover", url: p2.cover })),
+        ...locker.filter((a) => a.url && !String(a.url).startsWith("data:")).map((a) => ({ name: a.name || "asset", url: a.url })),
+      ].slice(0, 8);
+      const r = await api.order({
         email: profile.email || q.email, name: profile.name, role: "engineer",
         cvText: cvText || `${profile.name}, ${profile.headline}`,
         template: tpl, palette: pal, customIdea,
+        photo: photo && !String(photo).startsWith("data:") ? photo : null,
+        covers: coverUrls,
+        links: q.website || null,
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
-      ledger.record({ orderId: r.orderId, name: profile.name, price: 149, production: !!r.production, status: r.production ? "queued" : "preview_only" });
+      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3 }));
+      ledger.record({ orderId: r.orderId, name: profile.name, price: isFree ? 0 : 149, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       if (r.production) {
         try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name: profile.name })); } catch { /* noop */ }
       }
-    } catch (e2) { setErr(friendly(e2.message)); }
+    } catch (e2) {
+      if (e2.status === 402) {
+        setEnt((e0) => ({ freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3 }));
+        setErr("Your three free AI cuts are spent. The next Director's Cut is $149; reach the studio from Settings to order it.");
+      } else if (e2.status === 401) {
+        setErr("Sign in again to order an AI cut.");
+      } else setErr(friendly(e2.message));
+    }
   };
 
   useEffect(() => {
@@ -321,7 +347,34 @@ export default function Studio() {
   const slug = pub.slug || (profile.name || "your-name").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
   return (
-    <div ref={premiereRef}>
+    <div className="edshell" ref={premiereRef}>
+      <div className="edbar">
+        <div style={{ position: "relative" }} ref={projPop.ref}>
+          <button className="edproj" onClick={projPop.toggle} aria-haspopup="menu" aria-expanded={projPop.open}>
+            <span className="lens" aria-hidden="true" />
+            <span>{editTarget ? `The Set · ${editTarget.title || editTarget.slug}` : "The Set · new film"}</span>
+            <span className="chev" aria-hidden="true">▾</span>
+          </button>
+          {projPop.open && (
+            <div className="bkmenu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0 }} role="menu">
+              <button role="menuitem" onClick={() => nav("")}><span className="mi" aria-hidden="true">←</span>Go to Dashboard</button>
+              <button role="menuitem" onClick={() => nav("films")}><span className="mi" aria-hidden="true">▦</span>All films</button>
+              <button role="menuitem" onClick={() => nav("resources")}><span className="mi" aria-hidden="true">◈</span>Resources</button>
+              <div className="msep" />
+              <button role="menuitem" onClick={() => nav("profile")}><span className="mi" aria-hidden="true">▣</span>My dossier</button>
+            </div>
+          )}
+        </div>
+        <span className="edpagesel" style={{ cursor: "default" }} title="Where this film premieres">{(pub.slug.trim() || slug)}.cinefolio.site</span>
+        <div className="grow" />
+        <span className="bkchip plain">{(profile.skills || []).length} SKILLS CAST</span>
+        {ent && <span className={`bkchip plain ${ent.freeCutsLeft ? "gold" : ""}`}>◈ {ent.freeCutsLeft} FREE AI CUT{ent.freeCutsLeft === 1 ? "" : "S"} LEFT</span>}
+        <button className={`edicon ${view === "desktop" ? "on" : ""}`} title="Desktop" aria-label="Desktop preview" onClick={() => setView("desktop")}>▭</button>
+        <button className={`edicon ${view === "mobile" ? "on" : ""}`} title="Mobile" aria-label="Mobile preview" onClick={() => setView("mobile")}>▯</button>
+        <button className="edicon" title="Re-render preview" aria-label="Re-render preview" onClick={() => setPreviewKey((k) => k + 1)}>⟳</button>
+        <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={() => setRailTab("publish")}>Premiere</button>
+      </div>
+      <div className="setbody">
       <h1 className="visually-hidden">The Set</h1>
       {/* ---------------- the slate ---------------- */}
       <div className="slate">
@@ -597,19 +650,22 @@ export default function Studio() {
           </div>
 
           <div className="railsec act paidcard">
-            <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">the studio films it for you · $149, one time</span></div></div>
+            <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">{ent && ent.freeCutsLeft > 0 ? `filmed by our AI studio · ${ent.freeCutsLeft} of ${ent.freeCutsLimit} free cuts left` : "the studio films it for you · $149, one time"}</span></div></div>
             <ul className="paidlist">
-              <li>Bespoke art direction, built scene by scene for your story</li>
-              <li>Identity-locked AI film sequences, yours alone</li>
-              <li>Premieres within 24 hours as a new release</li>
-              <li>Hosted by the studio for 12 months, included</li>
-              <li>One revision included</li>
+              <li>Every account holds three free AI cuts, on the studio</li>
+              <li>Bespoke art direction with cinematic motion, built from your resume and photos</li>
+              <li>Your likeness only from the photos you hand us, never generated</li>
+              <li>Download-resume built into the delivered portfolio</li>
+              <li>Premieres within 24 hours as a new release · one revision included</li>
             </ul>
-            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>AGENCY EQUIVALENT: $2,000+ AND WEEKS · THE STUDIO: $149, WITHIN 24 HOURS</div>
+            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>AGENCY EQUIVALENT: $2,000+ AND WEEKS · THE STUDIO: 3 FREE, THEN $149, WITHIN 24 HOURS</div>
             <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the studio: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn primary" disabled={!ready || !!order} onClick={() => setConfirmCut(true)}>
-                {order ? "DIRECTOR'S CUT ORDERED ✓" : "ORDER THE DIRECTOR'S CUT · $149"}
+                {order ? "DIRECTOR'S CUT ORDERED ✓"
+                  : ent === null ? "ORDER THE DIRECTOR'S CUT"
+                  : ent.freeCutsLeft > 0 ? `USE A FREE AI CUT · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT`
+                  : "ORDER THE DIRECTOR'S CUT · $149"}
               </button>
             </div>
             {order && (
@@ -626,34 +682,17 @@ export default function Studio() {
         </div>
         </aside>
 
-        {/* ---------------- the monitor ---------------- */}
+        {/* ---------------- the canvas: same anatomy as the film workspace ---------------- */}
         <section className="stage">
-          <div className="browser monitor">
-            <div className="browserbar">
-              <span className="bdot" style={{ background: "#ff5f57" }} /><span className="bdot" style={{ background: "#febc2e" }} /><span className="bdot" style={{ background: "#28c840" }} />
-              <div className="burl mono">{slug}.cinefolio.site</div>
-              <div className="bviews">
-                <button className={view === "desktop" ? "on" : ""} onClick={() => setView("desktop")} title="Desktop">▭</button>
-                <button className={view === "mobile" ? "on" : ""} onClick={() => setView("mobile")} title="Mobile">▯</button>
-              </div>
-            </div>
-            <div className="stageframe">
-              {ready ? (
-                <iframe key={view} title="preview" sandbox="allow-scripts" srcDoc={html} style={view === "mobile" ? { width: 390, margin: "0 auto", display: "block", borderInline: "1px solid var(--faint)" } : undefined} />
-              ) : (
-                <div className="stageempty">
-                  <div className="lensbig" />
-                  <div className="mono" style={{ marginTop: 18 }}>THE SCREENING ROOM · DARK</div>
-                  <p>Drop a resume on the left and the lights come up.<br />Your site renders here <b>as you type</b>. No waiting, no AI roulette.</p>
-                </div>
-              )}
-            </div>
-            <div className="monfoot mono">
-              <span>LIVE PREVIEW · RENDERS AS YOU TYPE</span>
-              <span>{view.toUpperCase()} · {(profile.skills || []).length} SKILLS CAST</span>
-            </div>
+          <div className={`edcanvas ${view === "mobile" ? "mob" : ""}`}>
+            {!ready && (
+              <div className="canvashint mono" role="status">THE SCREEN IS LIVE · DROP A RESUME OR START TYPING AND IT RENDERS AS YOU GO</div>
+            )}
+            <iframe key={`${view}-${previewKey}`} title="Live preview, renders as you type" sandbox="allow-scripts" srcDoc={html} />
           </div>
         </section>
+      </div>
+
       </div>
 
       <Dialog open={lookOpen} title="Browse the looks" kicker="FIVE FAMILIES · FIFTEEN FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
@@ -687,8 +726,10 @@ export default function Studio() {
       </Dialog>
 
       <ConfirmDialog
-        open={confirmCut} kicker="THE DIRECTOR'S CUT · $149 ONE TIME" title="Order your Director's Cut"
-        body={`The studio films a bespoke cut for ${profile.name || "you"}: art direction built for your story, identity-locked film sequences, premiere within 24 hours as a new release, one revision included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.`}
+        open={confirmCut}
+        kicker={ent && ent.freeCutsLeft > 0 ? `FREE AI CUT · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT` : "THE DIRECTOR'S CUT · $149 ONE TIME"}
+        title="Order your Director's Cut"
+        body={`The studio films a bespoke cut for ${profile.name || "you"}: cinematic motion built from your resume${photo ? " and your photos" : ""}, a download-ready resume inside the portfolio, premiere within 24 hours as a new release, one revision included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.${ent && ent.freeCutsLeft > 0 ? " This one is on the studio." : ""}`}
         confirmLabel="Place the order"
         onConfirm={() => { setConfirmCut(false); directorsCut(); }}
         onClose={() => setConfirmCut(false)}
