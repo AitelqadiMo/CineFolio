@@ -117,13 +117,14 @@ export async function publish(event, ctx) {
   }
 
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug);
-  // optimistic lock: two concurrent publishes can't both claim release n
+  // optimistic lock: two concurrent publishes can't both claim release n.
+  // A cut premiered onto an existing film marks it AI-born (orderId sticks).
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
-    UpdateExpression: "SET releases = :n, liveRelease = :n, #s = :live, publishedAt = :t, updatedAt = :t, pointerMode = :pm",
+    UpdateExpression: `SET releases = :n, liveRelease = :n, #s = :live, publishedAt = :t, updatedAt = :t, pointerMode = :pm${b.orderId ? ", orderId = :oid" : ""}`,
     ConditionExpression: "releases = :prev",
     ExpressionAttributeNames: { "#s": "status" },
-    ExpressionAttributeValues: { ":n": n, ":live": "live", ":t": now(), ":pm": flip.mode, ":prev": site.releases || 0 },
+    ExpressionAttributeValues: { ":n": n, ":live": "live", ":t": now(), ":pm": flip.mode, ":prev": site.releases || 0, ...(b.orderId ? { ":oid": b.orderId } : {}) },
   }).catch((e) => {
     if (e?.name === "ConditionalCheckFailedException") throw Object.assign(new Error("concurrent publish, retry"), { statusCode: 409 });
     throw e;
@@ -182,12 +183,29 @@ export async function rollback(event, ctx) {
   return ok({ ok: true, siteId: site.siteId, liveRelease: target, pointer: flip.mode, status: "live" });
 }
 
-// DELETE /sites/{id} — takedown (pointer removal; releases stay for audit/restore)
+// DELETE /sites/{id} — takedown. The site must go DARK everywhere a viewer
+// could reach it: the KVS pointer, the s3copy fallback objects the router
+// serves on a KVS miss, and the CDN cache. Releases stay immutable in their
+// prefixes for audit/relight; only the public pointers burn.
 export async function takedown(event, ctx) {
   const claims = claimsOf(event);
   const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
   if (err) return err;
   try { await ctx.kvs.del(ctx.config.kvsArn, site.slug); } catch { /* fallback mode or never flipped */ }
+  // purge the fallback pointer copies (sites/{slug}/...) so the router's
+  // KVS-miss path has nothing to serve
+  const releases = await ctx.ddb.query({
+    KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+    ExpressionAttributeValues: { ":p": site.PK, ":s": "RELEASE#" },
+  });
+  const paths = [...new Set(releases.flatMap((r) => (r.filePaths?.length ? r.filePaths : ["index.html"])))];
+  await Promise.all(paths.map((p) =>
+    ctx.s3.deleteObject(ctx.config.publishedBucket, `sites/${site.slug}/${p}`).catch(() => { /* never copied */ })
+  ));
+  // evict every cached path a viewer could hold
+  try {
+    await ctx.cdn.invalidate(ctx.config.distributionId, [`/_preview/${site.slug}/*`, `/sites/${site.slug}/*`]);
+  } catch { /* dev tolerable: cache TTL finishes the job */ }
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
     UpdateExpression: "SET #s = :s, updatedAt = :t",
@@ -291,6 +309,7 @@ const stagedUrl = (ctx, siteId, n) => `https://${ctx.config.cdnDomain}/_r/${site
 
 const pub = (s, ctx) => ({
   siteId: s.siteId, slug: s.slug, title: s.title, status: s.status,
+  orderId: s.orderId || null, // set when this film was born from an AI cut
   releases: s.releases, liveRelease: s.liveRelease, stagedRelease: s.stagedRelease ?? null,
   audienceOf: s.audienceOf || null, pointerMode: s.pointerMode,
   customDomain: s.customDomain || null, domainStatus: s.domainStatus || null,
