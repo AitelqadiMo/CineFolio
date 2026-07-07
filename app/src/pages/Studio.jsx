@@ -442,6 +442,11 @@ export default function Studio() {
             ) : (
               <input value={pub.slug} onChange={(e) => setPub({ ...pub, slug: e.target.value })} placeholder={slug} />
             )}
+            {!editTarget && !pub.done && (
+              <div className="mono" style={{ marginTop: 6, textTransform: "none", letterSpacing: ".05em", fontSize: 10, color: "var(--gold)" }}>
+                → {(pub.slug.trim() || slug)}.cinefolio.site, live seconds after the click
+              </div>
+            )}
             <label className="mono" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", cursor: "pointer", fontSize: 9.5 }}>
               <input type="checkbox" checked={stageMode} onChange={(e) => setStageMode(e.target.checked)} style={{ width: "auto" }} />
               STAGE AS DRAFT · PREVIEW LINK ONLY, GO LIVE FROM MY FILMS
@@ -473,6 +478,7 @@ export default function Studio() {
               <li>Hosted by the studio for 12 months, included</li>
               <li>One revision included</li>
             </ul>
+            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>AGENCY EQUIVALENT: $2,000+ AND WEEKS · THE STUDIO: $149, WITHIN 24 HOURS</div>
             <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the studio: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn primary" disabled={!ready || !!order} onClick={() => setConfirmCut(true)}>
