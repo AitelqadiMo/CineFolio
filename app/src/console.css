@@ -291,6 +291,7 @@
 .edpagesel {
   display: inline-flex; align-items: center; gap: 8px; background: var(--bk-bg-2); border: 1px solid var(--bk-line);
   color: var(--bk-dim); font: inherit; font-size: 12.5px; border-radius: 9px; padding: 7px 12px; cursor: pointer; max-width: 230px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0;
 }
 .edpagesel:hover { color: var(--bk-ink); border-color: var(--bk-line-2); }
 .edbar .grow { flex: 1; }
