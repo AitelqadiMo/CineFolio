@@ -100,12 +100,28 @@ resource "aws_cloudfront_distribution" "sites" {
   tags = var.tags
 }
 
-# Bucket policy: only this distribution may read the published bucket
+# Bucket policy: only this distribution may read the published bucket.
+# ListBucket is granted so a MISSING object returns an honest 404 instead of
+# S3's AccessDenied (which reads like a permissions incident to a visitor).
 data "aws_iam_policy_document" "bucket" {
   statement {
     sid       = "AllowCloudFrontRead"
     actions   = ["s3:GetObject"]
     resources = ["${var.published_bucket_arn}/*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.sites.arn]
+    }
+  }
+  statement {
+    sid       = "AllowCloudFrontList"
+    actions   = ["s3:ListBucket"]
+    resources = [var.published_bucket_arn]
     principals {
       type        = "Service"
       identifiers = ["cloudfront.amazonaws.com"]
