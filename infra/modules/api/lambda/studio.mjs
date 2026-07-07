@@ -2,7 +2,7 @@
 // generate: create order (idempotent) -> fire agent webhook -> return instant rough cut
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
-import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle } from "./lib.mjs";
+import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf } from "./lib.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -215,7 +215,9 @@ export async function callback(event, ctx) {
   if (!order) return bad("unknown order", 404);
 
   const key = `orders/${orderId}/cut/index.html`;
-  await Promise.all(files.map((f) => ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, f.html)));
+  await Promise.all(files.map((f) => isPagePath(f.path)
+    ? ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, f.html)
+    : ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, Buffer.from(f.content, "base64"), assetTypeOf(f.path))));
   // the file manifest rides on the order so publish and finalize need no state machine changes
   await ctx.ddb.update({
     Key: { PK: `ORDER#${orderId}`, SK: "META" },
