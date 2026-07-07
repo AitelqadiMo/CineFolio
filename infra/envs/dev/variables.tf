@@ -12,8 +12,13 @@ variable "region" {
 }
 variable "app_origins" {
   type        = list(string)
-  description = "Allowed web origins (CORS, Cognito callbacks)"
-  default     = ["http://localhost:3000", "https://cine-folio.vercel.app"]
+  description = "Allowed web origins (CORS, Cognito callbacks). MUST include the app-shell CDN domain or browser media uploads are CORS-blocked and fall back to inline data URLs."
+  default = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://cine-folio.vercel.app",
+    "https://d2f6618tf0eldv.cloudfront.net", # the Studio Console app shell
+  ]
 }
 variable "github_owner" {
   type    = string
