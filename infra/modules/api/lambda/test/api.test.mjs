@@ -628,3 +628,15 @@ test("studio/asset: agent uploads binaries with the secret, callback folds them 
   assert.equal(rel.filePaths.includes("assets/hero.jpg"), true);
   assert.equal(rel.filePaths.includes("resume.pdf"), true);
 });
+
+test("media/direct: proxied upload writes the image and returns a public url", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const b64 = Buffer.from("jpegbytes").toString("base64");
+  const r = parse(await h(ev("POST /media/direct", { claims: "u1", body: { contentType: "image/jpeg", dataBase64: b64 } })));
+  assert.equal(r.code, 200);
+  assert.match(r.body.publicUrl, /^https:\/\/.+\/media\/u1\//);
+  // junk is refused
+  assert.equal(parse(await h(ev("POST /media/direct", { claims: "u1", body: { contentType: "image/jpeg", dataBase64: "" } }))).code, 400);
+  assert.equal(parse(await h(ev("POST /media/direct", { claims: "u1", body: { contentType: "application/x-executable", dataBase64: b64 } }))).code, 400);
+});
