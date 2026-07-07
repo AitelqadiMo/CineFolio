@@ -34,6 +34,10 @@ export const s3 = {
     const r = await s3c.send(new GetObjectCommand({ Bucket, Key }));
     return r.Body.transformToString();
   },
+  getObjectBytes: async (Bucket, Key) => {
+    const r = await s3c.send(new GetObjectCommand({ Bucket, Key }));
+    return Buffer.from(await r.Body.transformToByteArray());
+  },
   copyObject: (Bucket, fromKey, toKey) =>
     s3c.send(new CopyObjectCommand({ Bucket, CopySource: `${Bucket}/${encodeURIComponent(fromKey)}`, Key: toKey })),
   // cross-bucket byte-for-byte copy: how a cut's images and video reach the published release
