@@ -121,6 +121,21 @@ export default function Studio() {
     } catch { /* noop */ }
   }, []);
 
+  // arriving from the Dashboard composer or Resources with a brief: load it
+  useEffect(() => {
+    try {
+      const b = JSON.parse(sessionStorage.getItem("cf.brief") || "null");
+      if (!b) return;
+      sessionStorage.removeItem("cf.brief");
+      if (b.text) setQ((q0) => ({ ...q0, focus: q0.focus || b.text }));
+      if (b.tpl && TEMPLATES.some((t) => t.id === b.tpl)) {
+        setTpl(b.tpl);
+        const fam = TEMPLATES.find((t) => t.id === b.tpl);
+        setPal(b.pal && fam.palettes.some((p2) => p2.id === b.pal) ? b.pal : fam.palettes[0].id);
+      }
+    } catch { /* noop */ }
+  }, []);
+
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
 
