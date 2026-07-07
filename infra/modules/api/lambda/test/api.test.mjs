@@ -62,6 +62,7 @@ function fakeCtx(overrides = {}) {
     s3: {
       async putObject(b, k, body) { s3store.set(`${b}/${k}`, body); },
       async getObjectText(b, k) { if (!s3store.has(`${b}/${k}`)) throw new Error("NoSuchKey"); return s3store.get(`${b}/${k}`); },
+      async getObjectBytes(b, k) { if (!s3store.has(`${b}/${k}`)) throw new Error("NoSuchKey"); const v = s3store.get(`${b}/${k}`); return Buffer.isBuffer(v) ? v : Buffer.from(String(v)); },
       async copyObject(b, from, to) { s3store.set(`${b}/${to}`, s3store.get(`${b}/${from}`)); },
       async copyObjectAcross(fb, from, tb, to) { s3store.set(`${tb}/${to}`, s3store.get(`${fb}/${from}`)); },
       async deleteObject(b, k) { s3store.delete(`${b}/${k}`); },
@@ -581,4 +582,49 @@ test("studio/order: three free cuts per account, the fourth is 402, accounts are
   // each buyer lists only their own orders
   assert.equal(parse(await h(ev("GET /orders", { claims: "fc1" }))).body.orders.length, 4 - 1); // 402 order never created
   assert.equal(parse(await h(ev("GET /orders", { claims: "fc2" }))).body.orders.length, 1);
+});
+
+// ---------- ZWIN pass 07: the agent's asset intake ----------
+
+test("studio/asset: agent uploads binaries with the secret, callback folds them into the cut, cut serves them by path", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "u1", body: { email: "b@x.io", name: "Binary Case", role: "designer", cvText: "2021 designer figma branding work" } })));
+  const orderId = gen.body.orderId;
+
+  // wrong secret is refused; bad path is refused; pages are refused here
+  assert.equal((await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "WRONG" }, qs: { orderId, path: "assets/a.jpg" } }), body: "AA", isBase64Encoded: true })).statusCode, 401);
+  assert.equal((await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "assets/run.exe" } }), body: "AA", isBase64Encoded: true })).statusCode, 400);
+  assert.equal((await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "index.html" } }), body: "AA", isBase64Encoded: true })).statusCode, 400);
+
+  // two parallel-style uploads land as rows + objects
+  const png = Buffer.from("pngbytes").toString("base64");
+  const up1 = await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "assets/hero.jpg" } }), body: png, isBase64Encoded: true });
+  assert.equal(up1.statusCode, 200);
+  const up2 = await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "resume.pdf" } }), body: png, isBase64Encoded: true });
+  assert.equal(up2.statusCode, 200);
+
+  // pages delivered AFTER the uploads: manifest = pages + uploaded assets
+  const cb = await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: "<!doctype html><html><body><img src=\"assets/hero.jpg\"><a href=\"resume.pdf\">resume</a></body></html>" });
+  assert.equal(cb.statusCode, 200);
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  assert.deepEqual([...meta.cutFiles].sort(), ["assets/hero.jpg", "index.html", "resume.pdf"]);
+
+  // the pre-premiere preview serves the asset by path, base64-encoded with its type
+  meta.status = "ready"; meta.cutKey = `orders/${orderId}/cut/index.html`;
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, meta);
+  const served = await h(ev("GET /studio/cut", { qs: { orderId, path: "assets/hero.jpg" } }));
+  assert.equal(served.statusCode, 200);
+  assert.equal(served.isBase64Encoded, true);
+  assert.equal(served.headers["content-type"], "image/jpeg");
+  // a path outside the manifest 404s
+  assert.equal((await h(ev("GET /studio/cut", { qs: { orderId, path: "assets/other.jpg" } }))).statusCode, 404);
+
+  // premiere: the assets ride into the release byte-for-byte
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "binary-case", title: "Binary Case" } }))).body.site;
+  const pubd = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { orderId } })));
+  assert.equal(pubd.code, 200);
+  const rel = ctx.ddb._store.get(`SITE#${site.siteId}|RELEASE#00001`);
+  assert.equal(rel.filePaths.includes("assets/hero.jpg"), true);
+  assert.equal(rel.filePaths.includes("resume.pdf"), true);
 });
