@@ -640,3 +640,31 @@ test("media/direct: proxied upload writes the image and returns a public url", a
   assert.equal(parse(await h(ev("POST /media/direct", { claims: "u1", body: { contentType: "image/jpeg", dataBase64: "" } }))).code, 400);
   assert.equal(parse(await h(ev("POST /media/direct", { claims: "u1", body: { contentType: "application/x-executable", dataBase64: b64 } }))).code, 400);
 });
+
+test("bundles: an asset uploaded AFTER the pages still ships at premiere", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "u1", body: { email: "l@x.io", name: "Late Asset", role: "designer", cvText: "2021 designer figma late" } })));
+  const orderId = gen.body.orderId;
+
+  // pages first (wrong order per the contract, but reality happens)
+  const cb = await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: "<!doctype html><html><body><img src=\"assets/late.jpg\"></body></html>" });
+  assert.equal(cb.statusCode, 200);
+  // THEN the asset arrives
+  const up = await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "assets/late.jpg" } }), body: Buffer.from("late").toString("base64"), isBase64Encoded: true });
+  assert.equal(up.statusCode, 200);
+  // the late upload self-healed the manifest
+  assert.equal(ctx.ddb._store.get(`ORDER#${orderId}|META`).cutFiles.includes("assets/late.jpg"), true);
+
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  meta.status = "ready"; meta.cutKey = `orders/${orderId}/cut/index.html`;
+  // simulate an OLD manifest missing the asset entirely: publish still unions the rows
+  meta.cutFiles = ["index.html"];
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, meta);
+
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "late-asset", title: "Late Asset" } }))).body.site;
+  const pubd = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { orderId } })));
+  assert.equal(pubd.code, 200);
+  const rel = ctx.ddb._store.get(`SITE#${site.siteId}|RELEASE#00001`);
+  assert.equal(rel.filePaths.includes("assets/late.jpg"), true);
+});
