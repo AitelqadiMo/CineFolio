@@ -10,6 +10,8 @@ import { useAuth } from "../App.jsx";
 import { confetti, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
 import { parseProfile, compile, compileBundle, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
+import { readResume, compressAndUpload, takeBrief } from "../media.js";
+import { toast } from "../shell/Toast.jsx";
 
 const POLL_MS = 8000, POLL_MAX = 220;
 
@@ -40,6 +42,8 @@ export default function Studio() {
   const [confirmCut, setConfirmCut] = useState(false);
   const [lookOpen, setLookOpen] = useState(false);
   const [editTarget, setEditTarget] = useState(null); // { siteId, slug, title } re-premiere target from My Films
+  const [locker, setLocker] = useState([]);   // unassigned assets: { name, url }
+  const [arrived, setArrived] = useState(null); // what rode in from a composer handoff
   const premiereRef = useRef(null);
   const polls = useRef(0);
 
@@ -53,6 +57,8 @@ export default function Studio() {
     if (d.sections) setSections({ ...DEFAULT_SECTIONS, ...d.sections });
     if (d.tpl) setTpl(d.tpl);
     if (d.pal) setPal(d.pal);
+    if (d.locker) setLocker(d.locker);
+    if (d.photo) setPhoto(d.photo);
   };
 
   // draft autosave: local instantly, server-synced (newer copy wins on load)
@@ -68,6 +74,8 @@ export default function Studio() {
         if (d.sections) setSections({ ...DEFAULT_SECTIONS, ...d.sections });
         if (d.tpl) setTpl(d.tpl);
         if (d.pal) setPal(d.pal);
+        if (d.locker) setLocker(d.locker);
+        if (d.photo) setPhoto(d.photo);
       }
     } catch { /* fresh start */ }
     // then ask the server for a newer copy (cross-device continuity)
@@ -79,7 +87,7 @@ export default function Studio() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
-    const draft = { cvRaw, q, projects, testimonials, services, sections, tpl, pal };
+    const draft = { cvRaw, q, projects, testimonials, services, sections, tpl, pal, locker, photo: String(photo || "").startsWith("data:") ? "" : photo };
     const t = setTimeout(() => {
       try { localStorage.setItem("cf.studioDraft", JSON.stringify({ ...draft, savedAt: new Date().toISOString() })); } catch { /* full */ }
     }, 500);
@@ -88,10 +96,11 @@ export default function Studio() {
       const slim = JSON.parse(JSON.stringify(draft));
       if (String(slim.q?.photo || "").startsWith("data:")) delete slim.q.photo;
       (slim.projects || []).forEach((p2) => { if (String(p2.cover || "").startsWith("data:")) delete p2.cover; });
+      slim.locker = (slim.locker || []).filter((a) => !String(a.url || "").startsWith("data:"));
       api.putDraft(slim).catch(() => { /* silent, local copy is safe */ });
     }, 2500);
     return () => { clearTimeout(t); clearTimeout(t2); };
-  }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal]);
+  }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal, locker, photo]);
 
   // the dossier (My Profile) is the casting source of truth: prefill once, never clobber
   const [dossier, setDossier] = useState(null);
@@ -121,19 +130,36 @@ export default function Studio() {
     } catch { /* noop */ }
   }, []);
 
-  // arriving from the Dashboard composer or Resources with a brief: load it
+  // arriving from a composer with a brief: note, look, resume, headshot, covers
   useEffect(() => {
-    try {
-      const b = JSON.parse(sessionStorage.getItem("cf.brief") || "null");
-      if (!b) return;
-      sessionStorage.removeItem("cf.brief");
-      if (b.text) setQ((q0) => ({ ...q0, focus: q0.focus || b.text }));
-      if (b.tpl && TEMPLATES.some((t) => t.id === b.tpl)) {
-        setTpl(b.tpl);
-        const fam = TEMPLATES.find((t) => t.id === b.tpl);
-        setPal(b.pal && fam.palettes.some((p2) => p2.id === b.pal) ? b.pal : fam.palettes[0].id);
-      }
-    } catch { /* noop */ }
+    const b = takeBrief();
+    if (!b) return;
+    if (b.text) setQ((q0) => ({ ...q0, focus: q0.focus || b.text }));
+    if (b.tpl && TEMPLATES.some((t) => t.id === b.tpl)) {
+      setTpl(b.tpl);
+      const fam = TEMPLATES.find((t) => t.id === b.tpl);
+      setPal(b.pal && fam.palettes.some((p2) => p2.id === b.pal) ? b.pal : fam.palettes[0].id);
+    }
+    if (b.cvRaw) setCvRaw(b.cvRaw);
+    if (b.photo) setPhoto(b.photo);
+    const covers = Array.isArray(b.covers) ? b.covers.filter((c) => c && c.url) : [];
+    if (covers.length) {
+      setProjects((p0) => {
+        const a = [...p0];
+        const extra = [];
+        covers.forEach((c, i) => {
+          const k = a.findIndex((p2) => !p2.cover);
+          if (k >= 0) a[k] = { ...a[k], cover: c.url };
+          else if (a.length < 8) a.push({ name: (c.name || "").replace(/\.[a-z0-9]+$/i, "") || `Project ${a.length + 1}`, cover: c.url });
+          else extra.push({ name: c.name || `Asset ${i + 1}`, url: c.url });
+        });
+        if (extra.length) setLocker((l) => [...l, ...extra]);
+        return a;
+      });
+    }
+    if (b.cvRaw || b.photo || covers.length) {
+      setArrived({ resume: !!b.cvRaw, cvName: b.cvName || "", photo: !!b.photo, covers: covers.length });
+    }
   }, []);
 
   // debounce the heavy text; small fields stay live
@@ -176,27 +202,8 @@ export default function Studio() {
 
   const ready = cvText.trim().length > 60 || q.name;
 
-  // ---------- media: compress client-side, upload via presigned PUT ----------
-  const uploadImage = (file) => new Promise((resolve) => {
-    const img = new Image();
-    img.onload = async () => {
-      const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
-      const c = document.createElement("canvas");
-      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
-      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-      const dataUrl = c.toDataURL("image/jpeg", 0.82);
-      try {
-        const p = await api.media("image/jpeg");
-        const blob = await (await fetch(dataUrl)).blob();
-        if (blob.size > p.maxBytes) throw new Error("too large");
-        const up = await fetch(p.uploadUrl, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: blob });
-        if (!up.ok) throw new Error("upload failed");
-        resolve(p.publicUrl);
-      } catch { resolve(dataUrl); } // preview + publish still work, embedded inline
-    };
-    img.onerror = () => resolve(null);
-    img.src = URL.createObjectURL(file);
-  });
+  // ---------- media: shared studio machinery (media.js) ----------
+  const uploadImage = (file) => compressAndUpload(file);
 
   const proj = (i, patch) => setProjects(projects.map((p2, k) => (k === i ? { ...p2, ...patch } : p2)));
   const moveProj = (i, d) => {
@@ -208,40 +215,58 @@ export default function Studio() {
   // ---------- uploads ----------
   const onResume = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    setErr("");
-    if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
-      setPdfBusy(true);
-      try {
-        const pdfjs = window.pdfjsLib;
-        if (!pdfjs) throw new Error("PDF reader still loading. Try again in a second.");
-        pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-        const buf = await f.arrayBuffer();
-        const doc = await pdfjs.getDocument({ data: buf }).promise;
-        let text = "";
-        for (let i = 1; i <= Math.min(doc.numPages, 6); i++) {
-          const page = await doc.getPage(i);
-          const tcn = await page.getTextContent();
-          let last = null;
-          for (const it of tcn.items) {
-            if (last !== null && Math.abs(it.transform[5] - last) > 4) text += "\n";
-            text += it.str + " ";
-            last = it.transform[5];
-          }
-          text += "\n";
-        }
-        setCvRaw(text.replace(/[ \t]+\n/g, "\n").slice(0, 20000));
-      } catch (e2) { setErr(friendly(e2.message)); }
-      finally { setPdfBusy(false); }
-    } else {
-      const rd = new FileReader();
-      rd.onload = () => setCvRaw(String(rd.result).slice(0, 20000));
-      rd.readAsText(f);
-    }
+    setErr(""); setPdfBusy(true);
+    try { setCvRaw(await readResume(f)); }
+    catch (e2) { setErr(friendly(e2.message)); }
+    finally { setPdfBusy(false); }
   };
   const onPhoto = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     const url = await uploadImage(f);
     if (url) setPhoto(url);
+  };
+
+  // ---------- the locker: every asset the client handed the studio ----------
+  const lockerAdd = async (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = "";
+    for (const f of files) {
+      if (!f.type.startsWith("image/")) continue;
+      const url = await uploadImage(f);
+      if (url) setLocker((l) => [...l, { name: f.name, url }]);
+    }
+  };
+  const lockerToHeadshot = (i) => {
+    const item = locker[i];
+    if (!item) return;
+    setLocker((l) => {
+      const rest = l.filter((_, k) => k !== i);
+      return photo ? [...rest, { name: "previous headshot", url: photo }] : rest;
+    });
+    setPhoto(item.url);
+  };
+  const lockerToCover = (i) => {
+    const item = locker[i];
+    if (!item) return;
+    setProjects((p0) => {
+      const a = [...p0];
+      const k = a.findIndex((p2) => !p2.cover);
+      if (k >= 0) a[k] = { ...a[k], cover: item.url };
+      else a.push({ name: (item.name || "").replace(/\.[a-z0-9]+$/i, "") || `Project ${a.length + 1}`, cover: item.url });
+      return a;
+    });
+    setLocker((l) => l.filter((_, k) => k !== i));
+  };
+  const headshotToLocker = () => {
+    if (!photo) return;
+    setLocker((l) => [...l, { name: "headshot", url: photo }]);
+    setPhoto(null);
+  };
+  const coverToLocker = (i) => {
+    const p2 = projects[i];
+    if (!p2?.cover) return;
+    setLocker((l) => [...l, { name: p2.name ? `${p2.name} cover` : "cover", url: p2.cover }]);
+    proj(i, { cover: undefined });
   };
 
   // ---------- premiere (live) or stage (draft release, preview link, no flip) ----------
@@ -317,15 +342,38 @@ export default function Studio() {
       <div className={`workspace mm-${mobileMode}`}>
         {/* ---------------- casting rail ---------------- */}
         <aside className="rail">
-          <div className="railtabs">
-            <button className={railTab === "content" ? "on" : ""} onClick={() => setRailTab("content")}>Content</button>
-            <button className={railTab === "design" ? "on" : ""} onClick={() => setRailTab("design")}>Design</button>
-            <button className={railTab === "publish" ? "on" : ""} onClick={() => setRailTab("publish")}>Publish</button>
+          <div className="railtabs" role="tablist" aria-label="The Set">
+            <button role="tab" aria-selected={railTab === "content"} className={railTab === "content" ? "on" : ""} onClick={() => setRailTab("content")}>Content</button>
+            <button role="tab" aria-selected={railTab === "design"} className={railTab === "design" ? "on" : ""} onClick={() => setRailTab("design")}>Design</button>
+            <button role="tab" aria-selected={railTab === "publish"} className={railTab === "publish" ? "on" : ""} onClick={() => setRailTab("publish")}>Publish</button>
           </div>
           <div className={`railpanel ${railTab === "content" ? "" : "hid"}`}>
+          {arrived && (
+            <div className="bkarrive" role="status">
+              <span aria-hidden="true">◈</span>
+              <span>
+                Brought in from your dashboard:
+                {arrived.resume ? " resume" : ""}{arrived.photo ? `${arrived.resume ? "," : ""} headshot` : ""}
+                {arrived.covers ? `${arrived.resume || arrived.photo ? " and" : ""} ${arrived.covers} cover${arrived.covers === 1 ? "" : "s"}` : ""}
+              </span>
+              <button aria-label="Dismiss" onClick={() => setArrived(null)}>✕</button>
+            </div>
+          )}
           <div className="railsec act">
             <div className="acthead"><span className="actno">I</span><div><b>The Cast</b><span className="actsub">who this film is about</span></div></div>
-            <label className="uploadrow" htmlFor="cvUp">
+            <label
+              className="uploadrow" htmlFor="cvUp"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer?.files?.[0];
+                if (!f) return;
+                setErr(""); setPdfBusy(true);
+                try { setCvRaw(await readResume(f)); }
+                catch (e2) { setErr(friendly(e2.message)); }
+                finally { setPdfBusy(false); }
+              }}
+            >
               {pdfBusy ? <span className="spin" /> : <span className="upic">◉</span>}
               <span>{cvRaw ? "RESUME LOADED ✓ · REPLACE" : "DROP THE RESUME · PDF OR TXT"}</span>
               <input id="cvUp" type="file" accept=".pdf,.txt,text/plain,application/pdf" onChange={onResume} hidden />
@@ -420,8 +468,70 @@ export default function Studio() {
             )}
           </div>
 
+          {/* ---------------- the locker: every asset on a light table ---------------- */}
           <div className="railsec act">
-            <div className="acthead"><span className="actno">IV</span><div><b>The Look</b><span className="actsub">five worlds, fifteen film stocks, rendered live with your data</span></div></div>
+            <div className="acthead"><span className="actno">IV</span><div><b>The Locker</b><span className="actsub">every asset you&apos;ve handed the studio</span></div></div>
+            <div className="locker">
+              {photo && (
+                <div className="lockeritem" tabIndex={0}>
+                  <img src={photo} alt="Headshot" />
+                  <span className="lockrole">Headshot</span>
+                  <span className="lockops">
+                    <button title="Move to the locker" aria-label="Move headshot to the locker" onClick={headshotToLocker}>▦</button>
+                  </span>
+                </div>
+              )}
+              {projects.map((p2, i) => (p2.cover ? (
+                <div className="lockeritem" key={`cov-${i}`} tabIndex={0}>
+                  <img src={p2.cover} alt={`Cover on ${p2.name || `Project ${i + 1}`}`} />
+                  <span className="lockrole">{(p2.name || `Project ${i + 1}`).slice(0, 14)}</span>
+                  <span className="lockops">
+                    <button title="Detach from this project" aria-label={`Detach cover from ${p2.name || `project ${i + 1}`}`} onClick={() => coverToLocker(i)}>▦</button>
+                  </span>
+                </div>
+              ) : null))}
+              {locker.map((a, i) => (
+                <div className="lockeritem" key={`lk-${i}`} tabIndex={0}>
+                  <img src={a.url} alt={a.name || "Asset"} />
+                  <span className="lockrole">Not in a scene</span>
+                  <span className="lockops">
+                    <button title="Set as headshot" aria-label={`Set ${a.name || "asset"} as headshot`} onClick={() => lockerToHeadshot(i)}>✦</button>
+                    <button title="Set as project cover" aria-label={`Set ${a.name || "asset"} as a project cover`} onClick={() => lockerToCover(i)}>▦</button>
+                    <button className="danger" title="Remove" aria-label={`Remove ${a.name || "asset"}`} onClick={() => {
+                      const gone = locker[i];
+                      setLocker((l) => l.filter((_, k) => k !== i));
+                      toast("Removed from the locker.", { onUndo: () => setLocker((l) => [...l, gone]) });
+                    }}>✕</button>
+                  </span>
+                </div>
+              ))}
+              <label className="lockeradd" htmlFor="lockerUp" title="Add images to the locker">
+                +
+                <input id="lockerUp" type="file" accept="image/*" multiple hidden onChange={lockerAdd} aria-label="Add images to the locker" />
+              </label>
+            </div>
+            {cvRaw && (
+              <div className="lockerresume">
+                <span className="glyph" aria-hidden="true">▤</span>
+                <span className="meta"><b>Resume in the can</b> · {cvRaw.trim().length.toLocaleString()} characters read{arrived?.cvName ? ` · ${arrived.cvName}` : ""}</span>
+                <button onClick={() => {
+                  const gone = cvRaw;
+                  setCvRaw("");
+                  toast("Resume cleared from the set.", { onUndo: () => setCvRaw(gone) });
+                }}>Clear</button>
+              </div>
+            )}
+            {!photo && !locker.length && !projects.some((p2) => p2.cover) && (
+              <div className="mono" style={{ marginTop: 8, fontSize: 9, textTransform: "none", letterSpacing: ".05em" }}>
+                Nothing in the locker yet. Drop a headshot or your project shots.
+              </div>
+            )}
+          </div>
+          </div>
+
+          <div className={`railpanel ${railTab === "design" ? "" : "hid"}`}>
+          <div className="railsec act">
+            <div className="acthead"><span className="actno">V</span><div><b>The Look</b><span className="actsub">five worlds, fifteen film stocks, rendered live with your data</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
@@ -446,9 +556,11 @@ export default function Studio() {
               ))}
             </div>
           </div>
+          </div>
 
+          <div className={`railpanel ${railTab === "publish" ? "" : "hid"}`}>
           <div className="railsec act gold">
-            <div className="acthead"><span className="actno">V</span><div><b>{editTarget ? "Premiere the next release" : "Premiere the free take"}</b><span className="actsub">{editTarget ? "this cut lands on your existing film" : "included: one click, live on our infrastructure"}</span></div></div>
+            <div className="acthead"><span className="actno">VI</span><div><b>{editTarget ? "Premiere the next release" : "Premiere the free take"}</b><span className="actsub">{editTarget ? "this cut lands on your existing film" : "included: one click, live on our infrastructure"}</span></div></div>
             {editTarget ? (
               <div className="mono" style={{ margin: "2px 0 6px", fontSize: 9.5, color: "var(--gold)" }}>
                 NEW RELEASE ON {editTarget.slug.toUpperCase()}.CINEFOLIO.SITE ·{" "}
@@ -485,7 +597,7 @@ export default function Studio() {
           </div>
 
           <div className="railsec act paidcard">
-            <div className="acthead"><span className="actno">VI</span><div><b>The Director's Cut</b><span className="actsub">the studio films it for you · $149, one time</span></div></div>
+            <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">the studio films it for you · $149, one time</span></div></div>
             <ul className="paidlist">
               <li>Bespoke art direction, built scene by scene for your story</li>
               <li>Identity-locked AI film sequences, yours alone</li>
