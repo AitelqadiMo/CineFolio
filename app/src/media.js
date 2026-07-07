@@ -55,7 +55,11 @@ export async function readResume(file) {
   return (await readTextFile(file)).slice(0, 20000);
 }
 
-/* ---------- image shipping: compress client side, presigned PUT ---------- */
+/* ---------- image shipping: compress client side, then a three-stage chain.
+   1. presigned PUT straight to S3 (fastest)
+   2. proxy through the API (immune to bucket CORS, proxies, extensions)
+   3. inline data URL (preview still works, but the AI pipeline can't use it)
+   The pipeline only ever receives real URLs, so stage 3 is a last resort. */
 export function compressAndUpload(file) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -73,9 +77,14 @@ export function compressAndUpload(file) {
         const up = await fetch(p.uploadUrl, { method: "PUT", headers: { "content-type": "image/jpeg" }, body: blob });
         if (!up.ok) throw new Error("upload failed");
         resolve(p.publicUrl);
-      } catch {
-        resolve(dataUrl); // preview and publish still work, embedded inline
-      }
+        return;
+      } catch { /* stage 2: through the API */ }
+      try {
+        const b64 = dataUrl.split(",")[1] || "";
+        const r = await api.mediaDirect("image/jpeg", b64);
+        if (r?.publicUrl) { resolve(r.publicUrl); return; }
+      } catch { /* stage 3: inline */ }
+      resolve(dataUrl); // preview and publish still work, embedded inline
     };
     img.onerror = () => resolve(null);
     img.src = URL.createObjectURL(file);
