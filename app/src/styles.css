@@ -510,3 +510,10 @@ textarea { min-height: 130px; resize: vertical; font-family: var(--mono); font-s
 .steptxt b { font-family: var(--disp); text-transform: uppercase; font-size: .82rem; display: block; }
 .steptxt i { font-style: normal; font-size: 12px; color: var(--dim); display: block; margin-top: 2px; }
 @media (prefers-reduced-motion: reduce) { .step3:hover { transform: none; } }
+
+
+/* ================= ZWIN pass 08: decision psychology, ethically ================= */
+/* goal gradient gauge: starts with real earned credit, never a fake zero */
+.gauge { height: 7px; border-radius: 4px; background: rgba(14, 28, 63, .1); overflow: hidden; }
+.gaugefill { height: 100%; border-radius: 4px; background: var(--jersey); transition: width .5s cubic-bezier(.22,1,.36,1); }
+@media (prefers-reduced-motion: reduce) { .gaugefill { transition: none; } }

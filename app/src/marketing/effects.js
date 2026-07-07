@@ -282,6 +282,13 @@ Awards: Design Sprint winner 2024`;
         // demo -> signup handoff: remember this order so the Studio Console can
         // adopt it right after the user creates an account ("Premiere this").
         try { localStorage.setItem("cf.pendingOrder", JSON.stringify({ orderId: j.orderId, name: $("#stName").value, email })); } catch (e2) { /* private mode */ }
+        // and carry the casting sheet itself: after signup The Set opens with
+        // their work already in place (never clobbering an existing draft)
+        try {
+          if (!localStorage.getItem("cf.studioDraft")) {
+            localStorage.setItem("cf.studioDraft", JSON.stringify({ cvRaw: cv, q: { name: $("#stName").value, email, headline: "", website: "", focus: "" }, savedAt: new Date().toISOString() }));
+          }
+        } catch (e3) { /* private mode */ }
         if (j.production && j.orderId) {
           msg.innerHTML = "🎬 Rough cut on screen. <b>Claim this film:</b> premiere it live on your own URL in about a minute. <a href='/login' style='color:var(--red);font-weight:600'>Claim it in the Studio →</a>";
           pollCut(j.orderId, fr, msg, photo);
