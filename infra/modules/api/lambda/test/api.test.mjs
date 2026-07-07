@@ -26,6 +26,10 @@ function fakeCtx(overrides = {}) {
       if (ConditionExpression === "releases = :prev" && (item.releases || 0) !== ExpressionAttributeValues[":prev"]) {
         throw Object.assign(new Error("stale"), { name: "ConditionalCheckFailedException" });
       }
+      if (ConditionExpression === "attribute_not_exists(aiCuts) OR aiCuts < :max"
+        && item.aiCuts !== undefined && item.aiCuts >= ExpressionAttributeValues[":max"]) {
+        throw Object.assign(new Error("spent"), { name: "ConditionalCheckFailedException" });
+      }
       // micro-interpreter for the SET/ADD expressions we actually use
       const resolve = (n) => ExpressionAttributeNames[n] || n;
       for (const clause of UpdateExpression.split(/SET|ADD/).filter(Boolean).map((c) => c.trim())) {
@@ -128,10 +132,15 @@ test("admin/orders: 403 without group, 200 with, handles string groups", async (
 test("studio: generate creates order + fires webhook, callback validates + stores, cut serves html", async () => {
   const ctx = fakeCtx();
   const h = makeHandler(async () => ctx);
-  const gen = parse(await h(ev("POST /studio/generate", { body: { email: "n@x.io", name: "Nadia Benali", role: "engineer", cvText: "2021 SRE at Acme\nterraform kubernetes aws" } })));
+  const anon = parse(await h(ev("POST /studio/generate", { body: { email: "n@x.io", name: "Nadia Benali", role: "engineer", cvText: "2021 SRE at Acme\nterraform kubernetes aws" } })));
+  assert.equal(anon.code, 200);
+  assert.equal(anon.body.production, false); // anonymous surface never starts a production run
+  assert.match(anon.body.html, /Nadia/);
+  assert.equal(ctx.queue.sent.length, 0);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "n1", body: { email: "n@x.io", name: "Nadia Benali", role: "engineer", cvText: "2021 SRE at Acme\nterraform kubernetes aws" } })));
   assert.equal(gen.code, 200);
   assert.equal(gen.body.production, true);
-  assert.match(gen.body.html, /Nadia/);
+  assert.equal(gen.body.freeCutsLeft, 2);
   assert.match(gen.body.html, /terraform/i);
   const orderId = gen.body.orderId;
   assert.equal(ctx.queue.sent.length, 1);
@@ -229,7 +238,7 @@ test("sites: source download serves release html to owner only; previewUrl uses 
 test("pipeline: callback resumes task token instead of flipping status; retry re-enqueues", async () => {
   const ctx = fakeCtx();
   const h = makeHandler(async () => ctx);
-  const gen = parse(await h(ev("POST /studio/generate", { body: { email: "t@x.io", name: "Tok En", role: "engineer", cvText: "2020 platform engineer aws terraform and more text here" } })));
+  const gen = parse(await h(ev("POST /studio/order", { claims: "tok", body: { email: "t@x.io", name: "Tok En", role: "engineer", cvText: "2020 platform engineer aws terraform and more text here" } })));
   const orderId = gen.body.orderId;
   // generate no longer fires the webhook itself — it only enqueues
   assert.deepEqual(ctx.queue.sent, [{ orderId }]);
@@ -343,7 +352,7 @@ test("w2: staged publish previews without flipping, go-live flips, duplicate cop
 test("orders: buyer sees own orders; revision spends the single credit and requeues", async () => {
   const ctx = fakeCtx();
   const h = makeHandler(async () => ctx);
-  const gen = parse(await h(ev("POST /studio/generate", { claims: "u1", body: { email: "u1@x.io", name: "Dora Szabo", role: "designer", cvText: "2022 Accounts at Acme" } })));
+  const gen = parse(await h(ev("POST /studio/order", { claims: "u1", body: { email: "u1@x.io", name: "Dora Szabo", role: "designer", cvText: "2022 Accounts at Acme" } })));
   const orderId = gen.body.orderId;
 
   // the buyer sees it; a stranger does not
@@ -494,4 +503,33 @@ test("callback v2: the agent delivers a whole web app as JSON and publish serves
   assert.equal(pubd.code, 200);
   assert.match(ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/index.html`), /the cut/);
   assert.match(ctx.s3._store.get(`pub/sites/${site.siteId}/releases/1/projects/atlas.html`), /atlas case/);
+});
+
+// ---------- ZWIN pass 05: AI cut entitlement ----------
+
+test("studio/order: three free cuts per account, the fourth is 402, accounts are segregated", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const body = { email: "f@x.io", name: "Free Cut", role: "designer", cvText: "2020 designer figma branding", photo: "https://cdn/x.jpg", covers: [{ name: "p1.jpg", url: "https://cdn/p1.jpg" }] };
+  for (let i = 1; i <= 3; i++) {
+    const r = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
+    assert.equal(r.code, 200);
+    assert.equal(r.body.freeCutsLeft, 3 - i);
+  }
+  const fourth = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
+  assert.equal(fourth.code, 402);
+  assert.equal(fourth.body.price, 149);
+  // a different account still holds its own three
+  assert.equal(parse(await h(ev("POST /studio/order", { claims: "fc2", body }))).body.freeCutsLeft, 2);
+  // the client's material rides on the order for the pipeline dispatch
+  const withAssets = [...ctx.ddb._store.values()].find((v) => v.type === "order" && v.assets?.photo);
+  assert.equal(withAssets.assets.photo, "https://cdn/x.jpg");
+  assert.equal(withAssets.assets.covers[0].url, "https://cdn/p1.jpg");
+  // /me surfaces the entitlement for the console
+  const me = parse(await h(ev("GET /me", { claims: "fc1" })));
+  assert.equal(me.body.user.freeCutsLeft, 0);
+  assert.equal(me.body.user.aiCuts, 3);
+  // each buyer lists only their own orders
+  assert.equal(parse(await h(ev("GET /orders", { claims: "fc1" }))).body.orders.length, 4 - 1); // 402 order never created
+  assert.equal(parse(await h(ev("GET /orders", { claims: "fc2" }))).body.orders.length, 1);
 });

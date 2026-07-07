@@ -44,6 +44,7 @@ function path() {
 
 export default function App() {
   const [user, setUser] = useState(getUser());
+  ledger.scope(user?.sub); // idempotent; must precede any child ledger read
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState(path());
   const [edge, setEdge] = useState(null); // { ms } ambient status
@@ -147,19 +148,7 @@ export default function App() {
       <AuthCtx.Provider value={{ user, nav }}>
         <CmdK nav={nav} admin={user.admin} />
         <ToastHost />
-        <SetBoundary key={route}>
-          <div className="edshell">
-            <div className="edbar">
-              <button className="edproj" onClick={() => nav("")}>
-                <span className="lens" aria-hidden="true" /><span>The Set · new film</span>
-              </button>
-              <div className="grow" />
-              <button className="bkbtn ghost" style={{ padding: "6px 14px" }} onClick={() => nav("films")}>My films</button>
-              <button className="bkbtn ghost" style={{ padding: "6px 14px" }} onClick={() => nav("")}>Dashboard</button>
-            </div>
-            <div className="setbody"><Studio /></div>
-          </div>
-        </SetBoundary>
+        <SetBoundary key={route}><Studio /></SetBoundary>
       </AuthCtx.Provider>
     );
   }

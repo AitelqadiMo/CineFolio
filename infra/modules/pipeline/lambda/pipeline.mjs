@@ -82,10 +82,17 @@ export const handler = async (event) => {
       orderId,
       email: order.email, name: order.name, role: order.role, skills: order.skills || [],
       cvText: order.cvText || "",
+      assets: order.assets || null, // { photo, covers: [{name,url}], links } — the client's own material
       brief: order.brief || null, // template/palette/customIdea from the Studio workspace
       revisionNotes: order.revisionNotes || null, // set when this run is the included revision
-      instructions:
-        "Produce a complete multi-page portfolio web app: index.html plus projects/{slug}.html case-study pages. Every file is a self-contained html document (inline CSS, Google Fonts links allowed, no external JS), art-directed to the client and the brief. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint. Deliver within 25 minutes: POST JSON {\"files\":[{\"path\":\"index.html\",\"html\":\"<!doctype html...\"}]} to deliver.url with deliver.headers. Max 20 files, 3MB total, index.html required.",
+      instructions: [
+        "You are the director on a commissioned portfolio film. The client's resume (cvText), their photo and project shots (assets), and their creative brief ride on this order. Build the portfolio that gets this specific person hired: read the resume for the arc of the career, pick the register their industry respects, and art-direct with conviction. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint.",
+        "Cinematic motion is the product. Generate imagery with your image tools where it elevates the story (hero atmospheres, section backdrops, project mood frames) and build at least one video-as-frames sequence: a short run of generated stills scrubbed on scroll or crossfaded on a timer as the hero, the way award sites fake film with frames. Reference generated media by URL from your generation tools; keep the documents lean.",
+        "Likeness is sacred: the client's face may ONLY come from assets.photo and assets.covers. Use those exact URLs for any portrait or project imagery of them. Never generate, alter, or substitute a human likeness. If no photo is provided, art-direct without a face.",
+        "Ship a working Download Resume affordance: render a print-clean resume.html from cvText with @media print styles, link it prominently from index.html, and wire a download or print button. A visitor must be able to leave with the resume in hand.",
+        "Structure: index.html plus projects/{slug}.html case-study pages for the strongest work in the resume. Every file is a self-contained html document (inline CSS, Google Fonts links allowed, no external JS beyond inline scripts). Responsive at 375, 768 and 1440; honor prefers-reduced-motion with static fallbacks; real hrefs for email and links.",
+        "Deliver within 25 minutes: POST JSON {\"files\":[{\"path\":\"index.html\",\"html\":\"<!doctype html...\"}]} to deliver.url with deliver.headers. Max 20 files, 3MB total, index.html required.",
+      ].join("\n\n"),
       deliver: {
         method: "POST",
         url: `https://${process.env.API_DOMAIN}/callback`,

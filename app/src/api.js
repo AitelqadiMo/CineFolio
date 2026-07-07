@@ -27,6 +27,7 @@ export const api = {
   updateMe: (patch) => req("/me", { method: "PUT", body: patch, auth: true }),
 
   generate: (order) => req("/studio/generate", { method: "POST", body: order }),
+  order: (order) => req("/studio/order", { method: "POST", body: order, auth: true }), // 3 free AI cuts per account, then 402
   orderStatus: (orderId) => req(`/studio/status?orderId=${encodeURIComponent(orderId)}`),
   orderCut: (orderId) => req(`/studio/cut?orderId=${encodeURIComponent(orderId)}`), // returns HTML string
 

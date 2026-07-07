@@ -40,7 +40,11 @@ export async function putMe(event, ctx) {
   return ok({ ok: true, user: pub(item) });
 }
 
-const pub = (i) => ({ email: i.email, name: i.name, company: i.company, links: i.links, plan: i.plan, createdAt: i.createdAt });
+const FREE_CUTS = 3; // keep in lockstep with studio.mjs FREE_CUTS
+const pub = (i) => ({
+  email: i.email, name: i.name, company: i.company, links: i.links, plan: i.plan, createdAt: i.createdAt,
+  aiCuts: i.aiCuts || 0, freeCutsLeft: Math.max(0, FREE_CUTS - (i.aiCuts || 0)), freeCutsLimit: FREE_CUTS,
+});
 
 // POST /waitlist { email } — idempotent (conditional put) + O(1) counter
 export async function joinWaitlist(event, ctx) {

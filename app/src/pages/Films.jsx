@@ -32,8 +32,25 @@ export default function Films() {
   const cheered = useRef(false);
   const kebabRef = useRef(null);
 
+  const [aiOrders, setAiOrders] = useState([]);
   const load = () => api.sites().then((r) => setSites(r.sites)).catch((e) => setErr(friendly(e.message)));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // AI cuts awaiting their premiere: merge the account-scoped local ledger
+  // with server truth (my orders only; access is segregated by account)
+  useEffect(() => {
+    const local = ledger.list().filter((o) => o.production && !o.acknowledged);
+    setAiOrders(local);
+    api.myOrders().then((r) => {
+      const server = (r.orders || []).filter((o) => !["preview", "premiered"].includes(o.status));
+      setAiOrders((cur) => {
+        const seen = new Set(cur.map((o) => o.orderId));
+        const merged = [...cur];
+        server.forEach((o) => { if (!seen.has(o.orderId) && !ledger.list().find((l) => l.orderId === o.orderId && l.acknowledged)) merged.push(o); });
+        return merged;
+      });
+    }).catch(() => { /* orders route not wired: the scoped ledger carries it */ });
+  }, [sites]);
 
   useEffect(() => {
     if (delivery && !cheered.current) { cheered.current = true; setTimeout(() => confetti(), 250); }
@@ -101,7 +118,8 @@ export default function Films() {
             ? <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />
             : <span className="ghost">{(s.title || s.slug || "FILM").toUpperCase()}</span>}
           {s.status === "live" && <span className="pubbadge">Published</span>}
-          {s.stagedRelease && <span className="pubbadge staged" style={s.status === "live" ? { left: "auto", right: 10 } : undefined}>Staged #{s.stagedRelease}</span>}
+          {s.orderId && <span className="pubbadge staged" style={{ left: "auto", right: 10, color: "var(--bk-gold)" }}>AI generated</span>}
+          {s.stagedRelease && !s.orderId && <span className="pubbadge staged" style={s.status === "live" ? { left: "auto", right: 10 } : undefined}>Staged #{s.stagedRelease}</span>}
           {s.status === "taken_down" && <span className="pubbadge down">Taken down</span>}
         </span>
       </button>
@@ -179,6 +197,39 @@ export default function Films() {
           Your first film is one brief away.
           <div style={{ marginTop: 16 }}><button className="bkbtn primary" onClick={() => nav("studio")}>Open The Set</button></div>
         </div>
+      )}
+
+      {aiOrders.length > 0 && (
+        <>
+          <div className="bksection">AI generated portfolio{aiOrders.length === 1 ? "" : "s"} · awaiting premiere</div>
+          <div className="bkcards" style={{ marginBottom: 26 }}>
+            {aiOrders.map((o) => (
+              <div key={o.orderId} className="bkfilm" style={{ position: "relative" }}>
+                <button className="bkfilmbtn" onClick={() => (o.status === "ready" ? setPremiereCut(o) : null)} aria-label={`AI portfolio for ${o.name || "you"}`}>
+                  <span className="bkthumb" aria-hidden="true" style={{ borderColor: "rgba(217,164,65,.35)" }}>
+                    {o.status === "ready"
+                      ? <iframe title={`cut-${o.orderId}`} src={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(o.orderId)}`} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />
+                      : <span className="ghost">{o.status === "filming" ? "CAMERAS ROLLING…" : String(o.status || "QUEUED").replace("_", " ").toUpperCase()}</span>}
+                    <span className="pubbadge staged" style={{ color: "var(--bk-gold)" }}>AI generated</span>
+                  </span>
+                  <span className="bkfilmmeta">
+                    <span className="fava" aria-hidden="true" />
+                    <span style={{ minWidth: 0 }}>
+                      <b>{o.name || "Director's Cut"}</b>
+                      <i>{o.status === "ready" ? "Delivered · premiere it to edit and publish" : `In the pipeline · ${String(o.status || "queued").replace("_", " ")}`}</i>
+                    </span>
+                  </span>
+                </button>
+                {o.status === "ready" && (
+                  <div className="facts" style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button className="bkbtn primary" style={{ padding: "5px 14px", fontSize: 12 }} onClick={() => setPremiereCut(o)}>Premiere</button>
+                    <a className="flink" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(o.orderId)}`} target="_blank" rel="noopener noreferrer">Watch ↗</a>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {view === "grid" ? (

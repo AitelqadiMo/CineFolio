@@ -23,6 +23,7 @@ export const ROUTES = {
   "GET /admin/orders": misc.adminOrders,
   "POST /admin/orders/{id}/retry": studio.adminRetry,
   "POST /studio/generate": studio.generate,
+  "POST /studio/order": studio.order,
   "GET /studio/status": studio.status,
   "GET /studio/cut": studio.cut,
   "POST /callback": studio.callback,

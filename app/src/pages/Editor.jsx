@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, notWired } from "../api.js";
 import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
-import { friendly, ConfirmDialog } from "../ui.jsx";
+import { friendly, ConfirmDialog, PromptDialog } from "../ui.jsx";
+import { toast } from "../shell/Toast.jsx";
 import { ledger } from "../orders.js";
 import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
 import AssetChips from "../shell/Intake.jsx";
@@ -67,6 +68,7 @@ export default function Editor({ siteId }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [confirmDown, setConfirmDown] = useState(false);
+  const [revising, setRevising] = useState(false);
   const [copied, setCopied] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const fileRef = useRef(null);
@@ -161,7 +163,9 @@ export default function Editor({ siteId }) {
       <div className="edbar">
         <div style={{ position: "relative" }} ref={projPop.ref}>
           <button className="edproj" onClick={projPop.toggle} aria-haspopup="menu" aria-expanded={projPop.open}>
-            <span className="lens" aria-hidden="true" /><span>{site?.title || "…"}</span><span className="chev" aria-hidden="true">▾</span>
+            <span className="lens" aria-hidden="true" /><span>{site?.title || "…"}</span>
+            {site?.orderId && <span className="bkchip plain gold" style={{ flex: "0 0 auto" }}>AI</span>}
+            <span className="chev" aria-hidden="true">▾</span>
           </button>
           {projPop.open && (
             <div className="bkmenu" style={{ position: "absolute", top: "calc(100% + 6px)", left: 0 }} role="menu">
@@ -205,9 +209,11 @@ export default function Editor({ siteId }) {
         <button className={`edicon ${device === "mobile" ? "on" : ""}`} title="Mobile" aria-label="Mobile preview" onClick={() => setDevice("mobile")}>▯</button>
         <button className="edicon" title="Refresh preview" aria-label="Refresh preview" onClick={() => setRefreshKey((k) => k + 1)}>⟳</button>
         <button className="bkbtn ghost" style={{ padding: "6px 14px" }} onClick={copyLink}>{copied ? "Copied ✓" : "Share"}</button>
-        {site?.stagedRelease
-          ? <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={busy} onClick={goLiveStaged}>Publish #{site.stagedRelease}</button>
-          : <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={fileChange}>New release</button>}
+        {relSel !== "live" && relSel !== site?.liveRelease
+          ? <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={busy} onClick={() => { rollback(relSel); setRelSel("live"); }}>Publish #{relSel}</button>
+          : site?.stagedRelease
+            ? <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={busy} onClick={goLiveStaged}>Publish #{site.stagedRelease}</button>
+            : <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={fileChange}>New release</button>}
       </div>
 
       {view === "preview" && (
@@ -223,6 +229,7 @@ export default function Editor({ siteId }) {
                   <p>{releases.length} release{releases.length === 1 ? "" : "s"} in the vault{typeof (stats?.views ?? stats?.total) === "number" ? ` · seen ${stats.views ?? stats.total} times` : ""}. Every premiere is an atomic pointer flip; rolling back flips it back in seconds.</p>
                   <div className="facts">
                     {site.status === "live" && <a className="flink" href={liveUrl} target="_blank" rel="noopener noreferrer">Watch live ↗</a>}
+                    {site.orderId && <button className="flink" style={{ color: "var(--bk-gold)", borderColor: "rgba(217,164,65,.4)" }} onClick={() => setRevising(true)}>◈ AI revision</button>}
                     {site.stagedRelease && <a className="flink" href={site.stagedUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--bk-gold)" }}>Staged #{site.stagedRelease} ↗</a>}
                     <button className="flink" onClick={() => { setView("more"); setMoreTab("analytics"); }}>Analytics</button>
                     <button className="flink" onClick={() => { setView("more"); setMoreTab("releases"); }}>Releases</button>
@@ -276,7 +283,7 @@ export default function Editor({ siteId }) {
           <div className="edcanvaswrap">
             <div className={`edcanvas ${device === "mobile" ? "mob" : ""}`} style={device === "mobile" ? { background: "var(--bk-bg)" } : undefined}>
               {relSel === "live" && liveUrl && site?.status === "live" && (
-                <iframe key={refreshKey} title="Live preview" src={liveUrl} sandbox="allow-scripts allow-same-origin" />
+                <iframe key={refreshKey} title="Live preview" src={liveUrl} />
               )}
               {relSel === "live" && site && site.status !== "live" && (
                 <div className="emptystate">
@@ -391,6 +398,25 @@ export default function Editor({ siteId }) {
           </div>
         </div>
       )}
+
+      <PromptDialog
+        open={revising} kicker="THE INCLUDED REVISION" title="Direct the AI revision"
+        body="This film was cut by the studio's AI. One revision is included: tell the director what should change and the pipeline refilms it."
+        placeholder="Warmer light on the hero, bolder project pages…"
+        submitLabel="Send to the studio"
+        onSubmit={async (notes) => {
+          setRevising(false);
+          try {
+            await api.requestRevision(site.orderId, { notes });
+            toast("Revision filed. The studio is refilming; the new cut premieres as a release.");
+            load();
+          } catch (e) {
+            if (notWired(e)) setErr("Revisions by note aren't wired in this environment yet. File a change order below instead.");
+            else setErr(friendly(e.message));
+          }
+        }}
+        onClose={() => setRevising(false)}
+      />
 
       <ConfirmDialog
         open={confirmDown} danger kicker="OFF THE MARQUEE" title={`Take down ${site?.slug}?`}

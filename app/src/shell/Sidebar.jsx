@@ -66,7 +66,7 @@ export default function Sidebar({ user, route, nav, onSignOut, onCmdK }) {
         <span className="pic" aria-hidden="true">↗</span>
       </button>
       <button className="bkpromo gold" onClick={() => nav("studio")}>
-        <span><b>The Director&apos;s Cut</b><i>Filmed for you · $149</i></span>
+        <span><b>The Director&apos;s Cut</b><i>3 free AI cuts on us, then $149</i></span>
         <span className="pic" aria-hidden="true">◈</span>
       </button>
 

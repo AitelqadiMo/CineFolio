@@ -65,7 +65,10 @@ h1 em{font-family:'Instrument Serif',serif;font-style:italic;font-weight:400;col
 </body></html>`;
 }
 
-// POST /studio/generate { email, name, role, cvText }
+// POST /studio/generate { email, name, role, cvText } — the ANONYMOUS demo
+// surface. It returns the instant rough cut and records the lead, but it can
+// no longer start a production run: AI cuts are an account entitlement now
+// (three free per account, then paid), enforced by POST /studio/order.
 export async function generate(event, ctx) {
   const b = bodyOf(event);
   if (!b) return bad("invalid json");
@@ -75,23 +78,82 @@ export async function generate(event, ctx) {
   const cvText = clampStr(b.cvText, 8000);
   const parsed = parseCV(cvText, clampStr(b.name, 80), clampStr(b.role, 24));
   const orderId = uuid();
-  const claims = claimsOf(event); // JWT optional on this route in dev; orders link to user when present
-  const sub = claims?.sub || "anon";
+
+  await ctx.ddb.put(
+    {
+      PK: `ORDER#${orderId}`, SK: "META", type: "order", orderId,
+      GSI1PK: "USER#anon", GSI1SK: `ORDER#${now()}`,
+      GSI2PK: "STATUS#preview", GSI2SK: now(),
+      email, name: parsed.name, role: parsed.roleLabel, skills: parsed.skills,
+      cvText,
+      status: "preview", production: false, createdAt: now(), updatedAt: now(),
+    },
+    "attribute_not_exists(PK)"
+  );
+  return ok({ ok: true, orderId, production: false, html: previewHTML(parsed) });
+}
+
+export const FREE_CUTS = 3;
+
+// POST /studio/order — the PRODUCTION surface (JWT enforced at the gateway).
+// Every account holds three free AI cuts; the counter lives on the user record
+// and is spent with a conditional update, so a double-click or a second tab
+// can never mint a fourth. Beyond three: 402, the paid path.
+// Body: { name, role, cvText, template, palette, customIdea, photo, covers, links, email? }
+export async function order(event, ctx) {
+  const claims = claimsOf(event);
+  if (!claims?.sub) return json(401, { ok: false, error: "sign in to order an AI cut" });
+  const b = bodyOf(event);
+  if (!b) return bad("invalid json");
+  const email = String(b.email || claims.email || "").trim().toLowerCase();
+  if (!isEmail(email)) return bad("valid email required");
+  const cvText = clampStr(b.cvText, 8000);
+  const parsed = parseCV(cvText, clampStr(b.name, 80), clampStr(b.role, 24));
+
+  // spend one free cut, race-safe. The profile row is lazy-upserted by GET /me;
+  // cover the fresh-account path with an upsert-style two-step.
+  let aiCuts = 0;
+  try {
+    const updated = await ctx.ddb.update({
+      Key: { PK: `USER#${claims.sub}`, SK: "PROFILE" },
+      UpdateExpression: "SET updatedAt = :u ADD aiCuts :one",
+      ConditionExpression: "attribute_not_exists(aiCuts) OR aiCuts < :max",
+      ExpressionAttributeValues: { ":one": 1, ":max": FREE_CUTS, ":u": now() },
+      ReturnValues: "ALL_NEW",
+    });
+    aiCuts = updated?.aiCuts ?? 1;
+  } catch (e) {
+    if (e?.name === "ConditionalCheckFailedException") {
+      return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: 149 });
+    }
+    throw e;
+  }
+
+  const orderId = uuid();
+  const covers = Array.isArray(b.covers)
+    ? b.covers.slice(0, 8).map((c) => ({ name: clampStr(c?.name, 80) || null, url: clampStr(c?.url, 600) || null })).filter((c) => c.url)
+    : [];
   const secrets = await ctx.secrets();
   const production = Boolean(secrets.AGENT_WEBHOOK_URL && secrets.AGENT_WEBHOOK_SECRET && secrets.CF_CALLBACK_SECRET);
 
   await ctx.ddb.put(
     {
       PK: `ORDER#${orderId}`, SK: "META", type: "order", orderId,
-      GSI1PK: `USER#${sub}`, GSI1SK: `ORDER#${now()}`,
+      GSI1PK: `USER#${claims.sub}`, GSI1SK: `ORDER#${now()}`,
       GSI2PK: "STATUS#queued", GSI2SK: now(),
       email, name: parsed.name, role: parsed.roleLabel, skills: parsed.skills,
       cvText, // retained so the pipeline can (re)dispatch without the client
+      assets: { // the client's own material: the agent films with THESE, never invented likenesses
+        photo: clampStr(b.photo, 600) || null,
+        covers,
+        links: clampStr(b.links, 500) || null,
+      },
       brief: { // creative direction from the Studio workspace (deterministic base + custom idea)
         template: clampStr(b.template, 24) || null,
         palette: clampStr(b.palette, 24) || null,
         customIdea: clampStr(b.customIdea, 1200) || null,
       },
+      freeCut: true, cutNumber: aiCuts,
       status: "queued", production, createdAt: now(), updatedAt: now(),
     },
     "attribute_not_exists(PK)" // idempotency: uuid collision or client retry can't double-create
@@ -109,7 +171,7 @@ export async function generate(event, ctx) {
     await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
 
-  return ok({ ok: true, orderId, production, html: previewHTML(parsed) });
+  return ok({ ok: true, orderId, production, freeCutsLeft: Math.max(0, FREE_CUTS - aiCuts), html: previewHTML(parsed) });
 }
 
 async function setStatus(ctx, orderId, status, extra = {}) {

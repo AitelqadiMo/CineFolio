@@ -51,7 +51,8 @@ locals {
     "GET /waitlist/count"           = false
     "POST /contact"                 = false
     "POST /hit"                     = false
-    "POST /studio/generate"         = false # anonymous rough cut allowed in dev; JWT enforced for paid orders at GA
+    "POST /studio/generate"         = false # anonymous rough cut only; production runs moved to /studio/order
+    "POST /studio/order"            = true  # AI cuts: an account entitlement (3 free, then paid)
     "GET /studio/status"            = false
     "GET /studio/cut"               = false
     "POST /callback"                = false # authenticated by X-CF-Secret (SSM) inside the handler
