@@ -56,6 +56,7 @@ locals {
     "GET /studio/status"            = false
     "GET /studio/cut"               = false
     "POST /callback"                = false # authenticated by X-CF-Secret (SSM) inside the handler
+    "POST /studio/asset"            = false # same X-CF-Secret gate; the agent ships generated binaries here
     "GET /me"                       = true
     "PUT /me"                       = true
     "POST /media"                   = true
