@@ -156,6 +156,27 @@ export async function mediaUpload(event, ctx) {
   return ok({ ok: true, uploadUrl, publicUrl: `https://${ctx.config.cdnDomain}/${key}`, key, maxBytes: 4 * 1024 * 1024 });
 }
 
+// POST /media/direct { contentType, dataBase64 } — the belt to the presign's
+// suspenders. When the browser's direct-to-S3 PUT is blocked (CORS, proxy,
+// extension), the client ships the image THROUGH the API instead, and the
+// Lambda writes it to the same media prefix. 6MB decoded cap (gateway limit).
+export async function mediaDirect(event, ctx) {
+  const claims = claimsOf(event);
+  const b = bodyOf(event);
+  if (!b) return bad("invalid json");
+  const ct = String(b.contentType || "");
+  const extMap = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+  if (!extMap[ct]) return bad("images only (jpeg, png, webp, gif)");
+  const data = String(b.dataBase64 || "");
+  if (!data || !/^[A-Za-z0-9+/=\r\n]+$/.test(data)) return bad("dataBase64 required");
+  const bytes = Buffer.from(data, "base64");
+  if (!bytes.length) return bad("empty image");
+  if (bytes.length > 6 * 1024 * 1024) return bad("image too large (6MB max)", 413);
+  const key = `media/${claims.sub}/${uuid()}.${extMap[ct]}`;
+  await ctx.s3.putObject(ctx.config.publishedBucket, key, bytes, ct);
+  return ok({ ok: true, publicUrl: `https://${ctx.config.cdnDomain}/${key}`, key, bytes: bytes.length });
+}
+
 // GET /admin/orders?status=queued — admin-only order queue (GSI2)
 export async function adminOrders(event, ctx) {
   const claims = claimsOf(event);
