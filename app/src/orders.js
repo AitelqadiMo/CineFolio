@@ -4,7 +4,8 @@
 // (replacing the old cf.activeOrder chip that erased itself after 2 minutes).
 import { api, notWired } from "./api.js";
 
-const KEY = "cf.orderLedger";
+const LEGACY_KEY = "cf.orderLedger";
+let KEY = LEGACY_KEY;
 
 const read = () => {
   try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; }
@@ -14,6 +15,23 @@ const write = (list) => {
 };
 
 export const ledger = {
+  // Orders are money and they are PRIVATE: the ledger key is scoped to the
+  // signed-in account, so two accounts sharing one browser never see each
+  // other's orders. The old shared key is adopted once by the first account
+  // that signs in after this ships, then burned.
+  scope(sub) {
+    const next = sub ? `${LEGACY_KEY}.${sub}` : LEGACY_KEY;
+    if (next === KEY) return;
+    try {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (sub && legacy && !localStorage.getItem(next)) {
+        localStorage.setItem(next, legacy);
+        localStorage.removeItem(LEGACY_KEY);
+      }
+    } catch { /* storage unavailable */ }
+    KEY = next;
+  },
+
   list: () => read().sort((a, b) => (b.at || "").localeCompare(a.at || "")),
 
   record(order) {
