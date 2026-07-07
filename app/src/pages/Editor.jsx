@@ -69,6 +69,7 @@ export default function Editor({ siteId }) {
   const [busy, setBusy] = useState(false);
   const [confirmDown, setConfirmDown] = useState(false);
   const [revising, setRevising] = useState(false);
+  const [messagesLeft, setMessagesLeft] = useState(null); // AI films: notes to the director left on the order
   const [copied, setCopied] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const fileRef = useRef(null);
@@ -83,6 +84,16 @@ export default function Editor({ siteId }) {
   useEffect(() => {
     api.siteStats(siteId).then(setStats).catch((e) => { if (notWired(e)) setStats(null); });
   }, [siteId]);
+
+  // AI films: how many messages to the director are left on the order
+  useEffect(() => {
+    const oid = data?.site?.orderId;
+    if (!oid) { setMessagesLeft(null); return; }
+    api.myOrders().then((r) => {
+      const o = (r.orders || []).find((x) => x.orderId === oid);
+      if (o && typeof o.messagesLeft === "number") setMessagesLeft(o.messagesLeft);
+    }).catch(() => { /* meter stays quiet */ });
+  }, [data]);
 
   // source is needed for the code view, and for previewing a non-live release
   useEffect(() => {
@@ -127,7 +138,8 @@ export default function Editor({ siteId }) {
     setBusy(true);
     api.rollback(siteId, n).then(load).catch((e) => setErr(friendly(e.message))).finally(() => setBusy(false));
   };
-  const fileChange = () => {
+  // manual films: the change order opens The Set with everything attached
+  const fileChangeToSet = () => {
     try {
       sessionStorage.setItem("cf.editSite", JSON.stringify({ siteId, slug: site?.slug, title: site?.title }));
     } catch { /* noop */ }
@@ -142,6 +154,38 @@ export default function Editor({ siteId }) {
       });
     }
     nav("studio");
+  };
+
+  // AI films: the change order IS a message to the director. Attached assets
+  // ride the note as URLs; the pipeline refilms the SAME order and the revised
+  // cut premieres onto THIS film, never a new one.
+  const isAI = !!site?.orderId;
+  const [sending, setSending] = useState(false);
+  const messageDirector = async () => {
+    const assetLines = [
+      intake.photo?.url ? `New headshot: ${intake.photo.url}` : null,
+      ...intake.covers.map((c, i) => `New project shot ${i + 1}: ${c.url}`),
+      intake.resume?.text ? `Updated resume text:\n${intake.resume.text.slice(0, 4000)}` : null,
+    ].filter(Boolean);
+    const notes = [note.trim(), ...assetLines].filter(Boolean).join("\n\n");
+    if (notes.length < 3) { setErr("Tell the director what should change, or attach the new files."); return; }
+    setSending(true); setErr("");
+    try {
+      const r = await api.requestRevision(site.orderId, { notes });
+      if (typeof r.messagesLeft === "number") setMessagesLeft(r.messagesLeft);
+      setNote(""); intake.clear();
+      toast("Message sent. The director is refilming this portfolio; the revised cut premieres here.");
+      load();
+    } catch (e) {
+      if (e.status === 409 && /no messages left/i.test(e.message || "")) { setMessagesLeft(0); setErr("No messages left on this order. Open The Set to direct a manual release instead."); }
+      else if (notWired(e)) setErr("Messages aren't wired in this environment yet. Open The Set to direct a manual release.");
+      else setErr(friendly(e.message));
+    } finally { setSending(false); }
+  };
+
+  const fileChange = () => {
+    if (isAI && (messagesLeft === null || messagesLeft > 0)) { messageDirector(); return; }
+    fileChangeToSet();
   };
   const copyLink = () => {
     navigator.clipboard?.writeText(`https://${site?.slug}.cinefolio.site`);
@@ -164,7 +208,7 @@ export default function Editor({ siteId }) {
         <div style={{ position: "relative" }} ref={projPop.ref}>
           <button className="edproj" onClick={projPop.toggle} aria-haspopup="menu" aria-expanded={projPop.open}>
             <span className="lens" aria-hidden="true" /><span>{site?.title || "…"}</span>
-            {site?.orderId && <span className="bkchip plain gold" style={{ flex: "0 0 auto" }}>AI</span>}
+            {site?.orderId && <span className="bkchip plain gold" style={{ flex: "0 0 auto" }}>AI{typeof messagesLeft === "number" ? ` · ${messagesLeft} MSG` : ""}</span>}
             <span className="chev" aria-hidden="true">▾</span>
           </button>
           {projPop.open && (
@@ -172,7 +216,7 @@ export default function Editor({ siteId }) {
               <button role="menuitem" onClick={() => nav("")}><span className="mi" aria-hidden="true">←</span>Go to Dashboard</button>
               <button role="menuitem" onClick={() => nav("films")}><span className="mi" aria-hidden="true">▦</span>All films</button>
               <div className="msep" />
-              <button role="menuitem" onClick={fileChange}><span className="mi" aria-hidden="true">◉</span>Edit in The Set</button>
+              <button role="menuitem" onClick={fileChangeToSet}><span className="mi" aria-hidden="true">◉</span>Edit in The Set</button>
               <button role="menuitem" onClick={() => { projPop.close(true); setView("more"); setMoreTab("releases"); }}><span className="mi" aria-hidden="true">≡</span>Releases</button>
               <button role="menuitem" onClick={() => { projPop.close(true); setView("more"); setMoreTab("settings"); }}><span className="mi" aria-hidden="true">⚙</span>Film settings</button>
               <div className="msep" />
@@ -213,7 +257,7 @@ export default function Editor({ siteId }) {
           ? <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={busy} onClick={() => { rollback(relSel); setRelSel("live"); }}>Publish #{relSel}</button>
           : site?.stagedRelease
             ? <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={busy} onClick={goLiveStaged}>Publish #{site.stagedRelease}</button>
-            : <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={fileChange}>New release</button>}
+            : <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={fileChangeToSet}>New release</button>}
       </div>
 
       {view === "preview" && (
@@ -245,7 +289,9 @@ export default function Editor({ siteId }) {
               ))}
             </div>
             <div className="edhint">
-              <span>Your note and files reopen this film in The Set.</span>
+              {isAI
+                ? <span>This film is directed by message: your note and files go straight to the AI director, and the revised cut lands on THIS film.{typeof messagesLeft === "number" ? ` · ${messagesLeft} of 3 message${messagesLeft === 1 ? "" : "s"} left` : ""}</span>
+                : <span>Your note and files reopen this film in The Set.</span>}
             </div>
             <div className={`edcomposer ${over ? "over" : ""}`} {...dropProps}>
               <input
@@ -266,7 +312,7 @@ export default function Editor({ siteId }) {
                 onChange={(e) => setNote(e.target.value)}
                 onPaste={(e) => { const f = e.clipboardData?.files; if (f?.length) { e.preventDefault(); intake.addFiles(f); } }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); fileChange(); } }}
-                placeholder="Note the change for the next release."
+                placeholder={isAI ? "Message the director: what should the next cut change?" : "Note the change for the next release."}
                 rows={2}
                 aria-label="Change order"
               />
@@ -275,8 +321,8 @@ export default function Editor({ siteId }) {
               <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : ""}</span>
               <div className="bkcomprow">
                 <button className="bkplus" title="Attach a headshot, cover or resume" aria-label="Attach a headshot, cover or resume" onClick={() => fileRef.current?.click()}>+</button>
-                <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--bk-faint)" }}>Files the change order into The Set</span>
-                <button className="bksend" onClick={fileChange} disabled={intake.busy} aria-label="File the change order">↑</button>
+                <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--bk-faint)" }}>{isAI ? (messagesLeft === 0 ? "No messages left · opens The Set" : "Sends to the AI director") : "Files the change order into The Set"}</span>
+                <button className="bksend" onClick={fileChange} disabled={intake.busy || sending} aria-label={isAI ? "Message the director" : "File the change order"}>{sending ? "…" : "↑"}</button>
               </div>
             </div>
           </div>
@@ -407,7 +453,8 @@ export default function Editor({ siteId }) {
         onSubmit={async (notes) => {
           setRevising(false);
           try {
-            await api.requestRevision(site.orderId, { notes });
+            const r = await api.requestRevision(site.orderId, { notes });
+            if (typeof r.messagesLeft === "number") setMessagesLeft(r.messagesLeft);
             toast("Revision filed. The studio is refilming; the new cut premieres as a release.");
             load();
           } catch (e) {
