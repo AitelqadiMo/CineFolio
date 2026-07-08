@@ -77,17 +77,45 @@ export const handler = async (event) => {
     const sec = await secrets();
     // The task token rides on the order so the /callback route can resume the execution.
     await setStatus(orderId, "filming", { taskToken });
+    // CineScroll kit: a dependency-free scroll engine the agent adapts instead
+    // of inventing. Progress variable, staggered reveals, pinned scenes with
+    // video scrub, reduced-motion fallbacks. Inline, no external JS.
+    const SCROLL_KIT = [
+      "<script>",
+      "(()=>{const d=document.documentElement;",
+      "const prog=()=>{const m=document.body.scrollHeight-innerHeight;d.style.setProperty('--scroll',m>0?(scrollY/m).toFixed(4):0)};",
+      "addEventListener('scroll',prog,{passive:true});addEventListener('resize',prog,{passive:true});prog();",
+      "const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('inview')}),{threshold:.2});",
+      "document.querySelectorAll('[data-reveal]').forEach(el=>io.observe(el));",
+      "document.querySelectorAll('[data-pin]').forEach(sec=>{const v=sec.querySelector('video[data-scrub]');",
+      "const onS=()=>{const r=sec.getBoundingClientRect();const span=r.height-innerHeight;if(span<=0)return;",
+      "const p=Math.min(1,Math.max(0,-r.top/span));sec.style.setProperty('--pin',p.toFixed(4));",
+      "if(v&&v.duration&&!matchMedia('(prefers-reduced-motion: reduce)').matches){v.currentTime=v.duration*p}};",
+      "addEventListener('scroll',onS,{passive:true});onS();});})();",
+      "</scr"+"ipt>",
+      "<style>",
+      "[data-reveal]{opacity:0;transform:translateY(30px);transition:opacity .9s cubic-bezier(.22,1,.36,1),transform .9s cubic-bezier(.22,1,.36,1)}",
+      "[data-reveal].inview{opacity:1;transform:none}",
+      "[data-reveal='2']{transition-delay:.12s}[data-reveal='3']{transition-delay:.24s}",
+      "[data-pin]{height:280vh;position:relative}[data-pin]>.stage{position:sticky;top:0;height:100vh;overflow:hidden}",
+      "@media(prefers-reduced-motion:reduce){[data-reveal]{opacity:1;transform:none;transition:none}[data-pin]{height:auto}[data-pin]>.stage{position:static;height:auto}}",
+      "</style>",
+    ].join("\n");
+
     const payload = {
       kind: "cinefolio.order",
       orderId,
       email: order.email, name: order.name, role: order.role, skills: order.skills || [],
       cvText: order.cvText || "",
       assets: order.assets || null, // { photo, covers: [{name,url}], links } — the client's own material
+      kit: SCROLL_KIT, // paste-and-adapt scroll engine: progress var, reveals, pinned video scrub
       brief: order.brief || null, // template/palette/customIdea from the Studio workspace
       revisionNotes: order.revisionNotes || null, // set when this run is the included revision
       instructions: [
         "You are the director on a commissioned portfolio film. The client's resume (cvText), their photo and project shots (assets), and their creative brief ride on this order. Build the portfolio that gets this specific person hired: read the resume for the arc of the career, pick the register their industry respects, and art-direct with conviction. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint.",
-        "Cinematic motion is the product. Generate imagery with your image tools where it elevates the story (hero atmospheres, section backdrops, project mood frames) and build at least one video-as-frames sequence: a short run of generated stills scrubbed on scroll or crossfaded on a timer as the hero, the way award sites fake film with frames.",
+        "THE PORTFOLIO IS A SCROLL-STORY. Scrolling index.html must feel like living this person's story, not reading a document: an opening title scene, then the career told in acts that reveal as the visitor scrolls, at least one pinned scene where scrolling drives the motion, and a closing scene that lands on contact plus the resume. Use the kit field (paste it into the page and adapt): --scroll is the page progress variable, data-reveal elements stagger in, data-pin sections pin their .stage while --pin runs 0 to 1, and video[data-scrub] inside a pinned section scrubs with the scroll. Reduced-motion fallbacks are already in the kit; keep them.",
+        "AT LEAST ONE GENERATED VIDEO IS REQUIRED in the scroll experience. Generate a short cinematic clip (5 to 8 seconds, 720p, no likeness of the client unless assets.photo drives it) with your video tools, upload it via upload.url as assets/hero.mp4 (8MB max; compress or trim to fit), and use it either as a scroll-scrubbed pinned scene (muted, playsinline, preload=auto, no controls) or as an autoplaying muted loop behind the title. Always set a poster image and keep the page alive without the video (reduced motion or slow network).",
+        "Generate still imagery with your image tools where it elevates the acts (atmospheres, section backdrops, project mood frames). Work FAST: generate all media first in parallel, upload as each finishes, then write the pages. Target delivery well under the window; twenty polished minutes beats a slow masterpiece.",
         "HOW MEDIA SHIPS, this is a hard contract: your platform's own media URLs are NOT publicly reachable and will 404 for visitors. Every image, video or pdf you generate must be UPLOADED via upload.url before you deliver the pages: one POST per file, append the relative path to the url (example: upload.url + 'assets/hero-01.jpg'), send the raw file bytes as the request body with the file's content-type header and upload.headers. Then reference each file in your html by that same relative path (src=\"assets/hero-01.jpg\"). Allowed types: jpg, png, webp, gif, svg, mp4, webm, woff2, pdf. 8MB per file. The client's own photos (assets.photo, assets.covers) are already public URLs, use them directly.",
         "NEVER reference a file you did not upload or deliver: every src and href in your pages must resolve, either to a relative path you uploaded via upload.url or delivered in the bundle, or to a public URL you know serves bytes (the client's asset URLs, Google Fonts). A dead link or broken image is a failed delivery.",
         "Likeness is sacred: the client's face may ONLY come from assets.photo and assets.covers. Use those exact URLs for any portrait or project imagery of them. Never generate, alter, or substitute a human likeness. If no photo is provided, art-direct without a face.",
