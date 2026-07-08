@@ -109,6 +109,7 @@ export async function publish(event, ctx) {
 
   const n = (site.releases || 0) + 1;
   const releasePrefix = `sites/${site.siteId}/releases/${n}`;
+  const allPaths = [...files.map((f) => f.path), ...(assetCopies || [])];
   await Promise.all(files.map((f) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${f.path}`, f.html)));
   if (assetCopies?.length) {
     // images/fonts/video from the cut: byte-for-byte cross-bucket copy, never through text
@@ -118,7 +119,6 @@ export async function publish(event, ctx) {
         .then((bytes) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${p}`, bytes, assetTypeOf(p)))));
   }
   const staged = b.stage === true;
-  const allPaths = [...files.map((f) => f.path), ...(assetCopies || [])];
   await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now(), filePaths: allPaths });
   if (b.orderId) {
     // the order remembers its film: every future revision premieres HERE,
@@ -146,7 +146,7 @@ export async function publish(event, ctx) {
     return ok({ ok: true, siteId: site.siteId, release: n, staged: true, pages: files.length, assets: (assetCopies || []).length, previewUrl: stagedUrl(ctx, site.siteId, n) });
   }
 
-  const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug);
+  const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug, allPaths);
   // optimistic lock: two concurrent publishes can't both claim release n.
   // A cut premiered onto an existing film marks it AI-born (orderId sticks).
   await ctx.ddb.update({
@@ -202,7 +202,7 @@ export async function rollback(event, ctx) {
   const rel = await ctx.ddb.get({ PK: site.PK, SK: relSK(target) });
   if (!rel) return bad("release not found", 404);
 
-  const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${target}`, site.slug);
+  const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${target}`, site.slug, rel.filePaths);
   const clearStage = site.stagedRelease === target;
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
@@ -273,18 +273,27 @@ export async function deleteSite(event, ctx) {
 
 // Pointer flip: KVS first (atomic, zero invalidation). If the KVS data plane is
 // unavailable in this runtime, degrade to S3 copy + targeted invalidation.
-async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix) {
+// THE WHOLE RELEASE moves in fallback mode: for months this copied only
+// index.html, which served the homepage while every case-study page, image
+// and resume 404'd. The pointer must carry every file the release carries.
+async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix, filePaths) {
   try {
     await ctx.kvs.put(ctx.config.kvsArn, slug, releasePath);
     return { mode: "kvs" };
   } catch {
     // Router's KVS-miss fallback serves /sites/{slug}/... directly, so copy the
     // release to the slug root (releases stay immutable; this is just the pointer).
-    const from = `sites/${releasePath}/index.html`;
-    const to = `sites/${fallbackSlugPrefix}/index.html`;
-    await ctx.s3.copyObject(ctx.config.publishedBucket, from, to);
-    try { await ctx.cdn.invalidate(ctx.config.distributionId, [`/sites/${fallbackSlugPrefix}/*`]); } catch { /* dev tolerable */ }
-    return { mode: "s3copy" };
+    const paths = Array.isArray(filePaths) && filePaths.length ? filePaths : ["index.html"];
+    await Promise.all(paths.map((p) => ctx.s3.copyObject(
+      ctx.config.publishedBucket,
+      `sites/${releasePath}/${p}`,
+      `sites/${fallbackSlugPrefix}/${p}`
+    ).catch((e) => {
+      // one missing file must not kill the flip, but it must not be silent either
+      console.error(JSON.stringify({ level: "warn", msg: "pointer copy skipped", slug, path: p, err: e?.message }));
+    })));
+    try { await ctx.cdn.invalidate(ctx.config.distributionId, [`/sites/${fallbackSlugPrefix}/*`, `/_preview/${fallbackSlugPrefix}/*`]); } catch { /* dev tolerable */ }
+    return { mode: "s3copy", copied: paths.length };
   }
 }
 
@@ -318,10 +327,15 @@ export async function inspect(event, ctx) {
   });
   const releases = await Promise.all(releaseRows.map(async (r) => {
     const prefix = `sites/${site.siteId}/releases/${r.n}/`;
-    let live = [];
-    try { live = await ctx.s3.listPrefix(ctx.config.publishedBucket, prefix); } catch { /* bucket ACL flake, keep going */ }
-    const liveKeys = new Set(live.map((o) => o.key.replace(prefix, "")));
+    let live = null; // null = the list call itself failed; [] = genuinely empty
+    try { live = await ctx.s3.listPrefix(ctx.config.publishedBucket, prefix); }
+    catch (e) { console.error(JSON.stringify({ level: "warn", msg: "inspect list failed", prefix, err: e?.message })); }
     const manifest = Array.isArray(r.filePaths) && r.filePaths.length ? r.filePaths : ["index.html"];
+    if (live === null) {
+      // a denied list must SAY so, never masquerade as an empty release
+      return { n: r.n, createdAt: r.createdAt, source: r.source || null, manifest, inS3: null, missing: null, extra: null, listError: "S3 list denied: the api role needs s3:ListBucket (run terraform apply)" };
+    }
+    const liveKeys = new Set(live.map((o) => o.key.replace(prefix, "")));
     const missing = manifest.filter((p) => !liveKeys.has(p));
     const extra = [...liveKeys].filter((k) => !manifest.includes(k));
     return {
@@ -424,7 +438,7 @@ export async function duplicate(event, ctx) {
     `sites/${newId}/releases/1/${p}`
   )));
   await ctx.ddb.put({ PK: `SITE#${newId}`, SK: relSK(1), type: "release", n: 1, source: `duplicate:${site.siteId}`, by: claims.sub, createdAt: now(), filePaths: srcPaths });
-  const flip = await flipPointer(ctx, slug, `${newId}/releases/1`, slug);
+  const flip = await flipPointer(ctx, slug, `${newId}/releases/1`, slug, srcPaths);
   const newSite = {
     PK: `SITE#${newId}`, SK: "META", type: "site", siteId: newId, slug,
     title: clampStr(b.title, 120) || `${site.title} Cut`, owner: claims.sub,
