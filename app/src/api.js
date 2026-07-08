@@ -59,6 +59,7 @@ export const api = {
   requestRevision: (orderId, body) => req(`/orders/${encodeURIComponent(orderId)}/revision`, { method: "POST", body, auth: true }),
   contact: (body) => req("/contact", { method: "POST", body }),
   siteStats: (id) => req(`/sites/${id}/stats`, { auth: true }),
+  inspect: (id) => req(`/sites/${id}/inspect`, { auth: true }), // release truth vs manifest
   connectDomain: (id, domain) => req(`/sites/${id}/domain`, { method: "POST", body: { domain }, auth: true }),
 };
 

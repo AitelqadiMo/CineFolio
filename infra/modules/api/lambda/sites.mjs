@@ -143,7 +143,7 @@ export async function publish(event, ctx) {
       if (e?.name === "ConditionalCheckFailedException") throw Object.assign(new Error("concurrent publish, retry"), { statusCode: 409 });
       throw e;
     });
-    return ok({ ok: true, siteId: site.siteId, release: n, staged: true, previewUrl: stagedUrl(ctx, site.siteId, n) });
+    return ok({ ok: true, siteId: site.siteId, release: n, staged: true, pages: files.length, assets: (assetCopies || []).length, previewUrl: stagedUrl(ctx, site.siteId, n) });
   }
 
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug);
@@ -160,7 +160,7 @@ export async function publish(event, ctx) {
     throw e;
   });
 
-  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, url: previewUrl(ctx, site.slug) });
+  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, pages: files.length, assets: (assetCopies || []).length, url: previewUrl(ctx, site.slug) });
 }
 
 // GET /sites/{id}/source?release=n — download a release's HTML (owner/admin)
