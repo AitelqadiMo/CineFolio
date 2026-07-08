@@ -439,10 +439,14 @@ export default function Editor({ siteId }) {
                       <div key={`i-${r.n}`} className="relrow" style={{ alignItems: "flex-start" }}>
                         <span className="rn">#{r.n}</span>
                         <span className="rmeta" style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
-                          manifest {r.manifest.length} · in S3 {r.inS3.length}
-                          {r.missing.length > 0
-                            ? <span style={{ color: "var(--bk-red)" }}> · MISSING: {r.missing.join(", ")}</span>
-                            : <span style={{ color: "var(--bk-green)" }}> · complete ✓</span>}
+                          {r.listError
+                            ? <span style={{ color: "var(--bk-gold)" }}>manifest {r.manifest.length} · {r.listError}</span>
+                            : <>
+                                manifest {r.manifest.length} · in S3 {r.inS3.length}
+                                {r.missing.length > 0
+                                  ? <span style={{ color: "var(--bk-red)" }}> · MISSING: {r.missing.join(", ")}</span>
+                                  : <span style={{ color: "var(--bk-green)" }}> · complete ✓</span>}
+                              </>}
                         </span>
                       </div>
                     ))}

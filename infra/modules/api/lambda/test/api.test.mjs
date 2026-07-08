@@ -205,7 +205,34 @@ test("sites: publish falls back to s3 copy + invalidation when KVS unavailable",
   const p = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id }, body: { html: "<!doctype html><html>x</html>" } })));
   assert.equal(p.body.pointer, "s3copy");
   assert.ok(ctx.s3._store.has("pub/sites/fallback-site/index.html"));
-  assert.deepEqual(ctx.cdn.invalidations.at(-1), ["/sites/fallback-site/*"]);
+  assert.deepEqual(ctx.cdn.invalidations.at(-1), ["/sites/fallback-site/*", "/_preview/fallback-site/*"]);
+});
+
+test("sites: the s3copy fallback pointer carries the WHOLE release, assets included", async () => {
+  const ctx = fakeCtx();
+  ctx.kvs.put = async () => { throw new Error("SigV4a unavailable"); };
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "u1", body: { email: "w@x.io", name: "Whole Release", role: "designer", cvText: "2021 designer figma whole" } })));
+  const orderId = gen.body.orderId;
+  await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "assets/hero.jpg" } }), body: Buffer.from("img").toString("base64"), isBase64Encoded: true });
+  const bundle = JSON.stringify({ files: [
+    { path: "index.html", html: "<!doctype html><html><body><img src=\"assets/hero.jpg\"></body></html>" },
+    { path: "resume.html", html: "<!doctype html><html><body>resume</body></html>" },
+  ] });
+  await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: bundle });
+  const meta = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  meta.status = "ready"; meta.cutKey = `orders/${orderId}/cut/index.html`;
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, meta);
+
+  const site = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "whole-release", title: "Whole Release" } }))).body.site;
+  const pubd = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: site.siteId }, body: { orderId } })));
+  assert.equal(pubd.code, 200);
+  assert.equal(pubd.body.pointer, "s3copy");
+  assert.equal(pubd.body.assets, 1);
+  // the slug prefix (what the router serves on KVS miss) holds EVERY file
+  assert.ok(ctx.s3._store.has("pub/sites/whole-release/index.html"));
+  assert.ok(ctx.s3._store.has("pub/sites/whole-release/resume.html"));
+  assert.ok(ctx.s3._store.has("pub/sites/whole-release/assets/hero.jpg"));
 });
 
 test("unknown route 404s, handler errors map to 500 json", async () => {
