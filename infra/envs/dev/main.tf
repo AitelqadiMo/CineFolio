@@ -150,9 +150,12 @@ module "hosting" {
 }
 
 module "appshell" {
-  source      = "../../modules/appshell"
-  name_prefix = local.name_prefix
-  account_id  = data.aws_caller_identity.current.account_id
+  source               = "../../modules/appshell"
+  name_prefix          = local.name_prefix
+  account_id           = data.aws_caller_identity.current.account_id
+  enable_custom_domain = var.enable_custom_domain
+  domain_aliases       = var.sites_domain != "" ? [var.sites_domain, "www.${var.sites_domain}"] : []
+  acm_certificate_arn  = var.enable_custom_domain ? aws_acm_certificate.sites[0].arn : ""
   tags        = local.tags
 }
 
