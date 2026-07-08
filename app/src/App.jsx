@@ -9,6 +9,7 @@ import Resources from "./pages/Resources.jsx";
 import Editor from "./pages/Editor.jsx";
 import Settings from "./pages/Settings.jsx";
 import Studio from "./pages/Studio.jsx";
+import Lounge from "./pages/Lounge.jsx";
 import Admin from "./pages/Admin.jsx";
 import Profile from "./pages/Profile.jsx";
 import Sidebar from "./shell/Sidebar.jsx";
@@ -140,6 +141,15 @@ export default function App() {
         <CmdK nav={nav} admin={user.admin} />
         <ToastHost />
         <SetBoundary key={route}><Editor siteId={seg[1]} /></SetBoundary>
+      </AuthCtx.Provider>
+    );
+  }
+  if (head === "order" && seg[1]) {
+    return (
+      <AuthCtx.Provider value={{ user, nav }}>
+        <CmdK nav={nav} admin={user.admin} />
+        <ToastHost />
+        <SetBoundary key={route}><Lounge orderId={seg[1]} /></SetBoundary>
       </AuthCtx.Provider>
     );
   }
