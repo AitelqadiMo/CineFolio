@@ -144,17 +144,6 @@ data "aws_iam_policy_document" "api" {
     ]
   }
   statement {
-    # ListObjectsV2 needs ListBucket on the BUCKET ARN, not objects/*; without
-    # this the release inspector's list silently failed and reported "in S3 0"
-    # for releases that existed.
-    sid     = "List"
-    actions = ["s3:ListBucket"]
-    resources = [
-      "arn:aws:s3:::${var.published_bucket}",
-      "arn:aws:s3:::${var.artifacts_bucket}",
-    ]
-  }
-  statement {
     sid       = "Kms"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey"]
     resources = [var.kms_key_arn]
