@@ -129,6 +129,32 @@ export default function Editor({ siteId }) {
     return f.sort((a, b) => String(b.t).localeCompare(String(a.t)));
   }, [releases, orders, site]);
 
+  // AI films: cut a BRAND-NEW release from the order. This is the recovery
+  // path when an older release shipped pages without assets: publish re-reads
+  // the manifest UNION the uploaded-asset rows and copies everything, then
+  // reports exactly what shipped so a stale backend exposes itself instantly.
+  const [integ, setInteg] = useState(null); // inspector report | "busy" | null
+  const rebuildFromCut = () => {
+    if (!site?.orderId) return;
+    setBusy(true); setErr("");
+    api.publish(siteId, { orderId: site.orderId })
+      .then((r) => {
+        if ((r.assets ?? 0) === 0) {
+          setErr(`Release #${r.release} shipped ${r.pages ?? "?"} page(s) but 0 assets. The deployed API is running old publish code: run terraform apply in envs/dev, then rebuild again.`);
+        } else {
+          toast(`Release #${r.release} is live: ${r.pages} page${r.pages === 1 ? "" : "s"} and ${r.assets} asset${r.assets === 1 ? "" : "s"} shipped.`);
+        }
+        setRelSel("live");
+        load();
+      })
+      .catch((e) => setErr(friendly(e.message)))
+      .finally(() => setBusy(false));
+  };
+  const checkIntegrity = () => {
+    setInteg("busy");
+    api.inspect(siteId).then(setInteg).catch((e) => { setInteg(null); setErr(notWired(e) ? "The inspector route isn't deployed yet: run terraform apply." : friendly(e.message)); });
+  };
+
   const goLiveStaged = () => {
     if (!site?.stagedRelease) return;
     setBusy(true);
@@ -274,6 +300,7 @@ export default function Editor({ siteId }) {
                   <div className="facts">
                     {site.status === "live" && <a className="flink" href={liveUrl} target="_blank" rel="noopener noreferrer">Watch live ↗</a>}
                     {site.orderId && <button className="flink" style={{ color: "var(--bk-gold)", borderColor: "rgba(217,164,65,.4)" }} onClick={() => setRevising(true)}>◈ AI revision</button>}
+                    {site.orderId && <button className="flink" disabled={busy} onClick={rebuildFromCut} title="Cut a new release from the delivered AI files, assets included">⟳ Rebuild from AI cut</button>}
                     {site.stagedRelease && <a className="flink" href={site.stagedUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--bk-gold)" }}>Staged #{site.stagedRelease} ↗</a>}
                     <button className="flink" onClick={() => { setView("more"); setMoreTab("analytics"); }}>Analytics</button>
                     <button className="flink" onClick={() => { setView("more"); setMoreTab("releases"); }}>Releases</button>
@@ -399,7 +426,36 @@ export default function Editor({ siteId }) {
             )}
             {moreTab === "releases" && (
               <div className="morecard">
-                <div className="mchead">Releases<span className="right"><span className="bkchip plain">{releases.length} IN THE VAULT</span></span></div>
+                <div className="mchead">Releases
+                  <span className="right">
+                    {site?.orderId && <button className="bkbtn ghost" style={{ padding: "4px 12px", fontSize: 12 }} disabled={busy} onClick={rebuildFromCut}>⟳ Rebuild from AI cut</button>}
+                    <button className="bkbtn ghost" style={{ padding: "4px 12px", fontSize: 12 }} onClick={checkIntegrity}>{integ === "busy" ? "Checking…" : "Check integrity"}</button>
+                    <span className="bkchip plain">{releases.length} IN THE VAULT</span>
+                  </span>
+                </div>
+                {integ && integ !== "busy" && (
+                  <div className="reltl" style={{ borderBottom: "1px solid var(--bk-line)" }} role="status">
+                    {(integ.releases || []).map((r) => (
+                      <div key={`i-${r.n}`} className="relrow" style={{ alignItems: "flex-start" }}>
+                        <span className="rn">#{r.n}</span>
+                        <span className="rmeta" style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                          manifest {r.manifest.length} · in S3 {r.inS3.length}
+                          {r.missing.length > 0
+                            ? <span style={{ color: "var(--bk-red)" }}> · MISSING: {r.missing.join(", ")}</span>
+                            : <span style={{ color: "var(--bk-green)" }}> · complete ✓</span>}
+                        </span>
+                      </div>
+                    ))}
+                    {integ.orderAssets && (
+                      <div className="relrow" style={{ alignItems: "flex-start" }}>
+                        <span className="rn" aria-hidden="true">◈</span>
+                        <span className="rmeta" style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                          agent uploads: {integ.orderAssets.uploadedAssets.length ? integ.orderAssets.uploadedAssets.map((a) => a.path).join(", ") : "none recorded"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="reltl">
                   {[...releases].reverse().map((r) => (
                     <div key={r.n} className="relrow">
