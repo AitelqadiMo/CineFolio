@@ -7,6 +7,7 @@ import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
 import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
+import { ledger } from "../orders.js";
 import AssetChips from "../shell/Intake.jsx";
 
 const DEMO = parseProfile("", { name: "Jordan Vega", headline: "Product Designer, systems and story" });
@@ -23,14 +24,24 @@ export default function Home() {
   const { over, dropProps } = useDropzone(intake.addFiles);
 
   const [firstRun, setFirstRun] = useState({ dossier: false, draft: false });
+  const [ent, setEnt] = useState(null);       // free AI cuts left
+  const [lane, setLane] = useState("ai");     // "ai" (express, needs resume) | "set" (manual)
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
 
   useEffect(() => {
     api.sites().then((r) => setSites(r.sites || [])).catch(() => setSites([]));
     api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => { /* optional */ });
+    api.me().then((r) => {
+      if (typeof r?.user?.freeCutsLeft === "number") {
+        setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3 });
+        if (r.user.freeCutsLeft === 0) setLane("set");
+      }
+    }).catch(() => { /* chip stays quiet */ });
     try { setFirstRun((f) => ({ ...f, draft: !!localStorage.getItem("cf.studioDraft") })); } catch { /* noop */ }
   }, []);
 
-  const roll = () => {
+  const rollToSet = () => {
     packBrief({
       text: brief.trim(),
       tpl: style,
@@ -42,6 +53,37 @@ export default function Home() {
     });
     nav("studio");
   };
+
+  // the express lane: resume + photo in the box -> the order goes straight to
+  // the AI director and the client waits in the Premiere Lounge with a
+  // skeleton until the cut lands in the preview
+  const rollToDirector = async () => {
+    const cv = intake.resume?.text || "";
+    if (cv.trim().length < 80) { setErr("The director needs your resume: drop a PDF or TXT first, or switch to The Set to type it in."); return; }
+    setSending(true); setErr("");
+    try {
+      const name = (cv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || "").slice(0, 60);
+      const r = await api.order({
+        email: user.email, name, role: "engineer",
+        cvText: cv,
+        template: style, palette: null,
+        customIdea: brief.trim() || null,
+        photo: intake.photo?.url && !String(intake.photo.url).startsWith("data:") ? intake.photo.url : null,
+        covers: intake.covers.filter((c) => !String(c.url).startsWith("data:")).map((c) => ({ name: c.name, url: c.url })),
+        links: null,
+      });
+      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3 }));
+      ledger.record({ orderId: r.orderId, name, price: 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
+      try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name })); } catch { /* noop */ }
+      nav(`order/${r.orderId}`);
+    } catch (e) {
+      if (e.status === 402) { setEnt((e0) => ({ freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3 })); setLane("set"); setErr("Your three free AI cuts are spent. The Set is open for manual filming; paid cuts land soon."); }
+      else setErr(friendlyMsg(e));
+    } finally { setSending(false); }
+  };
+  const friendlyMsg = (e) => e?.message || "The studio hit a snag. Try again in a moment.";
+
+  const roll = () => { if (lane === "ai") rollToDirector(); else rollToSet(); };
 
   const onPaste = (e) => {
     const files = e.clipboardData?.files;
@@ -92,10 +134,19 @@ export default function Home() {
             aria-label="Film brief"
           />
           {intake.busy && <div className="bkprogress" aria-hidden="true"><div className="fill" /></div>}
-          {intake.error && <div className="bkerr" role="alert">{intake.error}</div>}
-          <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : ""}</span>
+          {(intake.error || err) && <div className="bkerr" role="alert">{intake.error || err}</div>}
+          <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : sending ? "Sending to the director…" : ""}</span>
           <div className="bkcomprow" style={{ position: "relative" }}>
             <button className="bkplus" title="Attach resume, headshot or project shots" aria-label="Attach resume, headshot or project shots" onClick={() => fileRef.current?.click()}>+</button>
+            <div className="bklane" role="radiogroup" aria-label="Who films it">
+              <button role="radio" aria-checked={lane === "ai"} className={lane === "ai" ? "on" : ""} disabled={ent?.freeCutsLeft === 0}
+                title={ent?.freeCutsLeft === 0 ? "Free cuts spent" : "The AI director films it; you wait in the lounge"} onClick={() => setLane("ai")}>
+                ◈ AI Director{ent ? ` · ${ent.freeCutsLeft} free` : ""}
+              </button>
+              <button role="radio" aria-checked={lane === "set"} className={lane === "set" ? "on" : ""} title="Film it yourself; renders as you type" onClick={() => setLane("set")}>
+                ◉ The Set
+              </button>
+            </div>
             <div ref={stylePop.ref} style={{ marginLeft: "auto", position: "relative" }}>
               <button className="bkstyle" onClick={stylePop.toggle} aria-haspopup="menu" aria-expanded={stylePop.open}>
                 {style ? (TEMPLATES.find((t) => t.id === style)?.name || "Look") : "Look"} <span style={{ fontSize: 9 }} aria-hidden="true">▾</span>
@@ -112,10 +163,14 @@ export default function Home() {
                 </div>
               )}
             </div>
-            <button className="bksend" onClick={roll} disabled={intake.busy} aria-label="Roll camera: open The Set with everything attached">↑</button>
+            <button className="bksend" onClick={roll} disabled={intake.busy || sending} aria-label={lane === "ai" ? "Send to the AI director (uses one free cut)" : "Open The Set with everything attached"}>{sending ? "…" : "↑"}</button>
           </div>
         </div>
-        <p className="bkhelper">Resume as PDF or TXT, images up to 10MB. We read everything here in your browser. Nothing is filed until you hit Roll.</p>
+        <p className="bkhelper">
+          {lane === "ai"
+            ? "Drop the resume and a photo, hit send: the AI director films a scroll-story portfolio while you watch from the lounge. Uses one of your free cuts."
+            : "Resume as PDF or TXT, images up to 10MB. We read everything in your browser; nothing is filed until you hit send."}
+        </p>
       </div>
 
       <div className="bkgallery">
