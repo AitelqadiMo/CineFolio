@@ -90,7 +90,7 @@ export default function Films() {
   };
 
   const copy = (what, text) => { navigator.clipboard?.writeText(text); setCopied(what); setTimeout(() => setCopied(""), 1600); };
-  const blurb = (s) => `My portfolio just premiered: ${s.title}. Watch it at https://${s.slug}.cinefolio.site`;
+  const blurb = (s) => `My portfolio just premiered: ${s.title}. Watch it at https://${s.slug}.cinefolio.dev`;
 
   const shown = useMemo(() => {
     let list = [...(sites || [])];
@@ -257,7 +257,7 @@ export default function Films() {
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <b style={{ display: "block", fontSize: 14 }}>{s.title || s.slug}</b>
-                <i style={{ fontStyle: "normal", fontSize: 12, color: "var(--bk-faint)" }}>{s.slug}.cinefolio.site · {edited(s)} · release {s.liveRelease ?? "·"}/{s.releases ?? 0}</i>
+                <i style={{ fontStyle: "normal", fontSize: 12, color: "var(--bk-faint)" }}>{s.slug}.cinefolio.dev · {edited(s)} · release {s.liveRelease ?? "·"}/{s.releases ?? 0}</i>
               </span>
               <span className="bkchip plain" style={{ color: s.status === "live" ? "var(--bk-green)" : undefined }}>{(s.status || "").replace("_", " ")}</span>
             </div>
@@ -272,7 +272,7 @@ export default function Films() {
             <div className="dlgtext">Choose where this cut premieres. Onto an existing film it becomes the next release; rolling back is one click.</div>
             {(sites || []).map((s) => (
               <div key={s.siteId} className="orderrow">
-                <div><b className="ordid">{s.slug}.cinefolio.site</b><span className="mono ordmeta">{s.status === "live" ? `live · release ${s.liveRelease}/${s.releases}` : s.status.replace("_", " ")}</span></div>
+                <div><b className="ordid">{s.slug}.cinefolio.dev</b><span className="mono ordmeta">{s.status === "live" ? `live · release ${s.liveRelease}/${s.releases}` : s.status.replace("_", " ")}</span></div>
                 <button type="button" className="btn ghost ordbtn" disabled={busyId === s.siteId} onClick={() => premiereCutTo(s.siteId)}>{busyId === s.siteId ? <span className="spin" /> : null}Premiere here</button>
               </div>
             ))}
@@ -291,8 +291,8 @@ export default function Films() {
           <>
             <div className="sharerow">
               <span className="mono sharelbl">LINK</span>
-              <span className="shareval mono">{`https://${sharing.slug}.cinefolio.site`}</span>
-              <button type="button" className="btn ghost ordbtn" onClick={() => copy("link", `https://${sharing.slug}.cinefolio.site`)}>{copied === "link" ? "Copied ✓" : "Copy"}</button>
+              <span className="shareval mono">{`https://${sharing.slug}.cinefolio.dev`}</span>
+              <button type="button" className="btn ghost ordbtn" onClick={() => copy("link", `https://${sharing.slug}.cinefolio.dev`)}>{copied === "link" ? "Copied ✓" : "Copy"}</button>
             </div>
             <div className="sharerow">
               <span className="mono sharelbl">FOR LINKEDIN</span>
@@ -301,7 +301,7 @@ export default function Films() {
             </div>
             <div className="sharerow shareqr">
               <span className="mono sharelbl">QR</span>
-              <img width="132" height="132" alt={`QR code for ${sharing.slug}.cinefolio.site`} src={`https://api.qrserver.com/v1/create-qr-code/?size=264x264&data=${encodeURIComponent(`https://${sharing.slug}.cinefolio.site`)}`} onError={(e) => { e.target.closest(".sharerow").style.display = "none"; }} />
+              <img width="132" height="132" alt={`QR code for ${sharing.slug}.cinefolio.dev`} src={`https://api.qrserver.com/v1/create-qr-code/?size=264x264&data=${encodeURIComponent(`https://${sharing.slug}.cinefolio.dev`)}`} onError={(e) => { e.target.closest(".sharerow").style.display = "none"; }} />
               <span className="dlgtext">Drop it on a slide or a business card; it opens your premiere.</span>
             </div>
           </>
@@ -312,7 +312,7 @@ export default function Films() {
         open={!!duping} kicker="NEW CUT" title="Duplicate this film"
         body="A full copy of the current release, ready to take a different direction. Pick its premiere name."
         placeholder={duping ? `${duping.slug}-cut` : ""} initial={duping ? `${duping.slug}-cut` : ""}
-        validate={slugProblem} preview={(v) => `https://${v}.cinefolio.site`}
+        validate={slugProblem} preview={(v) => `https://${v}.cinefolio.dev`}
         submitLabel="Create the cut" busy={busyId === duping?.siteId}
         onSubmit={(slug) => { const s = duping; setDuping(null); act(s.siteId, () => api.duplicate(s.siteId, { slug, title: `${s.title} Cut` })); }}
         onClose={() => setDuping(null)}

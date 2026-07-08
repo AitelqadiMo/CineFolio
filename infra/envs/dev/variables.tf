@@ -38,14 +38,18 @@ variable "monthly_budget_usd" {
   default = 50
 }
 
-# Custom domain for hosted client sites — keep false until cinefolio.site DNS is delegated.
+# Custom domain for hosted client sites: cinefolio.dev (purchased Jul 2026,
+# DNS at Cloudflare). Two-step bring-up because CloudFront refuses a PENDING
+# cert: apply once (cert created, validation records in outputs), add the
+# validation CNAME at Cloudflare, wait for ISSUED, then flip this to true
+# and apply again to attach the *.cinefolio.dev alias.
 variable "enable_custom_domain" {
   type    = bool
   default = false
 }
 variable "sites_domain" {
   type    = string
-  default = ""
+  default = "cinefolio.dev"
 }
 
 # API CORS. Dev: "*" (SPA distribution domain only exists after first apply).

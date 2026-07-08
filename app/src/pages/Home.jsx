@@ -153,7 +153,7 @@ export default function Home() {
                     </button>
                     <button className="bkstep" onClick={() => nav("studio")}>
                       <span className="no" aria-hidden="true">3</span>
-                      <span><b>Premiere it</b><i>One click, live on yourname.cinefolio.site.</i></span>
+                      <span><b>Premiere it</b><i>One click, live on yourname.cinefolio.dev.</i></span>
                     </button>
                   </div>
                 </div>

@@ -1,5 +1,5 @@
 // CloudFront Function (viewer-request) — multi-tenant slug router with KVS pointers.
-// Pointer flow:   {slug}.cinefolio.site  --KVS-->  "{siteId}/releases/{n}"  -->  S3 prefix
+// Pointer flow:   {slug}.cinefolio.dev  --KVS-->  "{siteId}/releases/{n}"  -->  S3 prefix
 // KVS miss flow:  serve /sites/{slug}/... directly (legacy layout + s3copy fallback + _demo).
 import cf from 'cloudfront';
 

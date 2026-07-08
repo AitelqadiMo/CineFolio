@@ -74,7 +74,7 @@ module "identity" {
 }
 
 # Transactional email sender: empty until an SES identity is verified in the
-# account (then set to something like studio@cinefolio.site, or a verified
+# account (then set to something like studio@cinefolio.dev, or a verified
 # personal address while SES is sandboxed).
 variable "ses_from" {
   type    = string
@@ -108,6 +108,35 @@ module "api" {
   tags                 = local.tags
 }
 
+# Wildcard certificate for {slug}.cinefolio.dev: CloudFront certs live in
+# us-east-1. Created as soon as a domain is configured; the distribution only
+# attaches it once enable_custom_domain=true (a PENDING cert cannot attach).
+# Validation is manual at Cloudflare: add the CNAME from the
+# sites_cert_validation output, wait for ISSUED, then flip the flag.
+resource "aws_acm_certificate" "sites" {
+  count             = var.sites_domain != "" ? 1 : 0
+  provider          = aws.us_east_1
+  domain_name       = "*.${var.sites_domain}"
+  subject_alternative_names = [var.sites_domain]
+  validation_method = "DNS"
+  lifecycle { create_before_destroy = true }
+  tags = local.tags
+}
+
+output "sites_cert_arn" {
+  value = try(aws_acm_certificate.sites[0].arn, null)
+}
+output "sites_cert_validation" {
+  description = "Add these CNAMEs at Cloudflare (DNS only), then wait for the cert to read ISSUED"
+  value = try([
+    for o in aws_acm_certificate.sites[0].domain_validation_options : {
+      name  = o.resource_record_name
+      type  = o.resource_record_type
+      value = o.resource_record_value
+    }
+  ], [])
+}
+
 module "hosting" {
   source                           = "../../modules/hosting"
   name_prefix                      = local.name_prefix
@@ -116,6 +145,7 @@ module "hosting" {
   published_bucket_regional_domain = module.data.published_bucket_regional_domain
   enable_custom_domain             = var.enable_custom_domain
   sites_domain                     = var.sites_domain
+  acm_certificate_arn              = var.enable_custom_domain ? aws_acm_certificate.sites[0].arn : ""
   tags                             = local.tags
 }
 

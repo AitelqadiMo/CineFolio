@@ -1,6 +1,6 @@
 # HOSTING — CloudFront distribution serving ALL client sites from one S3 bucket.
 # Multi-tenant: an edge Function rewrites the host's slug to an S3 prefix.
-# Custom domain (*.cinefolio.site) is gated behind enable_custom_domain so the
+# Custom domain (*.cinefolio.dev) is gated behind enable_custom_domain so the
 # first dev apply completes on the native cloudfront.net domain with no ACM/DNS.
 variable "name_prefix" { type = string }
 variable "published_bucket" { type = string }
@@ -12,7 +12,7 @@ variable "enable_custom_domain" {
 }
 variable "sites_domain" {
   type    = string
-  default = "" # e.g. cinefolio.site — required only when enable_custom_domain=true
+  default = "" # e.g. cinefolio.dev — required only when enable_custom_domain=true
 }
 variable "acm_certificate_arn" {
   type    = string
@@ -173,7 +173,7 @@ resource "aws_s3_object" "demo_landing" {
     <div class="card">
       <div class="kicker">CineFolio Studios · The Backlot</div>
       <h1>You're at the <em>studio gate.</em></h1>
-      <p>This is the multi-tenant hosting for portfolios filmed by the studio. Every film lives at its <b>own slug</b>, either on <code>{slug}.cinefolio.site</code> or, in dev, at <code>/_preview/{slug}/</code>.</p>
+      <p>This is the multi-tenant hosting for portfolios filmed by the studio. Every film lives at its <b>own slug</b>, either on <code>{slug}.cinefolio.dev</code> or, in dev, at <code>/_preview/{slug}/</code>.</p>
       <p>Looking for a specific portfolio? Ask its author for the link. Filming your own? Open the console and pick <b>The Set</b>.</p>
       <a class="cta" href="https://d2f6618tf0eldv.cloudfront.net" target="_top">Open the console →</a>
       <div class="foot">Made with AI cameras and taste · Est. Budapest</div>

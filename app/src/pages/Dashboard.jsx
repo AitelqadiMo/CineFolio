@@ -110,7 +110,7 @@ export default function Dashboard() {
 
   const live = sites?.filter((s) => s.status === "live").length ?? 0;
   const releases = sites?.reduce((a, s) => a + (s.releases || 0), 0) ?? 0;
-  const blurb = (s) => `My portfolio just premiered: ${s.title}. Watch it at https://${s.slug}.cinefolio.site`;
+  const blurb = (s) => `My portfolio just premiered: ${s.title}. Watch it at https://${s.slug}.cinefolio.dev`;
   const frames = open ? (allFrames ? open.releases : open.releases.slice(-HISTORY_PREVIEW)) : [];
 
   return (
@@ -170,7 +170,7 @@ export default function Dashboard() {
             </button>
             <button className="step3" onClick={() => nav("studio")}>
               <span className="stepno" aria-hidden="true">3</span>
-              <span className="steptxt"><b>Premiere it</b><i>One click, live on yourname.cinefolio.site.</i></span>
+              <span className="steptxt"><b>Premiere it</b><i>One click, live on yourname.cinefolio.dev.</i></span>
             </button>
           </div>
         </div>
@@ -279,7 +279,7 @@ export default function Dashboard() {
             {(sites || []).map((s) => (
               <div key={s.siteId} className="orderrow">
                 <div>
-                  <b className="ordid">{s.slug}.cinefolio.site</b>
+                  <b className="ordid">{s.slug}.cinefolio.dev</b>
                   <span className="mono ordmeta">{s.status === "live" ? `live · release ${s.liveRelease}/${s.releases}` : s.status.replace("_", " ")}</span>
                 </div>
                 <button type="button" className="btn ghost ordbtn" disabled={busyId === s.siteId} onClick={() => premiereCutTo(s.siteId)}>
@@ -313,8 +313,8 @@ export default function Dashboard() {
           <>
             <div className="sharerow">
               <span className="mono sharelbl">LINK</span>
-              <span className="shareval mono">{`https://${sharing.slug}.cinefolio.site`}</span>
-              <button type="button" className="btn ghost ordbtn" onClick={() => copy("link", `https://${sharing.slug}.cinefolio.site`)}>
+              <span className="shareval mono">{`https://${sharing.slug}.cinefolio.dev`}</span>
+              <button type="button" className="btn ghost ordbtn" onClick={() => copy("link", `https://${sharing.slug}.cinefolio.dev`)}>
                 {copied === "link" ? "Copied ✓" : "Copy"}
               </button>
             </div>
@@ -328,8 +328,8 @@ export default function Dashboard() {
             <div className="sharerow shareqr">
               <span className="mono sharelbl">QR</span>
               <img
-                width="132" height="132" alt={`QR code for ${sharing.slug}.cinefolio.site`}
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=264x264&data=${encodeURIComponent(`https://${sharing.slug}.cinefolio.site`)}`}
+                width="132" height="132" alt={`QR code for ${sharing.slug}.cinefolio.dev`}
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=264x264&data=${encodeURIComponent(`https://${sharing.slug}.cinefolio.dev`)}`}
                 onError={(e) => { e.target.closest(".sharerow").style.display = "none"; }}
               />
               <span className="dlgtext">Drop it on a slide or a business card; it opens your premiere.</span>
@@ -343,7 +343,7 @@ export default function Dashboard() {
         open={!!duping} kicker="NEW CUT" title="Duplicate this film"
         body="A full copy of the current release, ready to take a different direction. Pick its premiere name."
         placeholder={duping ? `${duping.slug}-cut` : ""} initial={duping ? `${duping.slug}-cut` : ""}
-        validate={slugProblem} preview={(v) => `https://${v}.cinefolio.site`}
+        validate={slugProblem} preview={(v) => `https://${v}.cinefolio.dev`}
         submitLabel="Create the cut" busy={busyId === duping?.siteId}
         onSubmit={(slug) => { const s = duping; setDuping(null); act(s.siteId, () => api.duplicate(s.siteId, { slug, title: `${s.title} Cut` })); }}
         onClose={() => setDuping(null)}

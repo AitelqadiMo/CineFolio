@@ -446,7 +446,7 @@ export default function Studio() {
             </div>
           )}
         </div>
-        <span className="edpagesel" style={{ cursor: "default" }} title="Where this film premieres">{(pub.slug.trim() || slug)}.cinefolio.site</span>
+        <span className="edpagesel" style={{ cursor: "default" }} title="Where this film premieres">{(pub.slug.trim() || slug)}.cinefolio.dev</span>
         <div className="grow" />
         <span className="bkchip plain">{(profile.skills || []).length} SKILLS CAST</span>
         {ent && <span className={`bkchip plain ${ent.freeCutsLeft ? "gold" : ""}`}>◈ {ent.freeCutsLeft} FREE AI CUT{ent.freeCutsLeft === 1 ? "" : "S"} LEFT</span>}
@@ -705,7 +705,7 @@ export default function Studio() {
             )}
             {!editTarget && !pub.done && (
               <div className="mono" style={{ marginTop: 6, textTransform: "none", letterSpacing: ".05em", fontSize: 10, color: "var(--gold)" }}>
-                → {(pub.slug.trim() || slug)}.cinefolio.site, live seconds after the click
+                → {(pub.slug.trim() || slug)}.cinefolio.dev, live seconds after the click
               </div>
             )}
             <label className="mono" style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 0", cursor: "pointer", fontSize: 9.5 }}>
