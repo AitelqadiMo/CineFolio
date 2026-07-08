@@ -214,7 +214,7 @@ export default function Editor({ siteId }) {
     fileChangeToSet();
   };
   const copyLink = () => {
-    navigator.clipboard?.writeText(`https://${site?.slug}.cinefolio.site`);
+    navigator.clipboard?.writeText(`https://${site?.slug}.cinefolio.dev`);
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
   const download = () => {
@@ -294,7 +294,7 @@ export default function Editor({ siteId }) {
               {!data && !err && <div className="fentry"><p>Loading the production record…</p></div>}
               {site && (
                 <div className="fentry">
-                  <div className="fwhen"><span className={`dot ${site.status === "live" ? "green" : site.status === "taken_down" ? "red" : ""}`} />{site.slug}.cinefolio.site · {String(site.status || "").replace("_", " ").toUpperCase()}</div>
+                  <div className="fwhen"><span className={`dot ${site.status === "live" ? "green" : site.status === "taken_down" ? "red" : ""}`} />{site.slug}.cinefolio.dev · {String(site.status || "").replace("_", " ").toUpperCase()}</div>
                   <b>{site.title}</b>
                   <p>{releases.length} release{releases.length === 1 ? "" : "s"} in the vault{typeof (stats?.views ?? stats?.total) === "number" ? ` · seen ${stats.views ?? stats.total} times` : ""}. Every premiere is an atomic pointer flip; rolling back flips it back in seconds.</p>
                   <div className="facts">
@@ -485,7 +485,7 @@ export default function Editor({ siteId }) {
                 <div className="mchead">Film settings</div>
                 <div className="reltl">
                   <div className="relrow">
-                    <span className="rmeta"><b style={{ color: "var(--bk-ink)" }}>Address</b><br />{site?.slug}.cinefolio.site</span>
+                    <span className="rmeta"><b style={{ color: "var(--bk-ink)" }}>Address</b><br />{site?.slug}.cinefolio.dev</span>
                     <button className="bkbtn ghost" style={{ padding: "5px 13px", fontSize: 12 }} onClick={copyLink}>{copied ? "Copied ✓" : "Copy link"}</button>
                   </div>
                   <div className="relrow">
