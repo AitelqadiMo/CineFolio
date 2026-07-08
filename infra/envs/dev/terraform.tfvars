@@ -20,5 +20,5 @@ app_origins = [
 #   apply 2: once the cert reads ISSUED, flip enable_custom_domain = true
 #            and re-apply; then add the wildcard CNAME
 #            *  ->  d3ssuqn0z03akv.cloudfront.net   (DNS only)
-enable_custom_domain = false
+enable_custom_domain = true
 sites_domain         = "cinefolio.dev"
