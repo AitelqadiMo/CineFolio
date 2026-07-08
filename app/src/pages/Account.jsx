@@ -159,7 +159,7 @@ export default function Account() {
                   <span className={`badge ${isClient ? "live" : "draft"}`}>{planLabel}</span>
                 </div>
                 <ul className="planlist">
-                  <li>Instant premieres on cinefolio.site, always included</li>
+                  <li>Instant premieres on cinefolio.dev, always included</li>
                   {isClient ? <>
                     <li>Bespoke AI film pass, premiered within 24 hours</li>
                     <li>One revision included per Director's Cut</li>
@@ -236,7 +236,7 @@ export default function Account() {
                 {sites?.map((s) => (
                   <div key={s.siteId} className="orderrow">
                     <div>
-                      <b className="ordid">{s.slug}.cinefolio.site</b>
+                      <b className="ordid">{s.slug}.cinefolio.dev</b>
                       <span className="mono ordmeta">
                         {s.status === "live" ? "Live · hosted by the studio" : s.status.replace("_", " ")}
                         {domains[s.siteId] ? ` · ${domains[s.siteId]} pending setup` : ""}
@@ -335,7 +335,7 @@ export default function Account() {
         body="Enter the domain you own. We'll hand you the exact DNS record to add."
         placeholder="yourname.com" busy={busy}
         validate={(v) => (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(v.trim()) ? "" : "Enter a domain like yourname.com")}
-        preview={(v) => `${v} → ${domainFor?.slug}.cinefolio.site`}
+        preview={(v) => `${v} → ${domainFor?.slug}.cinefolio.dev`}
         submitLabel="Get setup steps" onSubmit={connectDomain} onClose={() => setDomainFor(null)}
       />
 
