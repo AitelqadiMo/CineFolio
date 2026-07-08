@@ -9,8 +9,9 @@ alarm_email = "aitelqadi22@gmail.com"
 app_origins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  "https://cine-folio.vercel.app",
-  "https://d2f6618tf0eldv.cloudfront.net", # the Studio Console app shell
+  "https://d2f6618tf0eldv.cloudfront.net", # the app shell's native domain
+  "https://cinefolio.dev",                 # apex: landing + console
+  "https://www.cinefolio.dev",
 ]
 
 # cinefolio.dev purchased Jul 2026 (Cloudflare Registrar, DNS at Cloudflare).
@@ -20,5 +21,5 @@ app_origins = [
 #   apply 2: once the cert reads ISSUED, flip enable_custom_domain = true
 #            and re-apply; then add the wildcard CNAME
 #            *  ->  d3ssuqn0z03akv.cloudfront.net   (DNS only)
-enable_custom_domain = false
+enable_custom_domain = true # cert ISSUED and *.cinefolio.dev live since Jul 8 2026
 sites_domain         = "cinefolio.dev"
