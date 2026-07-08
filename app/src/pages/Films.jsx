@@ -207,7 +207,7 @@ export default function Films() {
           <div className="bkcards" style={{ marginBottom: 26 }}>
             {aiOrders.map((o) => (
               <div key={o.orderId} className="bkfilm" style={{ position: "relative" }}>
-                <button className="bkfilmbtn" onClick={() => (o.status === "ready" ? setPremiereCut(o) : null)} aria-label={`AI portfolio for ${o.name || "you"}`}>
+                <button className="bkfilmbtn" onClick={() => (o.status === "ready" ? setPremiereCut(o) : nav(`order/${o.orderId}`))} aria-label={`AI portfolio for ${o.name || "you"}`}>
                   <span className="bkthumb" aria-hidden="true" style={{ borderColor: "rgba(217,164,65,.35)" }}>
                     {o.status === "ready"
                       ? <iframe title={`cut-${o.orderId}`} src={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(o.orderId)}`} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />

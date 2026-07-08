@@ -577,6 +577,34 @@
 .bkarrive { border: 1px solid rgba(217, 164, 65, .4); background: rgba(217, 164, 65, .07); color: var(--bk-gold); border-radius: 10px; padding: 9px 12px; font-family: var(--mono); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
 .bkarrive button { margin-left: auto; background: none; border: 0; color: var(--bk-gold); cursor: pointer; font-size: 11px; }
 
+/* the composer's lane switch: who films it */
+.bklane { display: inline-flex; gap: 2px; background: var(--bk-bg-2); border: 1px solid var(--bk-line); border-radius: 99px; padding: 3px; margin-left: 6px; }
+.bklane button { background: none; border: 0; color: var(--bk-dim); font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 99px; cursor: pointer; white-space: nowrap; }
+.bklane button.on { color: var(--bk-ink); background: var(--bk-card-2); }
+.bklane button[disabled] { opacity: .4; cursor: default; }
+@media (max-width: 560px) { .bklane { display: none; } }
+
+/* ================= the premiere lounge skeleton ================= */
+.loungeskel { position: relative; height: 100%; padding: 0 clamp(24px, 8vw, 90px); display: flex; flex-direction: column; overflow: hidden; }
+.loungeskel i { display: block; border-radius: 6px; background: linear-gradient(90deg, rgba(244,239,230,.06) 25%, rgba(244,239,230,.13) 50%, rgba(244,239,230,.06) 75%); background-size: 200% 100%; animation: bkshimmer 1.4s linear infinite; }
+.ls-bar { display: flex; align-items: center; gap: 8px; padding: 18px 0; }
+.ls-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(244,239,230,.12); }
+.ls-line { height: 12px; }
+.ls-kicker { height: 9px; margin-bottom: 22px; }
+.ls-title { height: clamp(34px, 6vw, 60px); margin-bottom: 14px; border-radius: 10px; }
+.ls-hero { margin-top: 8vh; }
+.ls-hero .ls-line { margin-top: 16px; }
+.ls-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 7vh; }
+.ls-strip i { aspect-ratio: 3/4; border-radius: 10px; }
+.ls-strip i:nth-child(2) { animation-delay: .15s; }
+.ls-strip i:nth-child(3) { animation-delay: .3s; }
+.ls-strip i:nth-child(4) { animation-delay: .45s; }
+.ls-rows { margin-top: 6vh; display: grid; gap: 14px; padding-bottom: 40px; }
+.w18 { width: 18%; } .w30 { width: 30%; } .w34 { width: 34%; } .w42 { width: 42%; } .w60 { width: 60%; } .w66 { width: 66%; } .w72 { width: 72%; } .w80 { width: 80%; }
+.ls-glow { position: absolute; inset: -20%; pointer-events: none; background: radial-gradient(40% 34% at 30% 20%, rgba(200,16,46,.10), transparent 65%), radial-gradient(36% 30% at 75% 60%, rgba(217,164,65,.09), transparent 65%); animation: lsdrift 9s ease-in-out infinite alternate; }
+@keyframes lsdrift { to { transform: translate3d(3%, 4%, 0) scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { .loungeskel i { animation: none; } .ls-glow { animation: none; } }
+
 /* ================= responsive care ================= */
 @media (max-width: 1020px) {
   .bkside { display: none; }
