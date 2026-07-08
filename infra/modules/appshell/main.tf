@@ -2,6 +2,22 @@
 # Separate distribution from client sites: different cache policy, different blast radius.
 variable "name_prefix" { type = string }
 variable "account_id" { type = string }
+# The console + public landing live at the APEX (and www): the unified SPA
+# serves the cinematic marketing landing to logged-out visitors, so the bare
+# domain belongs to this distribution. Client films keep *.{domain} on the
+# sites distribution; explicit aliases here win over that wildcard.
+variable "enable_custom_domain" {
+  type    = bool
+  default = false
+}
+variable "domain_aliases" {
+  type    = list(string)
+  default = [] # e.g. ["cinefolio.dev", "www.cinefolio.dev"]
+}
+variable "acm_certificate_arn" {
+  type    = string
+  default = "" # the sites wildcard cert covers apex (SAN) and www (wildcard)
+}
 variable "tags" {
   type    = map(string)
   default = {}
@@ -48,6 +64,7 @@ resource "aws_cloudfront_distribution" "app" {
   comment             = "${var.name_prefix} app shell (SPA)"
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
+  aliases             = var.enable_custom_domain ? var.domain_aliases : []
 
   origin {
     origin_id                = "app-s3"
@@ -81,8 +98,19 @@ resource "aws_cloudfront_distribution" "app" {
   restrictions {
     geo_restriction { restriction_type = "none" }
   }
-  viewer_certificate {
-    cloudfront_default_certificate = true
+  dynamic "viewer_certificate" {
+    for_each = var.enable_custom_domain ? [1] : []
+    content {
+      acm_certificate_arn      = var.acm_certificate_arn
+      ssl_support_method       = "sni-only"
+      minimum_protocol_version = "TLSv1.2_2021"
+    }
+  }
+  dynamic "viewer_certificate" {
+    for_each = var.enable_custom_domain ? [] : [1]
+    content {
+      cloudfront_default_certificate = true
+    }
   }
   tags = var.tags
 }
