@@ -846,6 +846,15 @@ test("floor: stats aggregate people, films, orders, waitlist, notes, and traffic
   assert.equal(body.traffic.views30, 2);
   assert.equal(body.traffic.daily.length, 30);
   assert.equal(body.traffic.top[0].page, "s/film-one");
+  // growth curves bucket by day over the same 30-day window
+  assert.equal(body.signups.daily.length, 30);
+  assert.equal(body.signups.daily.at(-1).count, 2, "both accounts signed up today");
+  assert.equal(body.premieres.daily.at(-1).count, 1, "one film premiered today");
+  assert.equal(body.ordersTrend.daily.at(-1).count, 1, "one order placed today");
+  // the overview leads with the freshest people and films, links included
+  assert.equal(body.recent.users.length, 2);
+  assert.equal(body.recent.films.length, 2);
+  assert.ok(body.recent.films[0].url.startsWith("https://"), "recent films carry their live address");
 });
 
 test("floor: the films ledger lists every site with owner email and live address", async () => {
@@ -856,6 +865,9 @@ test("floor: the films ledger lists every site with owner email and live address
   const s1 = parse(await h(ev("POST /sites", { claims: "own1", body: { slug: "ledger-one", title: "Ledger One" } })));
   await h(ev("POST /sites", { claims: "own2", body: { slug: "ledger-two", title: "Ledger Two" } })); // owner without profile row
   await h(ev("POST /sites/{id}/publish", { claims: "own1", path: { id: s1.body.site.siteId }, body: { html: "<!doctype html><html><body>x</body></html>" } }));
+  // the audience beacon fires twice on ledger-one
+  await h(ev("POST /hit", { body: { page: "s/ledger-one" } }));
+  await h(ev("POST /hit", { body: { page: "s/ledger-one" } }));
 
   assert.equal(parse(await h(ev("GET /admin/sites", { claims: "own1" }))).code, 403);
   const { body } = parse(await h(ev("GET /admin/sites", { claims: "boss", groups: ["admin"] })));
@@ -864,8 +876,10 @@ test("floor: the films ledger lists every site with owner email and live address
   assert.equal(one.ownerEmail, "own1@x.io", "owner email joined from the profile row");
   assert.equal(one.status, "live");
   assert.equal(one.url, "https://ledger-one.cinefolio.dev/");
+  assert.equal(one.views30, 2, "per-film 30-day audience joined from the hit counters");
   const two = body.sites.find((s) => s.slug === "ledger-two");
   assert.equal(two.ownerEmail, null, "no profile row degrades to null, never throws");
+  assert.equal(two.views30, 0, "no views reads as zero, never undefined");
 });
 
 test("floor: people directory and visitor inbox read for admins only", async () => {
