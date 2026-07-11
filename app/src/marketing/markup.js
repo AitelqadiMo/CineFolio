@@ -222,7 +222,7 @@ export const LANDING_HTML = `
           <div class="qa"><b>How fast is delivery?</b><p>Typically about twenty minutes from resume to live premiere; intricate cuts can take longer. You watch the whole production live from the Premiere Lounge.</p></div>
           <div class="qa"><b>Will mine look like the reels on the home page?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike: that's the whole point.</p></div>
           <div class="qa"><b>Can I try it before writing in?</b><p>Yes. Your first three AI films are included with every account, no card. Most questions answer themselves after a premiere. <a href="#" data-enter style="color:var(--red);font-weight:600">Enter the Studio →</a></p></div>
-          <div class="qa"><b>The studio inbox</b><p><a href="mailto:aitelqadi22@gmail.com" style="color:var(--red);font-weight:600">Write to us</a>; a human reads everything.</p></div>
+          <div class="qa"><b>The studio inbox</b><p><a href="mailto:info@cinefolio.dev" style="color:var(--red);font-weight:600">Write to us</a>; a human reads everything.</p></div>
         </div>
       </div>
     </div>
