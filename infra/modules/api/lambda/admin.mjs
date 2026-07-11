@@ -57,6 +57,18 @@ export async function stats(event, ctx) {
   }
   const days = [...Array(30)].map((_, i) => new Date(Date.now() - (29 - i) * 86400000).toISOString().slice(0, 10));
 
+  // growth curves: one row per event, bucketed by day over the same window
+  const seriesOf = (items, dateOf) => {
+    const m = {};
+    for (const it of items) {
+      const d = String(dateOf(it) || "").slice(0, 10);
+      if (d && d >= since) m[d] = (m[d] || 0) + 1;
+    }
+    return days.map((date) => ({ date, count: m[date] || 0 }));
+  };
+  const newest = [...users].sort(byNewest);
+  const freshFilms = [...sites].sort(byNewest);
+
   return ok({
     ok: true,
     users: {
@@ -78,6 +90,15 @@ export async function stats(event, ctx) {
       top: Object.entries(pages).map(([page, count]) => ({ page, count }))
         .sort((a, b) => b.count - a.count).slice(0, 8),
     },
+    signups: { daily: seriesOf(users, (u) => u.createdAt) },
+    premieres: { daily: seriesOf(sites.filter((s) => s.publishedAt), (s) => s.publishedAt) },
+    ordersTrend: { daily: seriesOf(orderCols.flat(), (o) => o.createdAt) },
+    recent: {
+      users: newest.slice(0, 6).map((u) => ({ email: u.email || null, name: u.name || null, at: u.createdAt || null })),
+      films: freshFilms.slice(0, 6).map((s) => ({
+        slug: s.slug, title: s.title || s.slug, status: s.status, at: s.publishedAt || s.createdAt || null, url: previewUrl(ctx, s.slug),
+      })),
+    },
   });
 }
 
@@ -87,10 +108,22 @@ export async function stats(event, ctx) {
 export async function sites(event, ctx) {
   const denied = deny(event);
   if (denied) return denied;
-  const rows = (await scanAll(ctx, "site")).sort(byNewest);
+  const [rows0, hits] = await Promise.all([
+    scanAll(ctx, "site"),
+    ctx.ddb.query({ IndexName: "GSI1", KeyConditionExpression: "GSI1PK = :p", ExpressionAttributeValues: { ":p": "HIT" } }),
+  ]);
+  const rows = rows0.sort(byNewest);
   const owners = [...new Set(rows.map((s) => s.owner).filter(Boolean))];
   const profiles = await Promise.all(owners.map((sub) => ctx.ddb.get({ PK: `USER#${sub}`, SK: "PROFILE" })));
   const emailOf = Object.fromEntries(owners.map((sub, i) => [sub, profiles[i]?.email || null]));
+  // 30-day audience per film: the publish-time beacon posts page "s/{slug}"
+  const since = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const views = {};
+  for (const h of hits) {
+    const date = String(h.PK || "").slice(4);
+    if (date < since) continue;
+    views[h.SK] = (views[h.SK] || 0) + (h.count || 0);
+  }
   return ok({
     ok: true,
     total: rows.length,
@@ -101,6 +134,7 @@ export async function sites(event, ctx) {
       pointerMode: s.pointerMode || null, orderId: s.orderId || null,
       customDomain: s.customDomain || null, audienceOf: s.audienceOf || null,
       createdAt: s.createdAt || null, publishedAt: s.publishedAt || null,
+      views30: views[`s/${s.slug}`] || 0,
       url: previewUrl(ctx, s.slug),
     })),
   });
