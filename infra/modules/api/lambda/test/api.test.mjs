@@ -751,3 +751,53 @@ test("contact: works without a sender, survives a mail outage, honeypot stays si
   assert.equal(r3.code, 200);
   assert.equal(bot.ses.sent.length, 0); // honeypot never reaches the inbox
 });
+
+test("emails: every builder ships a subject, branded html, and a plaintext part", async () => {
+  const { orderReceivedEmail, premiereReadyEmail, revisionReceivedEmail, revisionPremiereEmail, needsAttentionEmail, firstPremiereEmail } = await import("../email.mjs");
+  const order = { orderId: "abc12345-0000", name: "Nadia Benali", email: "n@x.io" };
+  const app = "https://app.test";
+  const builds = [
+    orderReceivedEmail(order, app), premiereReadyEmail(order, app), revisionReceivedEmail(order, app),
+    revisionPremiereEmail(order, app), needsAttentionEmail(order, app),
+    firstPremiereEmail({ slug: "nadia", title: "Nadia in Motion", url: "https://nadia.cinefolio.dev/" }, app),
+  ];
+  for (const b of builds) {
+    assert.ok(b.subject.length > 4, "subject present");
+    assert.match(b.html, /^<!DOCTYPE html>/);
+    assert.ok(b.text && !b.text.includes("<"), "plaintext part carries no markup");
+  }
+  // order emails deep-link to the lounge; the premiere kit carries the live address in BOTH parts
+  assert.ok(builds[1].html.includes("https://app.test/order/abc12345-0000"), "cut-ready email links the lounge");
+  assert.ok(builds[5].html.includes("https://nadia.cinefolio.dev/"));
+  assert.ok(builds[5].text.includes("https://nadia.cinefolio.dev/"), "live url survives into the text part");
+  // a revision landing must not read like a first delivery
+  assert.notEqual(builds[3].subject, builds[1].subject);
+  // user-supplied values are escaped in the html (the text part is text/plain, verbatim is correct there)
+  const hostile = orderReceivedEmail({ orderId: "x1", name: "Eve <script>alert(1)</script>", email: "e@x.io" }, app);
+  assert.ok(hostile.html.includes("Eve &lt;script&gt;"), "name is escaped in html");
+  assert.ok(!hostile.html.includes("<script>alert"), "no raw script in html");
+});
+
+test("publish: the first premiere mails the share kit once; staged and later releases stay silent", async () => {
+  const ctx = fakeCtx();
+  ctx.config.sesFrom = "info@cinefolio.dev";
+  ctx.config.sitesDomain = "cinefolio.dev";
+  const h = makeHandler(async () => ctx);
+  const created = parse(await h(ev("POST /sites", { claims: "prem", body: { slug: "premiere-kit", title: "Premiere Kit" } })));
+  const id = created.body.site.siteId;
+  // a staged release is not a premiere
+  await h(ev("POST /sites/{id}/publish", { claims: "prem", path: { id }, body: { html: "<!doctype html><html><body>draft</body></html>", stage: true } }));
+  assert.equal(ctx.ses.sent.length, 0, "staging stays silent");
+  // the first go-live mails the kit to the owner's verified email
+  const live = parse(await h(ev("POST /sites/{id}/publish", { claims: "prem", path: { id }, body: { html: "<!doctype html><html><body>v1</body></html>" } })));
+  assert.equal(live.code, 200);
+  assert.equal(ctx.ses.sent.length, 1);
+  const m = ctx.ses.sent[0];
+  assert.equal(m.to, "prem@x.io");
+  assert.ok(m.subject.includes("Premiere Kit"));
+  assert.ok(m.html.includes("https://premiere-kit.cinefolio.dev/"), "share kit carries the live address");
+  assert.ok(m.text.includes("https://premiere-kit.cinefolio.dev/"), "text part carries the live address");
+  // the second release is business as usual: no email
+  await h(ev("POST /sites/{id}/publish", { claims: "prem", path: { id }, body: { html: "<!doctype html><html><body>v2</body></html>" } }));
+  assert.equal(ctx.ses.sent.length, 1, "only the FIRST premiere mails");
+});
