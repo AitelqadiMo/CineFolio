@@ -21,6 +21,11 @@ variable "app_origin" {
   type    = string
   default = ""
 }
+variable "ses_config_set" {
+  type        = string
+  default     = ""
+  description = "SES configuration set for bounce/complaint tracking; empty sends without one."
+}
 variable "log_retention_days" {
   type    = number
   default = 14
@@ -58,10 +63,21 @@ resource "aws_sqs_queue" "orders" {
 }
 
 # ---------- pipeline worker Lambda ----------
+# The bundle = pipeline.mjs + the SHARED email template library. email.mjs is
+# sourced from the api module at plan time, so there is exactly ONE copy of
+# every customer email in the repo and the two lambdas can never drift apart.
 data "archive_file" "worker" {
   type        = "zip"
-  source_dir  = "${path.module}/lambda"
   output_path = "${path.module}/.build/pipeline.zip"
+
+  source {
+    content  = file("${path.module}/lambda/pipeline.mjs")
+    filename = "pipeline.mjs"
+  }
+  source {
+    content  = file("${path.module}/../api/lambda/email.mjs")
+    filename = "email.mjs"
+  }
 }
 
 data "aws_iam_policy_document" "lambda_assume" {
@@ -148,6 +164,7 @@ resource "aws_lambda_function" "worker" {
       ALARM_TOPIC_ARN = var.alarm_topic_arn
       SES_FROM        = var.ses_from
       APP_ORIGIN      = var.app_origin
+      SES_CONFIG_SET  = var.ses_config_set
     }
   }
   depends_on = [aws_cloudwatch_log_group.worker]

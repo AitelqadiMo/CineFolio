@@ -109,7 +109,7 @@ export async function contact(event, ctx) {
           <p style="white-space:pre-wrap;border-left:3px solid #C8102E;padding-left:12px">${escHtml(message)}</p>
           <p style="font-size:11px;color:#888">Ref ${id} · reply to this email to answer the visitor directly.</p>
         </div>`,
-        email
+        { replyTo: email }
       );
       mailed = true;
     } catch (e) {
