@@ -60,6 +60,7 @@ async function buildCtx() {
       kvsArn: process.env.KVS_ARN,
       distributionId: process.env.DISTRIBUTION_ID,
       cdnDomain: process.env.CDN_DOMAIN,
+      sitesDomain: process.env.SITES_DOMAIN || "",
       ordersQueueUrl: process.env.ORDERS_QUEUE_URL,
       sesFrom: process.env.SES_FROM || "",
       appOrigin: (process.env.APP_ORIGIN || "").replace(/\/$/, ""),

@@ -1,7 +1,7 @@
-// effects.js — the landing page's full cinematic engine, ported verbatim from
+// effects.js: the landing page's full cinematic engine, ported verbatim from
 // index.html and adapted for (1) React mount/unmount and (2) the AWS API.
 // Libraries (gsap, ScrollTrigger, Lenis, THREE) load from CDN in index.html;
-// every block degrades gracefully if one is missing — exactly like the original.
+// every block degrades gracefully if one is missing, exactly like the original.
 import { CONFIG } from "../config.js";
 
 const API = CONFIG.apiBase;
@@ -63,7 +63,7 @@ export function initLanding(root, opts = {}) {
       el.addEventListener("mouseenter", () => { cur.classList.add("grow"); $("#cursorLbl").textContent = el.dataset.cursor || "GO"; });
       el.addEventListener("mouseleave", () => cur.classList.remove("grow"));
     });
-    grow(".cutp"); grow(".btn"); grow(".joinbtn"); grow(".tabs button"); grow(".lockbtn");
+    grow(".cutp"); grow(".btn"); grow(".joinbtn"); grow(".tabs button");
     $$(".cutp").forEach((el) => (el.dataset.cursor = "PLAY"));
     $$(".magnetic").forEach((el) => {
       el.addEventListener("mousemove", (e) => {
@@ -133,10 +133,20 @@ export function initLanding(root, opts = {}) {
     const walk = (node) => {
       [...node.childNodes].forEach((n) => {
         if (n.nodeType === 3) {
+          // chars animate individually, but each WORD is wrapped whole so a
+          // line can never break mid-word (the PORTFOLIOS PEOPL/E bug)
           const frag = document.createDocumentFragment();
-          n.textContent.split("").forEach((ch) => {
-            if (ch === " ") { frag.appendChild(document.createTextNode(" ")); return; }
-            const s = document.createElement("span"); s.className = "ch"; s.textContent = ch; frag.appendChild(s);
+          n.textContent.split(/(\s+)/).forEach((token) => {
+            if (!token) return;
+            if (/^\s+$/.test(token)) { frag.appendChild(document.createTextNode(" ")); return; }
+            const w = document.createElement("span");
+            w.className = "chword";
+            w.style.display = "inline-block";
+            w.style.whiteSpace = "nowrap";
+            token.split("").forEach((ch) => {
+              const s = document.createElement("span"); s.className = "ch"; s.textContent = ch; w.appendChild(s);
+            });
+            frag.appendChild(w);
           });
           node.replaceChild(frag, n);
         } else if (n.nodeType === 1 && n.tagName !== "BR" && !n.classList.contains("serif")) { walk(n); }
@@ -151,7 +161,7 @@ export function initLanding(root, opts = {}) {
   })();
 
   /* ================= VELOCITY MARQUEE + PINNED REEL ================= */
-  const mqItems = [["NOW CASTING", "r"], ["YOUR COLORS, YOUR LIGHTING", "g"], ["IDENTITY-LOCKED AI FILM", "gd"], ["INTERACTIVE TERMINAL", "r"], ["VERIFIED CREDENTIALS", "g"], ["YOUR OWN DOMAIN", "gd"], ["PREMIERE IN 24H", "r"]];
+  const mqItems = [["NOW CASTING", "r"], ["YOUR COLORS, YOUR LIGHTING", "g"], ["IDENTITY-LOCKED AI FILM", "gd"], ["INTERACTIVE TERMINAL", "r"], ["VERIFIED CREDENTIALS", "g"], ["YOURNAME.CINEFOLIO.DEV", "gd"], ["PREMIERE IN MINUTES", "r"]];
   $("#mqTrack").innerHTML = mqItems.map(([s, c]) => `<span class="${c}">${s}</span><span>✦</span>`).join("").repeat(3);
   if (!reduceMotion && typeof gsap !== "undefined" && typeof ScrollTrigger !== "undefined") {
     gsap.registerPlugin(ScrollTrigger);
@@ -192,36 +202,32 @@ export function initLanding(root, opts = {}) {
   tabs.forEach((b) => b.addEventListener("click", () => go(b.dataset.tab)));
   $$("[data-goto]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); go(el.dataset.goto); }));
   $("[data-nav]").addEventListener("click", (e) => { e.preventDefault(); go("home"); });
-  const route = () => { const h = location.hash.replace("#/", ""); go(["services", "studio", "contact"].includes(h) ? h : "home", false); };
+  const route = () => { const h = location.hash.replace("#/", ""); go(["services", "contact"].includes(h) ? h : "home", false); };
   on(window, "hashchange", route);
   route();
 
   /* ================= enter-the-studio (auth) + waitlist shortcuts ================= */
   function toWaitlist() { go("home"); setTimeout(() => { const el = $("#waitlist"); lenis ? lenis.scrollTo(el) : el.scrollIntoView({ behavior: "smooth" }); }, 120); }
   $("#joinNav").addEventListener("click", () => opts.onEnter && opts.onEnter());
-  $("#unlockLink").addEventListener("click", (e) => { e.preventDefault(); toWaitlist(); });
-  const jp = $("#joinFromPack"); if (jp) jp.addEventListener("click", toWaitlist);
-
-  /* ================= unlock modal ================= */
-  const modal = $("#modal");
-  $$(".lockbtn").forEach((b) => b.addEventListener("click", () => {
-    $("#modalTitle").textContent = b.dataset.feature + " — founding access";
-    modal.classList.add("on");
-  }));
-  $("#modalX").addEventListener("click", () => modal.classList.remove("on"));
-  modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("on"); });
-  $("#modalJoin").addEventListener("click", () => { modal.classList.remove("on"); toWaitlist(); });
+  ["#heroEnter", "#wlEnter"].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.addEventListener("click", () => opts.onEnter && opts.onEnter());
+  });
+  const jp = $("#joinFromPack"); if (jp) jp.addEventListener("click", () => (opts.onEnter ? opts.onEnter() : toWaitlist()));
+  // any element marked data-enter is a sign-up door (reel end card, Free Cuts
+  // pack, contact nudge); the waitlist section stays the no-auth fallback
+  $$("[data-enter]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); if (opts.onEnter) opts.onEnter(); else toWaitlist(); }));
 
   /* ================= own-analytics (AWS API) ================= */
   function hit(page) { try { fetch(`${API}/hit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page }) }).catch(() => {}); } catch (e) { /* noop */ } }
   hit(location.hash.replace("#/", "") || "home");
 
-  /* ================= waitlist (AWS API) ================= */
+  /* ================= studio notes count (AWS API) =================
+     bentoCount is the REAL ADDRESSES card now; it keeps its static
+     *.cinefolio.dev text and no counter may overwrite it. */
   fetch(`${API}/waitlist/count`).then((r) => r.json()).then(({ count }) => {
-    if (count && count > 4) $("#wlCount").textContent = count + " ON THE GUEST LIST · FOUNDING PRICING · NO SPAM";
-    const bc = $("#bentoCount");
-    if (bc) bc.textContent = String(Math.max(count || 0, 1));
-  }).catch(() => { const bc = $("#bentoCount"); if (bc) bc.textContent = "∞"; });
+    if (count && count > 4) $("#wlCount").textContent = count + " ON THE STUDIO LIST · THREE FREE FILMS · NO SPAM";
+  }).catch(() => { /* the note keeps its default line */ });
   // bento pointer-flip tick: the release number advances like a live deploy
   const flipN = $("#flipN");
   if (flipN && !reduceMotion) { let fn = 3; timers.push(setInterval(() => { fn = fn >= 9 ? 2 : fn + 1; flipN.textContent = fn; }, 4000)); }
@@ -234,90 +240,8 @@ export function initLanding(root, opts = {}) {
       const j = await r.json();
       if (j.ok) { out.textContent = j.already ? "Already on the list. We got you." : "You're in. We'll be in touch."; $("#wl").style.display = "none"; }
       else { out.textContent = "That email does not look right."; btn.disabled = false; btn.textContent = "Join"; }
-    } catch { out.textContent = "Network hiccup — try again."; btn.disabled = false; btn.textContent = "Join"; }
+    } catch { out.textContent = "Network hiccup, try again."; btn.disabled = false; btn.textContent = "Join"; }
   });
-
-  /* ================= studio demo (AWS API) ================= */
-  const SAMPLE = `Ada Kovacs
-Senior Product Designer, Budapest
-2021-2026 Lead Product Designer at Fictive Labs: design systems in Figma, UX research, motion design in After Effects, shipped 4 major product launches
-2018-2021 UI Designer at Craftworks: branding, illustration, Photoshop, prototyping
-Skills: Figma, UX, UI, product design, branding, photography, analytics
-Awards: Design Sprint winner 2024`;
-  $("#sampleBtn").addEventListener("click", () => {
-    $("#stCV").value = SAMPLE;
-    if (!$("#stName").value) $("#stName").value = "Ada Kovacs";
-    if (!$("#stRole").value || $("#stRole").value === "engineer") $("#stRole").value = "designer";
-    $("#stMsg").textContent = "Sample loaded. Add your email and roll camera.";
-  });
-  $("#cvFileBtn").addEventListener("click", () => $("#cvFile").click());
-  $("#cvFile").addEventListener("change", (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => { $("#stCV").value = String(rd.result).slice(0, 8000); $("#stMsg").textContent = "CV text loaded."; };
-    rd.readAsText(f);
-  });
-  let photoData = null;
-  const drop = $("#drop");
-  $("#stPhoto").addEventListener("change", (e) => {
-    const f = e.target.files[0]; if (!f) return;
-    const rd = new FileReader();
-    rd.onload = () => { photoData = rd.result; drop.classList.add("has"); drop.childNodes[0].textContent = "PHOTO LOADED ✓ — CLICK TO CHANGE"; };
-    rd.readAsDataURL(f);
-  });
-  $("#stGo").addEventListener("click", async () => {
-    const btn = $("#stGo"), msg = $("#stMsg");
-    const email = $("#stEmail").value, cv = $("#stCV").value;
-    if (!/^\S+@\S+\.\S{2,}$/.test(email)) { msg.textContent = "Add a valid email to roll camera."; return; }
-    if (!cv || cv.trim().length < 40) { msg.textContent = "Paste a bit more CV text (a few lines)."; return; }
-    btn.disabled = true; btn.textContent = "ROLLING…"; msg.textContent = "";
-    try {
-      const r = await fetch(`${API}/studio/generate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, name: $("#stName").value, role: $("#stRole").value, cvText: cv, company: $("#stHp").value }) });
-      const j = await r.json();
-      if (j.ok && j.html) {
-        const photo = photoData || "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="#132550"/><circle cx="50" cy="38" r="16" fill="#C8102E"/><rect x="26" y="60" width="48" height="30" rx="14" fill="#D9A441"/></svg>');
-        const html = j.html.split("__PHOTO__").join(photo);
-        const scr = $("#screen"); scr.innerHTML = "";
-        const fr = document.createElement("iframe"); fr.setAttribute("sandbox", ""); fr.srcdoc = html; scr.appendChild(fr);
-        // demo -> signup handoff: remember this order so the Studio Console can
-        // adopt it right after the user creates an account ("Premiere this").
-        try { localStorage.setItem("cf.pendingOrder", JSON.stringify({ orderId: j.orderId, name: $("#stName").value, email })); } catch (e2) { /* private mode */ }
-        // and carry the casting sheet itself: after signup The Set opens with
-        // their work already in place (never clobbering an existing draft)
-        try {
-          if (!localStorage.getItem("cf.studioDraft")) {
-            localStorage.setItem("cf.studioDraft", JSON.stringify({ cvRaw: cv, q: { name: $("#stName").value, email, headline: "", website: "", focus: "" }, savedAt: new Date().toISOString() }));
-          }
-        } catch (e3) { /* private mode */ }
-        if (j.production && j.orderId) {
-          msg.innerHTML = "🎬 Rough cut on screen. <b>Claim this film:</b> premiere it live on your own URL in about a minute. <a href='/login' style='color:var(--red);font-weight:600'>Claim it in the Studio →</a>";
-          pollCut(j.orderId, fr, msg, photo);
-        } else {
-          msg.innerHTML = "Rough cut rendered. <a href='/login' style='color:var(--red);font-weight:600'>Enter the Studio</a> to premiere it on a real URL.";
-        }
-      } else { msg.textContent = "Something went sideways — try again."; }
-    } catch { msg.textContent = "Network hiccup — try again."; }
-    btn.disabled = false; btn.textContent = "Roll camera";
-  });
-  function pollCut(orderId, fr, msg, photo) {
-    let tries = 0;
-    const t = setInterval(async () => {
-      tries++;
-      if (tries > 45) { clearInterval(t); msg.textContent = "Rough cut on screen. The director's cut will be emailed when it wraps."; return; }
-      try {
-        const s = await (await fetch(`${API}/studio/status?orderId=${orderId}`)).json();
-        if (s.status === "ready") {
-          clearInterval(t);
-          const html = await (await fetch(`${API}/studio/cut?orderId=${orderId}`)).text();
-          if (html && html.trimStart().toLowerCase().startsWith("<!doctype")) {
-            fr.srcdoc = html.split("__PHOTO__").join(photo);
-            msg.textContent = "🎬 DIRECTOR'S CUT ARRIVED — built by the production agent, just for you.";
-          }
-        }
-      } catch (e) { /* transient */ }
-    }, 8000);
-    timers.push(t);
-  }
 
   /* ================= contact (AWS API) ================= */
   $("#ctGo").addEventListener("click", async () => {
@@ -328,7 +252,7 @@ Awards: Design Sprint winner 2024`;
       const j = await r.json();
       out.textContent = j.ok ? "Sent. The studio will get back to you." : "Check the email and message, then retry.";
       if (j.ok) $("#ctMsg").value = "";
-    } catch { out.textContent = "Network hiccup — try again."; }
+    } catch { out.textContent = "Network hiccup, try again."; }
     btn.disabled = false; btn.textContent = "Send";
   });
 

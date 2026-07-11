@@ -23,3 +23,9 @@ app_origins = [
 #            *  ->  d3ssuqn0z03akv.cloudfront.net   (DNS only)
 enable_custom_domain = true # cert ISSUED and *.cinefolio.dev live since Jul 8 2026
 sites_domain         = "cinefolio.dev"
+
+# Studio inbox: receives via Cloudflare Email Routing (info@ -> founder's
+# mailbox), sends via SES. Setting this creates the SES identity above and
+# turns on contact-form email notifications.
+ses_from = "info@cinefolio.dev"
+

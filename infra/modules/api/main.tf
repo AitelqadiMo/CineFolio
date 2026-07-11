@@ -15,6 +15,10 @@ variable "orders_queue_arn" { type = string }
 variable "kvs_arn" { type = string }
 variable "distribution_id" { type = string }
 variable "cdn_domain" { type = string }
+variable "sites_domain" {
+  type    = string
+  default = "" # when set (custom domain live), previewUrl becomes https://{slug}.{sites_domain}/
+}
 variable "ses_from" {
   type        = string
   default     = ""
@@ -216,6 +220,7 @@ resource "aws_lambda_function" "api" {
       KVS_ARN          = var.kvs_arn
       DISTRIBUTION_ID  = var.distribution_id
       CDN_DOMAIN       = var.cdn_domain
+      SITES_DOMAIN     = var.sites_domain
       ORDERS_QUEUE_URL = var.orders_queue_url
       SSM_PREFIX       = local.ssm_prefix
       SES_FROM         = var.ses_from
