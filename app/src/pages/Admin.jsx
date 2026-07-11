@@ -38,15 +38,15 @@ function StatusDot({ status }) {
   );
 }
 
-// 30-day audience bars, no dependencies: the data is the decoration.
-function TrafficBars({ daily }) {
+// 30-day bars, no dependencies: the data is the decoration.
+function TrafficBars({ daily, color = "var(--navy)", unit = "view" }) {
   const max = Math.max(1, ...daily.map((d) => d.count));
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 84, padding: "10px 2px 0" }}>
       {daily.map((d) => (
-        <div key={d.date} title={`${d.date} · ${d.count} view${d.count === 1 ? "" : "s"}`}
+        <div key={d.date} title={`${d.date} · ${d.count} ${unit}${d.count === 1 ? "" : "s"}`}
           style={{ flex: 1, minWidth: 4, height: `${Math.max(3, Math.round((d.count / max) * 100))}%`,
-            background: d.count ? "var(--navy)" : "var(--line)", borderRadius: "2px 2px 0 0" }} />
+            background: d.count ? color : "var(--line)", borderRadius: "2px 2px 0 0" }} />
       ))}
     </div>
   );
@@ -172,6 +172,44 @@ export default function Admin() {
               </div>
             </div>
           </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 22, alignItems: "start", marginTop: 22 }}>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+              <div style={mono9}>Accounts created · last 30 days</div>
+              <TrafficBars daily={ov.signups?.daily || []} color="var(--gold-g)" unit="sign-up" />
+            </div>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+              <div style={mono9}>Premieres · last 30 days</div>
+              <TrafficBars daily={ov.premieres?.daily || []} color="var(--green)" unit="premiere" />
+            </div>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+              <div style={mono9}>Orders placed · last 30 days</div>
+              <TrafficBars daily={ov.ordersTrend?.daily || []} color="var(--red-2)" unit="order" />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 22, alignItems: "start", marginTop: 22 }}>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+              <div style={{ ...mono9, marginBottom: 8 }}>Latest sign-ups</div>
+              {(ov.recent?.users || []).length === 0 && <div style={{ ...mono9, padding: "8px 0" }}>Nobody yet</div>}
+              {(ov.recent?.users || []).map((u, i) => (
+                <div key={u.email || i} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line)", fontFamily: "var(--mono)", fontSize: 11 }}>
+                  <span style={{ color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email || "—"}</span>
+                  <span style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{when(u.at).slice(0, 10)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+              <div style={{ ...mono9, marginBottom: 8 }}>Latest films</div>
+              {(ov.recent?.films || []).length === 0 && <div style={{ ...mono9, padding: "8px 0" }}>No films yet</div>}
+              {(ov.recent?.films || []).map((f) => (
+                <div key={f.slug} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "7px 0", borderTop: "1px solid var(--line)", fontFamily: "var(--mono)", fontSize: 11 }}>
+                  <a href={f.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.slug}</a>
+                  <span style={{ color: f.status === "live" ? "var(--green-lit)" : "var(--dim)", whiteSpace: "nowrap" }}>{f.status === "taken_down" ? "dark" : f.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </>
       ))}
 
@@ -184,13 +222,18 @@ export default function Admin() {
           {films.sites.length === 0 && <div style={{ ...mono9, padding: 22 }}>No films yet</div>}
           {films.sites.map((s) => (
             <div key={s.siteId} style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", alignItems: "center", padding: "13px 18px", borderTop: "1px solid var(--line)" }}>
-              <div style={{ flex: "1 1 230px", minWidth: 0 }}>
+              <div style={{ flex: "1 1 250px", minWidth: 0 }}>
                 <div style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 15, color: "var(--navy)" }}>{s.title || s.slug}</div>
                 <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.slug} · {s.ownerEmail || s.owner || "unknown owner"}{s.orderId ? " · AI cut" : ""}{s.audienceOf ? " · audience version" : ""}
+                  {s.ownerEmail || s.owner || "unknown owner"}{s.orderId ? " · AI cut" : ""}{s.audienceOf ? " · audience version" : ""}
                 </div>
+                <a href={s.url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
+                  style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--navy)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: "100%" }}>
+                  {s.url}
+                </a>
               </div>
               <StatusDot status={s.status} />
+              <span style={{ ...mono9, color: s.views30 ? "var(--navy)" : undefined }}>{s.views30} view{s.views30 === 1 ? "" : "s"} · 30d</span>
               <span style={{ ...mono9, color: "var(--navy)" }}>R{s.releases}{s.liveRelease ? ` · live ${s.liveRelease}` : ""}{s.stagedRelease ? ` · staged ${s.stagedRelease}` : ""}</span>
               <span style={mono9}>{when(s.publishedAt || s.createdAt)}</span>
               <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
