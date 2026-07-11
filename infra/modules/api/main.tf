@@ -134,7 +134,10 @@ data "aws_iam_policy_document" "api" {
     sid = "Data"
     actions = [
       "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-      "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem"
+      "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
+      # the Floor's admin listings (stats/sites/users) scan by item type;
+      # without this every scan is AccessDenied -> 500 on three desks.
+      "dynamodb:Scan"
     ]
     resources = [var.table_arn, "${var.table_arn}/index/*"]
   }
