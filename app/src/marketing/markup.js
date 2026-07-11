@@ -9,7 +9,6 @@ export const LANDING_HTML = `
   <div class="tabs">
     <button data-tab="home" class="on">Home</button>
     <button data-tab="services">Services</button>
-    <button data-tab="studio">Studio</button>
     <button data-tab="contact">Contact</button>
   </div>
   <button class="joinbtn magnetic" id="joinNav">Enter the Studio</button>
@@ -29,7 +28,7 @@ export const LANDING_HTML = `
         <button class="btn primary magnetic" id="heroEnter">Start free · 3 AI films on us</button>
         <a class="btn ghost magnetic" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live release ↗</a>
       </div>
-      <div class="proof">NO CARD, NO WAITLIST · EVERY CAREER GETS ITS OWN LIGHTING · <a href="#" data-goto="studio">TRY THE DEMO</a></div>
+      <div class="proof">NO CARD, NO WAITLIST · EVERY CAREER GETS ITS OWN LIGHTING · <a href="#" data-goto="services">SEE THE FORMATS</a></div>
     </div>
     <div class="scrollcue">SCROLL ↓</div>
   </header>
@@ -49,7 +48,7 @@ export const LANDING_HTML = `
       <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video><div class="meta"><span class="chip">The Ember Cut</span><span class="num">iv</span></div></div>
       <div class="panel-cta">
         <div class="t">Your world<br>goes here.</div>
-        <button class="btn gold magnetic" data-goto="studio">Start your cut</button>
+        <button class="btn gold magnetic" data-enter>Start your film</button>
       </div>
     </div>
   </div>
@@ -162,12 +161,13 @@ export const LANDING_HTML = `
         <div class="pack">
           <div class="head"><div class="k">FORMAT 01</div><h3>The Free Cuts</h3><div class="price">3 AI films · included with every account</div></div>
           <ul>
-            <li>One identity-locked hero orbit film</li>
-            <li>Single-page cinematic site, kinetic type</li>
-            <li>CV download + social cards</li>
-            <li>Deployed to your domain</li>
+            <li>The AI director films your career as a scroll-story</li>
+            <li>Real generated film sequences in every cut</li>
+            <li>Resume page with a downloadable PDF</li>
+            <li>Premieres at yourname.cinefolio.dev in about 20 minutes</li>
+            <li>Three revision messages to the director per film</li>
           </ul>
-          <div class="foot"><button class="btn magnetic" data-goto="studio">Try a rough cut</button></div>
+          <div class="foot"><button class="btn magnetic" data-enter>Start free</button></div>
         </div>
         <div class="pack star">
           <div class="flag">MOST LOVED</div>
@@ -185,7 +185,7 @@ export const LANDING_HTML = `
         <div class="pack">
           <div class="head"><div class="k">FORMAT 03</div><h3>The Franchise</h3><div class="price">Talk to the studio</div></div>
           <ul>
-            <li>Everything in The Feature</li>
+            <li>Everything in The Director's Cut</li>
             <li>Matching CV redesign (print-grade PDF)</li>
             <li>Social banner kit: LinkedIn, X, OG cards</li>
             <li>One revision shoot per quarter, first year</li>
@@ -198,44 +198,6 @@ export const LANDING_HTML = `
         <div class="qa"><b>Is the AI video really me?</b><p>Yes. Scenes are generated against your photos as identity references and quality-gated for likeness before anything ships.</p></div>
         <div class="qa"><b>Can I pick my style?</b><p>That's the point. Lavender softness, neon edge, golden daylight, ember drama, or something we invent for you. One style per story.</p></div>
         <div class="qa"><b>Who owns the result?</b><p>You do. Your domain, your repo, your film. We keep nothing but the credit line.</p></div>
-      </div>
-    </div>
-  </section>
-</main>
-
-<!-- ============ STUDIO ============ -->
-<main data-page="studio">
-  <section class="light" style="min-height:100vh">
-    <div class="inner-wrap pageheadpad">
-      <div class="scene">The Studio · live demo</div>
-      <h2>Direct your own <span class="serif">rough cut.</span></h2>
-      <div class="studio-grid">
-        <div class="panel">
-          <h3>🎬 Casting sheet</h3>
-          <div class="field"><label>Your email · required</label><input type="email" id="stEmail" placeholder="you@domain.com"></div>
-          <div class="field"><label>Your name</label><input type="text" id="stName" placeholder="Ada Lovelace"></div>
-          <div class="field"><label>Your role</label>
-            <select id="stRole"><option value="engineer">Engineer</option><option value="designer">Designer</option><option value="founder">Founder</option><option value="other">Other</option></select>
-          </div>
-          <div class="field"><label>Headshot · stays in your browser</label>
-            <label class="drop" id="drop">CLICK TO ADD A PHOTO<input type="file" id="stPhoto" accept="image/*"></label>
-          </div>
-          <div class="field"><label>Paste your CV · or <span style="color:var(--red);cursor:pointer;font-weight:600" id="cvFileBtn">upload .txt</span> · or <span style="color:var(--green);cursor:pointer;font-weight:600" id="sampleBtn">use a sample</span></label><textarea id="stCV" placeholder="Paste the text of your CV here. Experience lines with years work best."></textarea><input type="file" id="cvFile" accept=".txt,text/plain" style="display:none"></div>
-          <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="stHp">
-          <button class="btn primary magnetic" id="stGo" style="width:100%;background:var(--red);border-color:var(--red);color:#fff">Roll camera</button>
-          <div class="result" id="stMsg" style="color:var(--green)"></div>
-        </div>
-        <div>
-          <div class="screen" id="screen">
-            <div class="idle" id="idle">THE SCREENING ROOM<br><br>FILL THE CASTING SHEET AND <b>ROLL CAMERA</b>.<br>YOUR ROUGH CUT RENDERS HERE IN SECONDS.<br><br>YOUR PHOTO NEVER LEAVES YOUR BROWSER IN THE DEMO.</div>
-          </div>
-          <div class="actions">
-            <button class="lockbtn" data-feature="Deploy to your domain">DEPLOY TO YOUR DOMAIN 🔒</button>
-            <button class="lockbtn" data-feature="Export the source">EXPORT SOURCE 🔒</button>
-            <button class="lockbtn" data-feature="AI film scenes of you">RENDER AI FILM SCENES 🔒</button>
-          </div>
-          <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING · ENTER THE STUDIO →</a>
-        </div>
       </div>
     </div>
   </section>
@@ -257,8 +219,9 @@ export const LANDING_HTML = `
           <div class="result" id="ctResult" style="color:var(--green)"></div>
         </div>
         <div>
-          <div class="qa"><b>How fast is delivery?</b><p>Typically about twenty minutes from resume to live premiere; intricate cuts can take longer. The Studio rough cut below renders in seconds.</p></div>
-          <div class="qa"><b>Will mine look like these?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike: that's the whole point.</p></div>
+          <div class="qa"><b>How fast is delivery?</b><p>Typically about twenty minutes from resume to live premiere; intricate cuts can take longer. You watch the whole production live from the Premiere Lounge.</p></div>
+          <div class="qa"><b>Will mine look like the reels on the home page?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike: that's the whole point.</p></div>
+          <div class="qa"><b>Can I try it before writing in?</b><p>Yes. Your first three AI films are included with every account, no card. Most questions answer themselves after a premiere. <a href="#" data-enter style="color:var(--red);font-weight:600">Enter the Studio →</a></p></div>
           <div class="qa"><b>The studio inbox</b><p><a href="mailto:aitelqadi22@gmail.com" style="color:var(--red);font-weight:600">Write to us</a>; a human reads everything.</p></div>
         </div>
       </div>
@@ -272,14 +235,4 @@ export const LANDING_HTML = `
   <div class="statusline">STUDIO CLOCK <b id="bpTime">--:--</b> CET · STATUS <b id="bpStatus">OPEN</b> · EST. BUDAPEST</div>
   MADE WITH AI CAMERAS AND TASTE · SOURCE ON <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE RELEASE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · © 2026
 </footer>
-
-<div id="modal" role="dialog" aria-modal="true">
-  <div class="box">
-    <button class="x" id="modalX" aria-label="close">×</button>
-    <div class="k">FOUNDING ACCESS</div>
-    <h3 id="modalTitle">Locked in the demo</h3>
-    <p id="modalText">This is where the full production takes over: the AI director films your scroll-story with real film sequences and premieres it at yourname.cinefolio.dev. Your first three films are free.</p>
-    <button class="btn primary" id="modalJoin" style="width:100%">Enter the Studio</button>
-  </div>
-</div>
 `;
