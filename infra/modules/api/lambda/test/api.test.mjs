@@ -72,7 +72,7 @@ function fakeCtx(overrides = {}) {
     cdn: { invalidations: [], async invalidate(_d, p) { this.invalidations.push(p); } },
     queue: { sent: [], async send(_u, m) { this.sent.push(m); } },
     sfn: { resumed: [], async sendTaskSuccess(t, o) { this.resumed.push([t, o]); } },
-    ses: { sent: [], async send(from, to, subject, html, replyTo) { this.sent.push({ from, to, subject, html, replyTo }); } },
+    ses: { sent: [], async send(from, to, subject, html, opts = {}) { this.sent.push({ from, to, subject, html, replyTo: opts.replyTo, text: opts.text }); } },
     secrets: async () => ({ AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec" }),
     fetchFn: async () => ({ ok: true }),
     config: { appEnv: "test", apiBase: "https://api.test", artifactsBucket: "arts", publishedBucket: "pub", kvsArn: "arn:kvs", distributionId: "DIST", cdnDomain: "cdn.test", ordersQueueUrl: "q" },
