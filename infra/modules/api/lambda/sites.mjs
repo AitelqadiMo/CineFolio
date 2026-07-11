@@ -4,6 +4,7 @@
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
 import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf } from "./lib.mjs";
+import { sendEmail, firstPremiereEmail } from "./email.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -146,6 +147,7 @@ export async function publish(event, ctx) {
     return ok({ ok: true, siteId: site.siteId, release: n, staged: true, pages: files.length, assets: (assetCopies || []).length, previewUrl: stagedUrl(ctx, site.siteId, n) });
   }
 
+  const firstPremiere = !site.publishedAt; // captured BEFORE the update mutates the record
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug, allPaths);
   // optimistic lock: two concurrent publishes can't both claim release n.
   // A cut premiered onto an existing film marks it AI-born (orderId sticks).
@@ -159,6 +161,17 @@ export async function publish(event, ctx) {
     if (e?.name === "ConditionalCheckFailedException") throw Object.assign(new Error("concurrent publish, retry"), { statusCode: 409 });
     throw e;
   });
+
+  if (firstPremiere) {
+    // premiere night: a film's FIRST go-live gets the share-kit email, once.
+    // Later releases stay silent (the console tells that story). Fail-soft:
+    // mail can never break a premiere. Runs after the optimistic lock, so a
+    // losing concurrent publish can't send a duplicate.
+    await sendEmail(ctx, claims.email, firstPremiereEmail(
+      { slug: site.slug, title: site.title, url: previewUrl(ctx, site.slug) },
+      ctx.config.appOrigin || ""
+    ));
+  }
 
   return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, pages: files.length, assets: (assetCopies || []).length, url: previewUrl(ctx, site.slug) });
 }

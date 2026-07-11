@@ -9,6 +9,9 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+// the SHARED template library: terraform stitches infra/modules/api/lambda/email.mjs
+// into this bundle, so pipeline and api emails can never drift apart.
+import { premiereReadyEmail, revisionPremiereEmail, needsAttentionEmail } from "./email.mjs";
 
 const region = process.env.AWS_REGION || "eu-central-1";
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), { marshallOptions: { removeUndefinedValues: true } });
@@ -55,6 +58,31 @@ async function setStatus(orderId, status, extra = {}) {
 
 class OrderInvalid extends Error {
   constructor(msg) { super(msg); this.name = "OrderInvalid"; }
+}
+
+// fail-soft customer mail: a mail hiccup must never fail a pipeline state
+const APP_ORIGIN = (process.env.APP_ORIGIN || "").replace(/\/$/, "");
+async function mailCustomer(orderId, to, built) {
+  const from = process.env.SES_FROM;
+  if (!from || !to || !built) return;
+  try {
+    const { SESv2Client, SendEmailCommand } = await import("@aws-sdk/client-sesv2");
+    const sesc = new SESv2Client({ region });
+    const configSet = process.env.SES_CONFIG_SET || "";
+    await sesc.send(new SendEmailCommand({
+      FromEmailAddress: from,
+      Destination: { ToAddresses: [to] },
+      ...(configSet ? { ConfigurationSetName: configSet } : {}),
+      Content: {
+        Simple: {
+          Subject: { Data: built.subject },
+          Body: { Html: { Data: built.html }, ...(built.text ? { Text: { Data: built.text } } : {}) },
+        },
+      },
+    }));
+  } catch (e) {
+    console.error(JSON.stringify({ level: "warn", msg: "customer email failed soft", orderId, err: e?.message }));
+  }
 }
 
 export const handler = async (event) => {
@@ -158,31 +186,23 @@ export const handler = async (event) => {
 
   if (action === "finalize") {
     await setStatus(orderId, "ready", { cutKey: cutKey || undefined, taskToken: null });
-    const from = process.env.SES_FROM;
-    if (from) {
-      try {
-        const order = await getOrder(orderId);
-        if (order?.email) {
-          const { SESv2Client, SendEmailCommand } = await import("@aws-sdk/client-sesv2");
-          const sesc = new SESv2Client({ region });
-          const id = String(orderId).slice(0, 8).toUpperCase();
-          const app = (process.env.APP_ORIGIN || "").replace(/\/$/, "");
-          const html = `<!DOCTYPE html><html lang="en"><body style="margin:0;background:#F4EFE6"><div style="max-width:560px;margin:0 auto;padding:28px 16px;font-family:Arial,Helvetica,sans-serif"><div style="height:4px;border-radius:2px;background:linear-gradient(90deg,#C8102E,#D9A441,#0E9E62)"></div><div style="background:#fff;border:1px solid rgba(14,28,63,.12);border-radius:14px;padding:30px 32px;margin-top:14px"><div style="font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#D9A441;margin-bottom:10px">Premiere</div><h1 style="margin:0 0 16px;font-size:22px;color:#0E1C3F;text-transform:uppercase">Your film is in.</h1><p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#33415f">Order <b>${id}</b> premiered as a new release on your film.</p><p style="margin:0 0 14px;font-size:15px;line-height:1.65;color:#33415f">Open My Films to watch it live, share it, or request the included revision.</p>${app ? `<a href="${app}" style="display:inline-block;margin-top:6px;background:#C8102E;color:#fff;text-decoration:none;font-size:13px;letter-spacing:.08em;text-transform:uppercase;padding:13px 22px;border-radius:7px">Watch your film</a>` : ""}</div><p style="text-align:center;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8a90a3;margin-top:16px">CineFolio Studios · Your career, filmed.</p></div></body></html>`;
-          await sesc.send(new SendEmailCommand({
-            FromEmailAddress: from,
-            Destination: { ToAddresses: [order.email] },
-            Content: { Simple: { Subject: { Data: "Your Director's Cut is ready." }, Body: { Html: { Data: html } } } },
-          }));
-        }
-      } catch (e) {
-        console.error(JSON.stringify({ level: "warn", msg: "premiere email failed soft", orderId, err: e?.message }));
-      }
+    const order = await getOrder(orderId).catch(() => null);
+    if (order?.email) {
+      // a revision landing reads differently from a first delivery
+      const built = (order.revisionsUsed || 0) > 0
+        ? revisionPremiereEmail(order, APP_ORIGIN)
+        : premiereReadyEmail(order, APP_ORIGIN);
+      await mailCustomer(orderId, order.email, built);
     }
     return { ok: true };
   }
 
   if (action === "human_review") {
     try { await setStatus(orderId, "human_review", { taskToken: null, failCause: String(cause || "").slice(0, 400) }); } catch { /* order may be gone */ }
+    // the client hears the truth too: retries are exhausted, a person is on it.
+    // Their 25-minute promise must never break silently.
+    const order = await getOrder(orderId).catch(() => null);
+    if (order?.email) await mailCustomer(orderId, order.email, needsAttentionEmail(order, APP_ORIGIN));
     if (TOPIC) {
       try {
         await sns.send(new PublishCommand({

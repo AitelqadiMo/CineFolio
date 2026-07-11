@@ -29,6 +29,11 @@ variable "app_origin" {
   default     = ""
   description = "Console origin used in email CTAs, e.g. https://d2f6618tf0eldv.cloudfront.net"
 }
+variable "ses_config_set" {
+  type        = string
+  default     = ""
+  description = "SES configuration set for bounce/complaint tracking; empty sends without one."
+}
 variable "cors_allowed_origins" {
   type    = list(string)
   default = ["*"]
@@ -225,6 +230,7 @@ resource "aws_lambda_function" "api" {
       SSM_PREFIX       = local.ssm_prefix
       SES_FROM         = var.ses_from
       APP_ORIGIN       = var.app_origin
+      SES_CONFIG_SET   = var.ses_config_set
     }
   }
   depends_on = [aws_cloudwatch_log_group.api]

@@ -95,17 +95,26 @@ export const kvs = {
 };
 
 // ---- SES v2 (transactional email; dynamic import keeps cold starts lean)
-// replyTo lets studio-inbox notifications carry the visitor's address, so a
-// plain reply in the mailbox goes to the visitor, not back to the sender.
+// opts.replyTo lets studio-inbox notifications carry the visitor's address, so
+// a plain reply in the mailbox goes to the visitor, not back to the sender.
+// opts.text ships a plaintext alternative part (better filter scores). When
+// SES_CONFIG_SET is set (phase 2), every send reports bounces and complaints.
 export const ses = {
-  async send(from, to, subject, html, replyTo) {
+  async send(from, to, subject, html, opts = {}) {
     const { SESv2Client, SendEmailCommand } = await import("@aws-sdk/client-sesv2");
     const c = new SESv2Client({ region });
+    const configSet = process.env.SES_CONFIG_SET || "";
     await c.send(new SendEmailCommand({
       FromEmailAddress: from,
       Destination: { ToAddresses: [to] },
-      ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
-      Content: { Simple: { Subject: { Data: subject }, Body: { Html: { Data: html } } } },
+      ...(opts.replyTo ? { ReplyToAddresses: [opts.replyTo] } : {}),
+      ...(configSet ? { ConfigurationSetName: configSet } : {}),
+      Content: {
+        Simple: {
+          Subject: { Data: subject },
+          Body: { Html: { Data: html }, ...(opts.text ? { Text: { Data: opts.text } } : {}) },
+        },
+      },
     }));
   },
 };
