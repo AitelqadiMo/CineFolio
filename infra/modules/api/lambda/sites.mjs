@@ -412,7 +412,7 @@ function withBeacon(html, base, slug) {
 // the real subdomain; the CDN /_preview/ path stays only as the fallback for
 // environments without a domain. Staged previews keep the CDN path on purpose:
 // they are private pre-premiere links, not the public address.
-const previewUrl = (ctx, slug) => (ctx.config.sitesDomain
+export const previewUrl = (ctx, slug) => (ctx.config.sitesDomain
   ? `https://${slug}.${ctx.config.sitesDomain}/`
   : `https://${ctx.config.cdnDomain}/_preview/${slug}/`);
 const stagedUrl = (ctx, siteId, n) => `https://${ctx.config.cdnDomain}/_r/${siteId}/${n}/`;
