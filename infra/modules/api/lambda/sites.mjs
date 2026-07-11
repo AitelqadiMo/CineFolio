@@ -395,7 +395,13 @@ function withBeacon(html, base, slug) {
   return html.includes("</body>") ? html.replace("</body>", `${s}</body>`) : html + s;
 }
 
-const previewUrl = (ctx, slug) => `https://${ctx.config.cdnDomain}/_preview/${slug}/`;
+// The film's public address. With the custom domain live, every live link is
+// the real subdomain; the CDN /_preview/ path stays only as the fallback for
+// environments without a domain. Staged previews keep the CDN path on purpose:
+// they are private pre-premiere links, not the public address.
+const previewUrl = (ctx, slug) => (ctx.config.sitesDomain
+  ? `https://${slug}.${ctx.config.sitesDomain}/`
+  : `https://${ctx.config.cdnDomain}/_preview/${slug}/`);
 const stagedUrl = (ctx, siteId, n) => `https://${ctx.config.cdnDomain}/_r/${siteId}/${n}/`;
 
 const pub = (s, ctx) => ({

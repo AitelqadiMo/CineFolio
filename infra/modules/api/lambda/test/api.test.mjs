@@ -695,3 +695,16 @@ test("bundles: an asset uploaded AFTER the pages still ships at premiere", async
   const rel = ctx.ddb._store.get(`SITE#${site.siteId}|RELEASE#00001`);
   assert.equal(rel.filePaths.includes("assets/late.jpg"), true);
 });
+
+test("sites: previewUrl uses the real subdomain once the custom domain is configured", async () => {
+  const ctx = fakeCtx();
+  ctx.config.sitesDomain = "cinefolio.dev";
+  const h = makeHandler(async () => ctx);
+  const created = parse(await h(ev("POST /sites", { claims: "u1", body: { slug: "mohammed-ait", title: "Mohammed" } })));
+  assert.equal(created.body.site.previewUrl, "https://mohammed-ait.cinefolio.dev/");
+  const p2 = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: created.body.site.siteId }, body: { html: "<!doctype html><html><body>x</body></html>" } })));
+  assert.equal(p2.body.url, "https://mohammed-ait.cinefolio.dev/");
+  // staged previews stay on the private CDN path
+  const st = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: created.body.site.siteId }, body: { html: "<!doctype html><html><body>y</body></html>", stage: true } })));
+  assert.match(st.body.previewUrl, /\/_r\//);
+});
