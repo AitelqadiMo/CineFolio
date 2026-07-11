@@ -29,3 +29,6 @@ sites_domain         = "cinefolio.dev"
 # turns on contact-form email notifications.
 ses_from = "info@cinefolio.dev"
 
+# Email CTAs land on the real console, not the raw CloudFront domain.
+app_origin = "https://www.cinefolio.dev"
+

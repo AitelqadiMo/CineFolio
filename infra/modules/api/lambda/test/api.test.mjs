@@ -753,18 +753,20 @@ test("contact: works without a sender, survives a mail outage, honeypot stays si
 });
 
 test("emails: every builder ships a subject, branded html, and a plaintext part", async () => {
-  const { orderReceivedEmail, premiereReadyEmail, revisionReceivedEmail, revisionPremiereEmail, needsAttentionEmail, firstPremiereEmail } = await import("../email.mjs");
+  const { orderReceivedEmail, premiereReadyEmail, revisionReceivedEmail, revisionPremiereEmail, needsAttentionEmail, firstPremiereEmail, welcomeEmail, verifyCodeEmail, resetCodeEmail } = await import("../email.mjs");
   const order = { orderId: "abc12345-0000", name: "Nadia Benali", email: "n@x.io" };
   const app = "https://app.test";
   const builds = [
     orderReceivedEmail(order, app), premiereReadyEmail(order, app), revisionReceivedEmail(order, app),
     revisionPremiereEmail(order, app), needsAttentionEmail(order, app),
     firstPremiereEmail({ slug: "nadia", title: "Nadia in Motion", url: "https://nadia.cinefolio.dev/" }, app),
+    welcomeEmail({ email: "n@x.io" }, app), verifyCodeEmail("{####}"), resetCodeEmail("{####}"),
   ];
   for (const b of builds) {
     assert.ok(b.subject.length > 4, "subject present");
     assert.match(b.html, /^<!DOCTYPE html>/);
     assert.ok(b.text && !b.text.includes("<"), "plaintext part carries no markup");
+    assert.ok(b.html.includes("display:none"), "hidden preheader present");
   }
   // order emails deep-link to the lounge; the premiere kit carries the live address in BOTH parts
   assert.ok(builds[1].html.includes("https://app.test/order/abc12345-0000"), "cut-ready email links the lounge");
@@ -772,6 +774,11 @@ test("emails: every builder ships a subject, branded html, and a plaintext part"
   assert.ok(builds[5].text.includes("https://nadia.cinefolio.dev/"), "live url survives into the text part");
   // a revision landing must not read like a first delivery
   assert.notEqual(builds[3].subject, builds[1].subject);
+  // Cognito CustomMessage bodies must carry the literal code placeholder for substitution
+  assert.ok(builds[7].html.includes("{####}"), "verification email carries the code slot");
+  assert.ok(builds[8].html.includes("{####}"), "reset email carries the code slot");
+  // the welcome CTA opens the console
+  assert.ok(builds[6].html.includes(`href="${app}"`), "welcome email opens the studio");
   // user-supplied values are escaped in the html (the text part is text/plain, verbatim is correct there)
   const hostile = orderReceivedEmail({ orderId: "x1", name: "Eve <script>alert(1)</script>", email: "e@x.io" }, app);
   assert.ok(hostile.html.includes("Eve &lt;script&gt;"), "name is escaped in html");

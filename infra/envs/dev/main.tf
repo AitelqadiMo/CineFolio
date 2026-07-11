@@ -70,7 +70,12 @@ module "identity" {
   account_id    = data.aws_caller_identity.current.account_id
   callback_urls = [for o in var.app_origins : "${o}/callback"]
   logout_urls   = var.app_origins
-  tags          = local.tags
+  ses_from      = var.ses_from
+  app_origin    = var.app_origin
+  # the cinefolio.dev DOMAIN identity (Easy DKIM verified). Cognito sends
+  # branded auth email through it in DEVELOPER mode; welcome comes from SES_FROM.
+  ses_identity_arn = var.ses_from == "" || var.sites_domain == "" ? "" : "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${var.sites_domain}"
+  tags             = local.tags
 }
 
 # Transactional email sender. info@cinefolio.dev receives via Cloudflare Email
