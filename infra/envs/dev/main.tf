@@ -74,7 +74,7 @@ module "identity" {
   app_origin    = var.app_origin
   # the cinefolio.dev DOMAIN identity (Easy DKIM verified). Cognito sends
   # branded auth email through it in DEVELOPER mode; welcome comes from SES_FROM.
-  ses_identity_arn = var.ses_from == "" || var.sites_domain == "" ? "" : "arn:aws:ses:${var.region}:${data.aws_caller_identity.current.account_id}:identity/${var.sites_domain}"
+  ses_identity_arn = var.ses_from == "" || var.sites_domain == "" ? "" : aws_sesv2_email_identity.sites_domain[0].arn
   tags             = local.tags
 }
 
@@ -93,6 +93,51 @@ resource "aws_sesv2_email_identity" "studio_inbox" {
   count          = var.ses_from == "" ? 0 : 1
   email_identity = var.ses_from
   tags           = local.tags
+}
+
+# The cinefolio.dev DOMAIN identity (Easy DKIM, verified). Born in the SES
+# console during the production-access bring-up; imported so terraform owns it:
+#   cd envs/dev && terraform import 'aws_sesv2_email_identity.sites_domain[0]' cinefolio.dev
+resource "aws_sesv2_email_identity" "sites_domain" {
+  count          = var.sites_domain == "" ? 0 : 1
+  email_identity = var.sites_domain
+  tags           = local.tags
+}
+
+# Custom MAIL FROM: the Return-Path moves from amazonses.com to
+# info.cinefolio.dev, which makes SPF a second passing DMARC leg next to DKIM
+# (requires aspf=r in the DMARC record; strict can never match a subdomain).
+# The info.* subdomain matches what was configured and VERIFIED in the console
+# on Jul 11 2026; terraform codifies that state rather than churning it.
+# USE_DEFAULT_VALUE is the fail-soft doctrine: if the MX record ever breaks,
+# SES falls back to amazonses.com instead of refusing to send.
+# Two Cloudflare records (DNS only, live), also emitted by the output below:
+#   MX  info.cinefolio.dev -> feedback-smtp.eu-central-1.amazonses.com (priority 10)
+#   TXT info.cinefolio.dev -> "v=spf1 include:amazonses.com ~all"
+resource "aws_sesv2_email_identity_mail_from_attributes" "sites_domain" {
+  count                  = var.sites_domain == "" ? 0 : 1
+  email_identity         = aws_sesv2_email_identity.sites_domain[0].email_identity
+  mail_from_domain       = "info.${var.sites_domain}"
+  behavior_on_mx_failure = "USE_DEFAULT_VALUE"
+}
+
+# The api/pipeline/auth-mailer senders pass From: info@... WITHOUT an identity
+# ARN, and SES resolves the MOST SPECIFIC identity: the address identity above,
+# not the domain. MAIL FROM must ride on both, or those sends keep the
+# amazonses.com Return-Path. Same mail-from domain, same two DNS records.
+resource "aws_sesv2_email_identity_mail_from_attributes" "studio_inbox" {
+  count                  = var.ses_from == "" || var.sites_domain == "" ? 0 : 1
+  email_identity         = aws_sesv2_email_identity.studio_inbox[0].email_identity
+  mail_from_domain       = "info.${var.sites_domain}"
+  behavior_on_mx_failure = "USE_DEFAULT_VALUE"
+}
+
+output "ses_mail_from_records" {
+  description = "The MAIL FROM records that must stay at Cloudflare (DNS only)"
+  value = var.sites_domain == "" ? [] : [
+    { type = "MX", name = "info.${var.sites_domain}", value = "feedback-smtp.${var.region}.amazonses.com", priority = "10" },
+    { type = "TXT", name = "info.${var.sites_domain}", value = "v=spf1 include:amazonses.com ~all", priority = "-" },
+  ]
 }
 variable "app_origin" {
   type    = string
