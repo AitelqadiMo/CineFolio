@@ -95,13 +95,16 @@ export const kvs = {
 };
 
 // ---- SES v2 (transactional email; dynamic import keeps cold starts lean)
+// replyTo lets studio-inbox notifications carry the visitor's address, so a
+// plain reply in the mailbox goes to the visitor, not back to the sender.
 export const ses = {
-  async send(from, to, subject, html) {
+  async send(from, to, subject, html, replyTo) {
     const { SESv2Client, SendEmailCommand } = await import("@aws-sdk/client-sesv2");
     const c = new SESv2Client({ region });
     await c.send(new SendEmailCommand({
       FromEmailAddress: from,
       Destination: { ToAddresses: [to] },
+      ...(replyTo ? { ReplyToAddresses: [replyTo] } : {}),
       Content: { Simple: { Subject: { Data: subject }, Body: { Html: { Data: html } } } },
     }));
   },
