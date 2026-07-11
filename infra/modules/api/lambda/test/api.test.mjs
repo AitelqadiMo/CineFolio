@@ -47,6 +47,10 @@ function fakeCtx(overrides = {}) {
       return item;
     },
     async del(Key) { store.delete(`${Key.PK}|${Key.SK}`); },
+    async scan({ ExpressionAttributeValues: v }) {
+      // single-page type-filtered scan, mirroring admin.mjs's only usage
+      return { items: [...store.values()].filter((i) => i.type === v[":t"]), lastKey: null };
+    },
     async query({ IndexName, ExpressionAttributeValues: v, KeyConditionExpression }) {
       const items = [...store.values()];
       if (IndexName === "GSI1") return items.filter((i) => i.GSI1PK === v[":p"] && (!v[":s"] || String(i.GSI1SK).startsWith(v[":s"])));
@@ -73,9 +77,14 @@ function fakeCtx(overrides = {}) {
     queue: { sent: [], async send(_u, m) { this.sent.push(m); } },
     sfn: { resumed: [], async sendTaskSuccess(t, o) { this.resumed.push([t, o]); } },
     ses: { sent: [], async send(from, to, subject, html, opts = {}) { this.sent.push({ from, to, subject, html, replyTo: opts.replyTo, text: opts.text }); } },
+    params: {
+      _store: {},
+      async get(name) { const v = this._store[name]; return { value: v ?? null, type: v != null ? "SecureString" : null }; },
+      async put(name, value) { this._store[name] = value; },
+    },
     secrets: async () => ({ AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec" }),
     fetchFn: async () => ({ ok: true }),
-    config: { appEnv: "test", apiBase: "https://api.test", artifactsBucket: "arts", publishedBucket: "pub", kvsArn: "arn:kvs", distributionId: "DIST", cdnDomain: "cdn.test", ordersQueueUrl: "q" },
+    config: { appEnv: "test", apiBase: "https://api.test", artifactsBucket: "arts", publishedBucket: "pub", kvsArn: "arn:kvs", distributionId: "DIST", cdnDomain: "cdn.test", ordersQueueUrl: "q", ssmPrefix: "/cinefolio/test" },
     ...overrides,
   };
   return ctx;
@@ -807,4 +816,92 @@ test("publish: the first premiere mails the share kit once; staged and later rel
   // the second release is business as usual: no email
   await h(ev("POST /sites/{id}/publish", { claims: "prem", path: { id }, body: { html: "<!doctype html><html><body>v2</body></html>" } }));
   assert.equal(ctx.ses.sent.length, 1, "only the FIRST premiere mails");
+});
+
+test("floor: stats aggregate people, films, orders, waitlist, notes, and traffic; non-admins get 403", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  // seed: two people, two films (one live), one order, a waitlist join, a note, two views
+  await h(ev("GET /me", { claims: "a1" }));
+  await h(ev("GET /me", { claims: "b2" }));
+  const s1 = parse(await h(ev("POST /sites", { claims: "a1", body: { slug: "film-one", title: "Film One" } })));
+  await h(ev("POST /sites", { claims: "b2", body: { slug: "film-two", title: "Film Two" } }));
+  await h(ev("POST /sites/{id}/publish", { claims: "a1", path: { id: s1.body.site.siteId }, body: { html: "<!doctype html><html><body>x</body></html>" } }));
+  await h(ev("POST /studio/order", { claims: "a1", body: { email: "a1@x.io", name: "Aya One", role: "engineer", cvText: "2021 aws terraform" } }));
+  await h(ev("POST /waitlist", { body: { email: "w@x.io" } }));
+  await h(ev("POST /contact", { body: { email: "v@x.io", message: "love the films" } }));
+  await h(ev("POST /hit", { body: { page: "s/film-one" } }));
+  await h(ev("POST /hit", { body: { page: "s/film-one" } }));
+
+  assert.equal(parse(await h(ev("GET /admin/stats", { claims: "a1" }))).code, 403, "no group, no floor");
+  const { code, body } = parse(await h(ev("GET /admin/stats", { claims: "boss", groups: ["admin"] })));
+  assert.equal(code, 200);
+  assert.equal(body.users.total, 2);
+  assert.equal(body.films.total, 2);
+  assert.equal(body.films.live, 1);
+  assert.equal(body.films.draft, 1);
+  assert.equal(body.orders.queued, 1);
+  assert.equal(body.waitlist, 1);
+  assert.equal(body.notes, 1);
+  assert.equal(body.traffic.views30, 2);
+  assert.equal(body.traffic.daily.length, 30);
+  assert.equal(body.traffic.top[0].page, "s/film-one");
+});
+
+test("floor: the films ledger lists every site with owner email and live address", async () => {
+  const ctx = fakeCtx();
+  ctx.config.sitesDomain = "cinefolio.dev";
+  const h = makeHandler(async () => ctx);
+  await h(ev("GET /me", { claims: "own1" })); // profile row -> email own1@x.io
+  const s1 = parse(await h(ev("POST /sites", { claims: "own1", body: { slug: "ledger-one", title: "Ledger One" } })));
+  await h(ev("POST /sites", { claims: "own2", body: { slug: "ledger-two", title: "Ledger Two" } })); // owner without profile row
+  await h(ev("POST /sites/{id}/publish", { claims: "own1", path: { id: s1.body.site.siteId }, body: { html: "<!doctype html><html><body>x</body></html>" } }));
+
+  assert.equal(parse(await h(ev("GET /admin/sites", { claims: "own1" }))).code, 403);
+  const { body } = parse(await h(ev("GET /admin/sites", { claims: "boss", groups: ["admin"] })));
+  assert.equal(body.total, 2);
+  const one = body.sites.find((s) => s.slug === "ledger-one");
+  assert.equal(one.ownerEmail, "own1@x.io", "owner email joined from the profile row");
+  assert.equal(one.status, "live");
+  assert.equal(one.url, "https://ledger-one.cinefolio.dev/");
+  const two = body.sites.find((s) => s.slug === "ledger-two");
+  assert.equal(two.ownerEmail, null, "no profile row degrades to null, never throws");
+});
+
+test("floor: people directory and visitor inbox read for admins only", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  await h(ev("GET /me", { claims: "p1" }));
+  await h(ev("POST /contact", { body: { name: "Vera", email: "vera@x.io", message: "how much for a film?" } }));
+
+  assert.equal(parse(await h(ev("GET /admin/users", { claims: "p1" }))).code, 403);
+  assert.equal(parse(await h(ev("GET /admin/contacts", { claims: "p1" }))).code, 403);
+  const people = parse(await h(ev("GET /admin/users", { claims: "boss", groups: ["admin"] }))).body;
+  assert.equal(people.total, 1);
+  assert.equal(people.users[0].email, "p1@x.io");
+  assert.equal(people.users[0].aiCuts, 0);
+  const inbox = parse(await h(ev("GET /admin/contacts", { claims: "boss", groups: ["admin"] }))).body;
+  assert.equal(inbox.total, 1);
+  assert.equal(inbox.notes[0].email, "vera@x.io");
+  assert.match(inbox.notes[0].message, /how much/);
+});
+
+test("floor: the kill switch flips the SSM breaker and defaults to enabled", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  assert.equal(parse(await h(ev("GET /admin/pipeline", { claims: "u1" }))).code, 403);
+
+  const before = parse(await h(ev("GET /admin/pipeline", { claims: "boss", groups: ["admin"] }))).body;
+  assert.equal(before.enabled, true, "missing parameter means the breaker is closed (pipeline runs)");
+  assert.equal(before.raw, null);
+
+  assert.equal(parse(await h(ev("POST /admin/pipeline", { claims: "boss", groups: ["admin"], body: { enabled: "nope" } }))).code, 400);
+  const cut = parse(await h(ev("POST /admin/pipeline", { claims: "boss", groups: ["admin"], body: { enabled: false } }))).body;
+  assert.equal(cut.enabled, false);
+  assert.equal(ctx.params._store["/cinefolio/test/PIPELINE_ENABLED"], "false", "breaker written where the pipeline reads it");
+  const after = parse(await h(ev("GET /admin/pipeline", { claims: "boss", groups: ["admin"] }))).body;
+  assert.equal(after.enabled, false);
+  const roll = parse(await h(ev("POST /admin/pipeline", { claims: "boss", groups: ["admin"], body: { enabled: true } }))).body;
+  assert.equal(roll.enabled, true);
+  assert.equal(ctx.params._store["/cinefolio/test/PIPELINE_ENABLED"], "true");
 });
