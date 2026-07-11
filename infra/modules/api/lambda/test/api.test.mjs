@@ -72,6 +72,7 @@ function fakeCtx(overrides = {}) {
     cdn: { invalidations: [], async invalidate(_d, p) { this.invalidations.push(p); } },
     queue: { sent: [], async send(_u, m) { this.sent.push(m); } },
     sfn: { resumed: [], async sendTaskSuccess(t, o) { this.resumed.push([t, o]); } },
+    ses: { sent: [], async send(from, to, subject, html, replyTo) { this.sent.push({ from, to, subject, html, replyTo }); } },
     secrets: async () => ({ AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec" }),
     fetchFn: async () => ({ ok: true }),
     config: { appEnv: "test", apiBase: "https://api.test", artifactsBucket: "arts", publishedBucket: "pub", kvsArn: "arn:kvs", distributionId: "DIST", cdnDomain: "cdn.test", ordersQueueUrl: "q" },
@@ -707,4 +708,46 @@ test("sites: previewUrl uses the real subdomain once the custom domain is config
   // staged previews stay on the private CDN path
   const st = parse(await h(ev("POST /sites/{id}/publish", { claims: "u1", path: { id: created.body.site.siteId }, body: { html: "<!doctype html><html><body>y</body></html>", stage: true } })));
   assert.match(st.body.previewUrl, /\/_r\//);
+});
+
+test("contact: stores the note, mails the studio inbox with visitor Reply-To, escapes html", async () => {
+  const ctx = fakeCtx();
+  ctx.config.sesFrom = "info@cinefolio.dev";
+  const h = makeHandler(async () => ctx);
+  const r = parse(await h(ev("POST /contact", { body: { name: "Nadia", email: "Visitor@X.io", message: "I want a <b>film</b>" } })));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.mailed, true);
+  assert.ok(ctx.ddb._store.get(`CONTACT#${r.body.id}|MSG`), "note persisted before mailing");
+  assert.equal(ctx.ses.sent.length, 1);
+  const m = ctx.ses.sent[0];
+  assert.equal(m.from, "info@cinefolio.dev");
+  assert.equal(m.to, "info@cinefolio.dev"); // sandbox-safe: verified identity mails itself
+  assert.equal(m.replyTo, "visitor@x.io"); // plain reply reaches the visitor
+  assert.ok(m.subject.includes("Nadia"));
+  assert.ok(m.html.includes("&lt;b&gt;film&lt;/b&gt;"), "message html is escaped");
+});
+
+test("contact: works without a sender, survives a mail outage, honeypot stays silent", async () => {
+  const quiet = fakeCtx(); // no sesFrom configured -> store only
+  const h1 = makeHandler(async () => quiet);
+  const r1 = parse(await h1(ev("POST /contact", { body: { email: "a@b.co", message: "hello there" } })));
+  assert.equal(r1.code, 200);
+  assert.equal(r1.body.mailed, false);
+  assert.equal(quiet.ses.sent.length, 0);
+
+  const flaky = fakeCtx();
+  flaky.config.sesFrom = "info@cinefolio.dev";
+  flaky.ses.send = async () => { throw Object.assign(new Error("throttled"), { name: "TooManyRequestsException" }); };
+  const h2 = makeHandler(async () => flaky);
+  const r2 = parse(await h2(ev("POST /contact", { body: { email: "a@b.co", message: "hello there" } })));
+  assert.equal(r2.code, 200); // outage never bounces the visitor
+  assert.equal(r2.body.mailed, false);
+  assert.ok(flaky.ddb._store.get(`CONTACT#${r2.body.id}|MSG`), "note still persisted");
+
+  const bot = fakeCtx();
+  bot.config.sesFrom = "info@cinefolio.dev";
+  const h3 = makeHandler(async () => bot);
+  const r3 = parse(await h3(ev("POST /contact", { body: { email: "spam@x.io", message: "buy now", company: "bot" } })));
+  assert.equal(r3.code, 200);
+  assert.equal(bot.ses.sent.length, 0); // honeypot never reaches the inbox
 });
