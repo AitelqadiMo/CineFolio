@@ -78,6 +78,10 @@ export async function waitlistCount(_event, ctx) {
 }
 
 // POST /contact { name, email, message }
+// The note is stored first (DynamoDB is the system of record), then forwarded
+// to the studio inbox via SES, best effort: a mail hiccup must never bounce
+// the visitor. Reply-To carries the visitor so a plain reply reaches them.
+const escHtml = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 export async function contact(event, ctx) {
   const b = bodyOf(event);
   if (!b) return bad("invalid json");
@@ -86,12 +90,33 @@ export async function contact(event, ctx) {
   const message = clampStr(b.message, 4000).trim();
   if (!isEmail(email) || message.length < 3) return bad("email and message required");
   const id = uuid();
+  const name = clampStr(b.name, 120);
   await ctx.ddb.put({
     PK: `CONTACT#${id}`, SK: "MSG", type: "contact",
     GSI1PK: "CONTACT", GSI1SK: now(),
-    name: clampStr(b.name, 120), email, message, createdAt: now(),
+    name, email, message, createdAt: now(),
   });
-  return ok({ ok: true, id });
+  let mailed = false;
+  const inbox = ctx.config.sesFrom; // studio inbox is the verified identity itself
+  if (inbox) {
+    try {
+      await ctx.ses.send(
+        inbox, inbox,
+        `CineFolio note from ${name || email}`,
+        `<div style="font-family:sans-serif;max-width:560px">
+          <p style="font-size:11px;letter-spacing:.2em;color:#888;text-transform:uppercase">CineFolio · Contact form</p>
+          <p><b>From:</b> ${escHtml(name ? `${name} ` : "")}&lt;${escHtml(email)}&gt;</p>
+          <p style="white-space:pre-wrap;border-left:3px solid #C8102E;padding-left:12px">${escHtml(message)}</p>
+          <p style="font-size:11px;color:#888">Ref ${id} · reply to this email to answer the visitor directly.</p>
+        </div>`,
+        email
+      );
+      mailed = true;
+    } catch (e) {
+      console.error("contact mail failed", id, e?.name || e); // stored regardless
+    }
+  }
+  return ok({ ok: true, id, mailed });
 }
 
 // POST /hit { page } — daily per-page atomic counters
