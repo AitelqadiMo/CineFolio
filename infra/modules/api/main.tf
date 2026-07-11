@@ -74,6 +74,12 @@ locals {
     "PUT /draft"                    = true
     "GET /admin/orders"             = true # + admin group check in-handler
     "POST /admin/orders/{id}/retry" = true # + admin group check in-handler
+    "GET /admin/stats"              = true # the Floor: platform overview (admin group in-handler)
+    "GET /admin/sites"              = true # the Floor: every film + owner join
+    "GET /admin/users"              = true # the Floor: people directory
+    "GET /admin/contacts"           = true # the Floor: visitor inbox
+    "GET /admin/pipeline"           = true # the Floor: circuit-breaker state
+    "POST /admin/pipeline"          = true # the Floor: the kill switch
     "POST /sites"                   = true
     "GET /sites"                    = true
     "GET /sites/{id}"               = true
@@ -161,6 +167,13 @@ data "aws_iam_policy_document" "api" {
     sid       = "Secrets"
     actions   = ["ssm:GetParameter", "ssm:GetParametersByPath"]
     resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}*"]
+  }
+  statement {
+    # the Floor's kill switch: admin flips the pipeline circuit breaker from
+    # the console. Write access is pinned to that ONE parameter.
+    sid       = "BreakerWrite"
+    actions   = ["ssm:PutParameter"]
+    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/PIPELINE_ENABLED"]
   }
   statement {
     # Sender identities are created out-of-band (SES console); scope to identity

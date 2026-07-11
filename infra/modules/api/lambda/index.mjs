@@ -6,6 +6,7 @@ import * as misc from "./misc.mjs";
 import * as studio from "./studio.mjs";
 import * as sites from "./sites.mjs";
 import * as orders from "./orders.mjs";
+import * as admin from "./admin.mjs";
 
 export const ROUTES = {
   "GET /health": async (_e, ctx) => json(200, { ok: true, service: "cinefolio-api", env: ctx.config.appEnv, ts: new Date().toISOString() }),
@@ -23,6 +24,12 @@ export const ROUTES = {
   "POST /hit": misc.hit,
   "GET /admin/orders": misc.adminOrders,
   "POST /admin/orders/{id}/retry": studio.adminRetry,
+  "GET /admin/stats": admin.stats,
+  "GET /admin/sites": admin.sites,
+  "GET /admin/users": admin.users,
+  "GET /admin/contacts": admin.contacts,
+  "GET /admin/pipeline": admin.pipelineGet,
+  "POST /admin/pipeline": admin.pipelineSet,
   "POST /studio/generate": studio.generate,
   "POST /studio/order": studio.order,
   "GET /studio/status": studio.status,
@@ -51,9 +58,10 @@ async function buildCtx() {
   const aws = await import("./aws.mjs");
   realCtx = {
     ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn, presign: aws.presign, ses: aws.ses,
-    secrets: aws.secrets, fetchFn: aws.fetchFn,
+    secrets: aws.secrets, params: aws.params, fetchFn: aws.fetchFn,
     config: {
       appEnv: process.env.APP_ENV || "dev",
+      ssmPrefix: process.env.SSM_PREFIX || "/cinefolio/dev",
       apiBase: (process.env.API_BASE || "").replace(/\/$/, ""),
       artifactsBucket: process.env.ARTIFACTS_BUCKET,
       publishedBucket: process.env.PUBLISHED_BUCKET,

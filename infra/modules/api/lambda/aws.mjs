@@ -1,7 +1,7 @@
 // aws.mjs — ALL AWS SDK access lives here. index.mjs injects this as ctx into routes;
 // tests inject fakes instead, so nothing else in the codebase imports the SDK.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
@@ -25,6 +25,10 @@ export const ddb = {
   update: (params) => doc.send(new UpdateCommand({ TableName: TABLE, ...params })).then((r) => r.Attributes),
   del: (Key) => doc.send(new DeleteCommand({ TableName: TABLE, Key })),
   query: (params) => doc.send(new QueryCommand({ TableName: TABLE, ...params })).then((r) => r.Items || []),
+  // paginated scan for the admin surfaces. Correct at demand-test scale
+  // (hundreds of rows); past ~10k items, move the callers to a type-overloaded GSI.
+  scan: (params) => doc.send(new ScanCommand({ TableName: TABLE, ...params }))
+    .then((r) => ({ items: r.Items || [], lastKey: r.LastEvaluatedKey || null })),
 };
 
 export const s3 = {
@@ -136,6 +140,26 @@ export const cdn = {
         InvalidationBatch: { CallerReference: `api-${Date.now()}`, Paths: { Quantity: paths.length, Items: paths } },
       })
     ),
+};
+
+// ---- live SSM parameter access (the Floor's kill switch). Unlike secrets()
+// below, these reads are NOT cached: a breaker flip must be visible on the
+// next admin poll. put() preserves the parameter's existing type.
+export const params = {
+  async get(name) {
+    const { GetParameterCommand } = await import("@aws-sdk/client-ssm");
+    try {
+      const r = await ssm.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+      return { value: r.Parameter?.Value ?? null, type: r.Parameter?.Type || null };
+    } catch (e) {
+      if (e?.name === "ParameterNotFound") return { value: null, type: null };
+      throw e;
+    }
+  },
+  async put(name, value, existingType) {
+    const { PutParameterCommand } = await import("@aws-sdk/client-ssm");
+    await ssm.send(new PutParameterCommand({ Name: name, Value: value, Type: existingType || "SecureString", Overwrite: true }));
+  },
 };
 
 // ---- secrets: read once per container from SSM /cinefolio/{env}/*
