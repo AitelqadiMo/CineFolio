@@ -102,6 +102,7 @@ module "api" {
   kvs_arn              = module.hosting.kvs_arn
   distribution_id      = module.hosting.distribution_id
   cdn_domain           = module.hosting.distribution_domain
+  sites_domain         = var.enable_custom_domain ? var.sites_domain : ""
   cors_allowed_origins = var.api_cors_origins # "*" in dev: app CF domain is minted after first apply. Pin in prod.
   ses_from             = var.ses_from
   app_origin           = var.app_origin
