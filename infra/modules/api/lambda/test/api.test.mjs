@@ -818,6 +818,30 @@ test("publish: the first premiere mails the share kit once; staged and later rel
   assert.equal(ctx.ses.sent.length, 1, "only the FIRST premiere mails");
 });
 
+test("go live: a staged film's first premiere via rollback mails the share kit once and stamps publishedAt", async () => {
+  const ctx = fakeCtx();
+  ctx.config.sesFrom = "info@cinefolio.dev";
+  ctx.config.sitesDomain = "cinefolio.dev";
+  const h = makeHandler(async () => ctx);
+  const created = parse(await h(ev("POST /sites", { claims: "sg", body: { slug: "stage-premiere", title: "Stage Premiere" } })));
+  const id = created.body.site.siteId;
+  // the console's normal path: stage first, then Go live (which is rollback)
+  await h(ev("POST /sites/{id}/publish", { claims: "sg", path: { id }, body: { html: "<!doctype html><html><body>draft</body></html>", stage: true } }));
+  assert.equal(ctx.ses.sent.length, 0, "staging stays silent");
+  const live = parse(await h(ev("POST /sites/{id}/rollback", { claims: "sg", path: { id }, body: {} })));
+  assert.equal(live.code, 200);
+  assert.equal(live.body.status, "live");
+  assert.equal(ctx.ses.sent.length, 1, "Go live IS the premiere: the share kit mails");
+  assert.equal(ctx.ses.sent[0].to, "sg@x.io");
+  assert.ok(ctx.ses.sent[0].html.includes("https://stage-premiere.cinefolio.dev/"));
+  const after = parse(await h(ev("GET /sites/{id}", { claims: "sg", path: { id } })));
+  assert.ok(after.body.site.publishedAt, "first go-live stamps publishedAt");
+  // a later release and a rescreen stay silent: the premiere happened once
+  await h(ev("POST /sites/{id}/publish", { claims: "sg", path: { id }, body: { html: "<!doctype html><html><body>v2</body></html>" } }));
+  await h(ev("POST /sites/{id}/rollback", { claims: "sg", path: { id }, body: { to: 1 } }));
+  assert.equal(ctx.ses.sent.length, 1, "rescreens and later releases never re-mail the kit");
+});
+
 test("floor: stats aggregate people, films, orders, waitlist, notes, and traffic; non-admins get 403", async () => {
   const ctx = fakeCtx();
   const h = makeHandler(async () => ctx);

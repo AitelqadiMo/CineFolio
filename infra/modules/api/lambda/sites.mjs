@@ -215,14 +215,27 @@ export async function rollback(event, ctx) {
   const rel = await ctx.ddb.get({ PK: site.PK, SK: relSK(target) });
   if (!rel) return bad("release not found", 404);
 
+  // a staged-only film going live through "Go live" is a FIRST PREMIERE: the
+  // console's normal publish path routes here, not through publish(). Stamp
+  // publishedAt and roll the share kit exactly like a direct live publish.
+  // Relights and rescreens carry a publishedAt already, so they stay silent.
+  const firstPremiere = !site.publishedAt; // captured BEFORE the update mutates the record
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${target}`, site.slug, rel.filePaths);
   const clearStage = site.stagedRelease === target;
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
-    UpdateExpression: `SET liveRelease = :n, updatedAt = :t, pointerMode = :pm, #s = :live${clearStage ? ", stagedRelease = :null" : ""}`,
+    UpdateExpression: `SET liveRelease = :n, updatedAt = :t, pointerMode = :pm, #s = :live${clearStage ? ", stagedRelease = :null" : ""}${firstPremiere ? ", publishedAt = :t" : ""}`,
     ExpressionAttributeNames: { "#s": "status" },
     ExpressionAttributeValues: { ":n": target, ":t": now(), ":pm": flip.mode, ":live": "live", ...(clearStage ? { ":null": null } : {}) },
   });
+
+  if (firstPremiere) {
+    await sendEmail(ctx, claims.email, firstPremiereEmail(
+      { slug: site.slug, title: site.title, url: previewUrl(ctx, site.slug) },
+      ctx.config.appOrigin || ""
+    ));
+  }
+
   return ok({ ok: true, siteId: site.siteId, liveRelease: target, pointer: flip.mode, status: "live" });
 }
 
