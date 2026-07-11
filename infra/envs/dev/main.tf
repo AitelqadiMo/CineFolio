@@ -73,12 +73,21 @@ module "identity" {
   tags          = local.tags
 }
 
-# Transactional email sender: empty until an SES identity is verified in the
-# account (then set to something like studio@cinefolio.dev, or a verified
-# personal address while SES is sandboxed).
+# Transactional email sender. info@cinefolio.dev receives via Cloudflare Email
+# Routing (forwarded to the founder's mailbox) and sends via SES. Creating the
+# identity below fires SES's verification email, which Cloudflare forwards:
+# click the link in the forwarded mail and the identity flips to VERIFIED.
+# While the SES account is sandboxed, verified-to-verified sending (the contact
+# form notifies the same identity) works without production access.
 variable "ses_from" {
   type    = string
   default = ""
+}
+
+resource "aws_sesv2_email_identity" "studio_inbox" {
+  count          = var.ses_from == "" ? 0 : 1
+  email_identity = var.ses_from
+  tags           = local.tags
 }
 variable "app_origin" {
   type    = string
