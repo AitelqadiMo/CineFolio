@@ -133,10 +133,20 @@ export function initLanding(root, opts = {}) {
     const walk = (node) => {
       [...node.childNodes].forEach((n) => {
         if (n.nodeType === 3) {
+          // chars animate individually, but each WORD is wrapped whole so a
+          // line can never break mid-word (the PORTFOLIOS PEOPL/E bug)
           const frag = document.createDocumentFragment();
-          n.textContent.split("").forEach((ch) => {
-            if (ch === " ") { frag.appendChild(document.createTextNode(" ")); return; }
-            const s = document.createElement("span"); s.className = "ch"; s.textContent = ch; frag.appendChild(s);
+          n.textContent.split(/(\s+)/).forEach((token) => {
+            if (!token) return;
+            if (/^\s+$/.test(token)) { frag.appendChild(document.createTextNode(" ")); return; }
+            const w = document.createElement("span");
+            w.className = "chword";
+            w.style.display = "inline-block";
+            w.style.whiteSpace = "nowrap";
+            token.split("").forEach((ch) => {
+              const s = document.createElement("span"); s.className = "ch"; s.textContent = ch; w.appendChild(s);
+            });
+            frag.appendChild(w);
           });
           node.replaceChild(frag, n);
         } else if (n.nodeType === 1 && n.tagName !== "BR" && !n.classList.contains("serif")) { walk(n); }
@@ -151,7 +161,7 @@ export function initLanding(root, opts = {}) {
   })();
 
   /* ================= VELOCITY MARQUEE + PINNED REEL ================= */
-  const mqItems = [["NOW CASTING", "r"], ["YOUR COLORS, YOUR LIGHTING", "g"], ["IDENTITY-LOCKED AI FILM", "gd"], ["INTERACTIVE TERMINAL", "r"], ["VERIFIED CREDENTIALS", "g"], ["YOUR OWN DOMAIN", "gd"], ["PREMIERE IN 24H", "r"]];
+  const mqItems = [["NOW CASTING", "r"], ["YOUR COLORS, YOUR LIGHTING", "g"], ["IDENTITY-LOCKED AI FILM", "gd"], ["INTERACTIVE TERMINAL", "r"], ["VERIFIED CREDENTIALS", "g"], ["YOURNAME.CINEFOLIO.DEV", "gd"], ["PREMIERE IN MINUTES", "r"]];
   $("#mqTrack").innerHTML = mqItems.map(([s, c]) => `<span class="${c}">${s}</span><span>✦</span>`).join("").repeat(3);
   if (!reduceMotion && typeof gsap !== "undefined" && typeof ScrollTrigger !== "undefined") {
     gsap.registerPlugin(ScrollTrigger);
@@ -199,8 +209,12 @@ export function initLanding(root, opts = {}) {
   /* ================= enter-the-studio (auth) + waitlist shortcuts ================= */
   function toWaitlist() { go("home"); setTimeout(() => { const el = $("#waitlist"); lenis ? lenis.scrollTo(el) : el.scrollIntoView({ behavior: "smooth" }); }, 120); }
   $("#joinNav").addEventListener("click", () => opts.onEnter && opts.onEnter());
-  $("#unlockLink").addEventListener("click", (e) => { e.preventDefault(); toWaitlist(); });
-  const jp = $("#joinFromPack"); if (jp) jp.addEventListener("click", toWaitlist);
+  ["#heroEnter", "#wlEnter"].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.addEventListener("click", () => opts.onEnter && opts.onEnter());
+  });
+  $("#unlockLink").addEventListener("click", (e) => { e.preventDefault(); if (opts.onEnter) opts.onEnter(); else toWaitlist(); });
+  const jp = $("#joinFromPack"); if (jp) jp.addEventListener("click", () => (opts.onEnter ? opts.onEnter() : toWaitlist()));
 
   /* ================= unlock modal ================= */
   const modal = $("#modal");
@@ -210,18 +224,18 @@ export function initLanding(root, opts = {}) {
   }));
   $("#modalX").addEventListener("click", () => modal.classList.remove("on"));
   modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.remove("on"); });
-  $("#modalJoin").addEventListener("click", () => { modal.classList.remove("on"); toWaitlist(); });
+  $("#modalJoin").addEventListener("click", () => { modal.classList.remove("on"); if (opts.onEnter) opts.onEnter(); else toWaitlist(); });
 
   /* ================= own-analytics (AWS API) ================= */
   function hit(page) { try { fetch(`${API}/hit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ page }) }).catch(() => {}); } catch (e) { /* noop */ } }
   hit(location.hash.replace("#/", "") || "home");
 
-  /* ================= waitlist (AWS API) ================= */
+  /* ================= studio notes count (AWS API) =================
+     bentoCount is the REAL ADDRESSES card now; it keeps its static
+     *.cinefolio.dev text and no counter may overwrite it. */
   fetch(`${API}/waitlist/count`).then((r) => r.json()).then(({ count }) => {
-    if (count && count > 4) $("#wlCount").textContent = count + " ON THE GUEST LIST · FOUNDING PRICING · NO SPAM";
-    const bc = $("#bentoCount");
-    if (bc) bc.textContent = String(Math.max(count || 0, 1));
-  }).catch(() => { const bc = $("#bentoCount"); if (bc) bc.textContent = "∞"; });
+    if (count && count > 4) $("#wlCount").textContent = count + " ON THE STUDIO LIST · THREE FREE FILMS · NO SPAM";
+  }).catch(() => { /* the note keeps its default line */ });
   // bento pointer-flip tick: the release number advances like a live deploy
   const flipN = $("#flipN");
   if (flipN && !reduceMotion) { let fn = 3; timers.push(setInterval(() => { fn = fn >= 9 ? 2 : fn + 1; flipN.textContent = fn; }, 4000)); }

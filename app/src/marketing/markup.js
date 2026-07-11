@@ -1,6 +1,6 @@
-// Landing markup — byte-for-byte from index.html (nav CTA relabeled for auth).
+// Landing markup: originally ported byte-for-byte from index.html; copy now tracks the live product.
 export const LANDING_HTML = `
-<div id="loader"><div class="lens"></div><div class="cnt" id="loadCnt">0</div><div class="lbl">CINEFOLIO STUDIOS — ROLLING</div></div>
+<div id="loader"><div class="lens"></div><div class="cnt" id="loadCnt">0</div><div class="lbl">CINEFOLIO STUDIOS · ROLLING</div></div>
 <div id="progress"><i id="progressBar"></i></div>
 <div id="cursor"><div class="ring"><span id="cursorLbl">PLAY</span></div><div class="dot"></div></div>
 
@@ -24,12 +24,12 @@ export const LANDING_HTML = `
     <div class="inner">
       <div class="kicker"><span class="dot"></span>THE AI FILM STUDIO FOR CAREERS</div>
       <h1 id="heroTitle">Portfolios people<br><span class="serif">fall in love with.</span></h1>
-      <p class="sub">Templates all look the same. We cast you as the lead of a <b>cinematic AI film</b>: scenes of you, in your colors, cut into a scroll-driven site people actually remember. <b>Premiere in 24 hours.</b></p>
+      <p class="sub">Templates all look the same. We cast you as the lead of a <b>cinematic AI film</b>: your story told scene by scene as people scroll, with real film sequences. <b>Premieres in about 20 minutes</b> at yourname.cinefolio.dev. Your first three films are on us.</p>
       <div class="cta-row">
-        <button class="btn primary magnetic" data-goto="studio">Try a free rough cut</button>
+        <button class="btn primary magnetic" id="heroEnter">Start free · 3 AI films on us</button>
         <a class="btn ghost magnetic" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live release ↗</a>
       </div>
-      <div class="proof">EVERY CAREER GETS ITS OWN LIGHTING — <a href="#" data-goto="studio">PICK YOURS</a></div>
+      <div class="proof">NO CARD, NO WAITLIST · EVERY CAREER GETS ITS OWN LIGHTING · <a href="#" data-goto="studio">TRY THE DEMO</a></div>
     </div>
     <div class="scrollcue">SCROLL ↓</div>
   </header>
@@ -41,7 +41,7 @@ export const LANDING_HTML = `
       <div class="panel-intro">
         <div class="scene">THE RELEASES</div>
         <h2>Four lighting worlds, <span class="serif">one studio.</span></h2>
-        <p>All four shot by our AI cameras, each in its own palette. Scroll on — your world is the empty frame at the end.</p>
+        <p>All four shot by our AI cameras, each in its own palette. Scroll on: your world is the empty frame at the end.</p>
       </div>
       <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212954_8600e4c3-1335-4834-92f3-59c79847edca.mp4"></video><div class="meta"><span class="chip">The Lavender Cut</span><span class="num">i</span></div></div>
       <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212957_b65bc691-59f0-4da6-be3a-0e33f63a2fd3.mp4"></video><div class="meta"><span class="chip">The Neon Cut</span><span class="num">ii</span></div></div>
@@ -84,12 +84,12 @@ export const LANDING_HTML = `
     <div class="inner-wrap">
       <div class="scene reveal">Receipts, not promises</div>
       <div class="receipts reveal">
-        <div class="rc"><b>24H</b><span>Casting sheet to premiere. Same pipeline, every client</span></div>
+        <div class="rc"><b>~20MIN</b><span>Resume to live premiere. Same pipeline, every client</span></div>
         <div class="rc"><b>120F</b><span>Frames in the scroll-scrub engine, quality-gated per clip</span></div>
         <div class="rc"><b>4</b><span>Distinct lighting worlds on this page alone. Yours will be new</span></div>
         <div class="rc"><b>1</b><span>Live release already screening on a real custom domain</span></div>
       </div>
-      <p class="opensrc reveal">OPEN PRODUCTION — SOURCE AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE EXAMPLE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · THIS SITE IS ITSELF THE DEMO: WEBGL SILK, VELOCITY MARQUEE, PINNED GALLERY, CUSTOM CURSOR</p>
+      <p class="opensrc reveal">OPEN PRODUCTION · SOURCE AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE EXAMPLE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · THIS SITE IS ITSELF THE DEMO: WEBGL SILK, VELOCITY MARQUEE, PINNED GALLERY, CUSTOM CURSOR</p>
     </div>
   </section>
 
@@ -105,14 +105,14 @@ export const LANDING_HTML = `
         <div class="flip"><span>nadia-benali</span><span class="arr">→</span><span class="rel">releases/<b id="flipN">3</b></span></div>
       </div>
       <div class="tile reveal">
-        <div class="tk">THE GUEST LIST</div>
-        <div class="tbig" id="bentoCount">—</div>
-        <div class="td">founding members waiting for the cameras. Live from our database, right now.</div>
+        <div class="tk">REAL ADDRESSES</div>
+        <div class="tbig" id="bentoCount">*.cinefolio.dev</div>
+        <div class="td">Every film premieres on its own subdomain: yourname.cinefolio.dev. Yours is waiting.</div>
       </div>
       <div class="tile reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.3), rgba(10,21,48,.9)), url('https://pub.hyperagent.com/api/published/pbf01KWSRW0ED_ZR9N5ZQNE3HG4577/dde0b377-b779-4c7b-a448-88f1e8d57626.png')">
         <div class="tk">THE ENGINE</div>
-        <div class="tt">0 LLM calls</div>
-        <div class="td">A deterministic engine cuts your site in milliseconds. Beautiful every single time — no AI roulette.</div>
+        <div class="tt">Two ways to film</div>
+        <div class="td">The AI director films a bespoke scroll-story with generated video. Or take The Set: a deterministic engine that renders as you type. Both premiere on the same rails.</div>
       </div>
       <div class="tile reveal">
         <div class="tk">VERSIONED LIKE SOFTWARE</div>
@@ -122,8 +122,8 @@ export const LANDING_HTML = `
       </div>
       <div class="tile reveal">
         <div class="tk">THE PIPELINE</div>
-        <div class="tt">24h director's cut</div>
-        <div class="td">Orders travel a state machine that cannot lose them:</div>
+        <div class="tt">Minutes, not weeks</div>
+        <div class="td">Your order travels a state machine that cannot lose it, from resume to live premiere:</div>
         <div class="states"><span>QUEUED</span><span class="s2">FILMING</span><span class="s3">PREMIERE</span></div>
       </div>
     </div>
@@ -132,9 +132,9 @@ export const LANDING_HTML = `
 <section id="wlwrap">
     <div class="zellige"></div>
     <div class="wrap" id="waitlist">
-      <div class="scene" style="justify-content:center">The guest list</div>
-      <h2>Be an early <span class="serif">cut.</span></h2>
-      <p class="lead">No payment, no spam. Founding members get first slots and founding pricing when the cameras start rolling.</p>
+      <div class="scene" style="justify-content:center">The cameras are rolling</div>
+      <h2>Your first three films <span class="serif">are on us.</span></h2>
+      <p class="lead">No payment, no waitlist. Create an account, drop your resume and a photo, and the AI director premieres your film at yourname.cinefolio.dev in about twenty minutes.</p><div class="cta-row" style="justify-content:center;margin-bottom:26px"><button class="btn primary magnetic" id="wlEnter">Enter the Studio · start free</button></div><p class="lead" style="font-size:.95em;opacity:.8">Prefer studio notes first? Leave your email.</p>
       <form class="wl" id="wl" autocomplete="off">
         <input type="email" id="wlEmail" placeholder="you@domain.com" required>
         <select id="wlRole" aria-label="Your role">
@@ -147,7 +147,7 @@ export const LANDING_HTML = `
         <button class="btn gold magnetic" type="submit" id="wlBtn">Join</button>
       </form>
       <div class="result" id="wlResult"></div>
-      <div class="smallnote" id="wlCount">FOUNDING PRICING · FIRST SLOTS · NO SPAM, EVER</div>
+      <div class="smallnote" id="wlCount">THREE FREE FILMS · NO CARD · NO SPAM, EVER</div>
     </div>
   </section>
 </main>
@@ -160,7 +160,7 @@ export const LANDING_HTML = `
       <h2>Pick your <span class="serif">production.</span></h2>
       <div class="packs">
         <div class="pack">
-          <div class="head"><div class="k">FORMAT 01</div><h3>The Short</h3><div class="price">Founding pricing · TBA</div></div>
+          <div class="head"><div class="k">FORMAT 01</div><h3>The Free Cuts</h3><div class="price">3 AI films · included with every account</div></div>
           <ul>
             <li>One identity-locked hero orbit film</li>
             <li>Single-page cinematic site, kinetic type</li>
@@ -171,19 +171,19 @@ export const LANDING_HTML = `
         </div>
         <div class="pack star">
           <div class="flag">MOST LOVED</div>
-          <div class="head"><div class="k">FORMAT 02</div><h3>The Feature</h3><div class="price">Founding pricing · TBA</div></div>
+          <div class="head"><div class="k">FORMAT 02</div><h3>The Director's Cut</h3><div class="price">$149 · one time</div></div>
           <ul>
             <li>Three AI film scenes: orbit + two story scenes</li>
             <li>Full scroll-scrub production, section pinning</li>
             <li>Interactive terminal visitors can type into</li>
             <li>Verified credentials with real links</li>
             <li>Your palette, your lighting, your story</li>
-            <li>Your domain, your repo — you own everything</li>
+            <li>Your address, your source export: you own everything</li>
           </ul>
-          <div class="foot"><button class="btn primary magnetic" id="joinFromPack">Join the guest list</button></div>
+          <div class="foot"><button class="btn primary magnetic" id="joinFromPack">Enter the Studio</button></div>
         </div>
         <div class="pack">
-          <div class="head"><div class="k">FORMAT 03</div><h3>The Franchise</h3><div class="price">Founding pricing · TBA</div></div>
+          <div class="head"><div class="k">FORMAT 03</div><h3>The Franchise</h3><div class="price">Talk to the studio</div></div>
           <ul>
             <li>Everything in The Feature</li>
             <li>Matching CV redesign (print-grade PDF)</li>
@@ -207,7 +207,7 @@ export const LANDING_HTML = `
 <main data-page="studio">
   <section class="light" style="min-height:100vh">
     <div class="inner-wrap pageheadpad">
-      <div class="scene">The Studio — live demo</div>
+      <div class="scene">The Studio · live demo</div>
       <h2>Direct your own <span class="serif">rough cut.</span></h2>
       <div class="studio-grid">
         <div class="panel">
@@ -220,7 +220,7 @@ export const LANDING_HTML = `
           <div class="field"><label>Headshot · stays in your browser</label>
             <label class="drop" id="drop">CLICK TO ADD A PHOTO<input type="file" id="stPhoto" accept="image/*"></label>
           </div>
-          <div class="field"><label>Paste your CV · or <span style="color:var(--red);cursor:pointer;font-weight:600" id="cvFileBtn">upload .txt</span> · or <span style="color:var(--green);cursor:pointer;font-weight:600" id="sampleBtn">use a sample</span></label><textarea id="stCV" placeholder="Paste the text of your CV here — experience lines with years work best."></textarea><input type="file" id="cvFile" accept=".txt,text/plain" style="display:none"></div>
+          <div class="field"><label>Paste your CV · or <span style="color:var(--red);cursor:pointer;font-weight:600" id="cvFileBtn">upload .txt</span> · or <span style="color:var(--green);cursor:pointer;font-weight:600" id="sampleBtn">use a sample</span></label><textarea id="stCV" placeholder="Paste the text of your CV here. Experience lines with years work best."></textarea><input type="file" id="cvFile" accept=".txt,text/plain" style="display:none"></div>
           <input class="hp" type="text" name="company" tabindex="-1" aria-hidden="true" id="stHp">
           <button class="btn primary magnetic" id="stGo" style="width:100%;background:var(--red);border-color:var(--red);color:#fff">Roll camera</button>
           <div class="result" id="stMsg" style="color:var(--green)"></div>
@@ -234,7 +234,7 @@ export const LANDING_HTML = `
             <button class="lockbtn" data-feature="Export the source">EXPORT SOURCE 🔒</button>
             <button class="lockbtn" data-feature="AI film scenes of you">RENDER AI FILM SCENES 🔒</button>
           </div>
-          <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING · JOIN THE GUEST LIST →</a>
+          <a class="unlock" href="#" id="unlockLink">UNLOCK EVERYTHING · ENTER THE STUDIO →</a>
         </div>
       </div>
     </div>
@@ -257,9 +257,9 @@ export const LANDING_HTML = `
           <div class="result" id="ctResult" style="color:var(--green)"></div>
         </div>
         <div>
-          <div class="qa"><b>How fast is delivery?</b><p>The full production premieres within 24 hours of your casting sheet. The Studio rough cut renders in seconds.</p></div>
-          <div class="qa"><b>Will mine look like these?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike — that's the whole point.</p></div>
-          <div class="qa"><b>The studio inbox</b><p><a href="mailto:aitelqadi22@gmail.com" style="color:var(--red);font-weight:600">Write to us</a> — a human reads everything.</p></div>
+          <div class="qa"><b>How fast is delivery?</b><p>Typically about twenty minutes from resume to live premiere; intricate cuts can take longer. The Studio rough cut below renders in seconds.</p></div>
+          <div class="qa"><b>Will mine look like these?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike: that's the whole point.</p></div>
+          <div class="qa"><b>The studio inbox</b><p><a href="mailto:aitelqadi22@gmail.com" style="color:var(--red);font-weight:600">Write to us</a>; a human reads everything.</p></div>
         </div>
       </div>
     </div>
@@ -278,8 +278,8 @@ export const LANDING_HTML = `
     <button class="x" id="modalX" aria-label="close">×</button>
     <div class="k">FOUNDING ACCESS</div>
     <h3 id="modalTitle">Locked in the demo</h3>
-    <p id="modalText">This is where the full production takes over: identity-locked AI film scenes, deploy to your own domain, source export. Founding members get first slots and founding pricing.</p>
-    <button class="btn primary" id="modalJoin" style="width:100%">Join the guest list</button>
+    <p id="modalText">This is where the full production takes over: the AI director films your scroll-story with real film sequences and premieres it at yourname.cinefolio.dev. Your first three films are free.</p>
+    <button class="btn primary" id="modalJoin" style="width:100%">Enter the Studio</button>
   </div>
 </div>
 `;
