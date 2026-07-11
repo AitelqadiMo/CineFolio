@@ -50,6 +50,12 @@ export const api = {
 
   adminOrders: (status) => req(`/admin/orders?status=${encodeURIComponent(status)}`, { auth: true }),
   adminRetry: (orderId) => req(`/admin/orders/${orderId}/retry`, { method: "POST", auth: true }),
+  adminStats: () => req("/admin/stats", { auth: true }),
+  adminSites: () => req("/admin/sites", { auth: true }),
+  adminUsers: () => req("/admin/users", { auth: true }),
+  adminContacts: () => req("/admin/contacts", { auth: true }),
+  adminPipeline: () => req("/admin/pipeline", { auth: true }),
+  adminPipelineSet: (enabled) => req("/admin/pipeline", { method: "POST", body: { enabled }, auth: true }),
 
   // ---------- buyer-facing surfaces (UI-first) ----------
   // These routes are the contract the console expects; some are not wired in the
