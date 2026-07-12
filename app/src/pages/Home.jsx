@@ -24,18 +24,19 @@ export default function Home() {
   const { over, dropProps } = useDropzone(intake.addFiles);
 
   const [firstRun, setFirstRun] = useState({ dossier: false, draft: false });
-  const [ent, setEnt] = useState(null);       // free AI cuts left
+  const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit, paidCredits } from /me
   const [lane, setLane] = useState("ai");     // "ai" (express, needs resume) | "set" (manual)
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
+  const [buy, setBuy] = useState(null);       // LS checkout url, offered when every cut is spent
 
   useEffect(() => {
     api.sites().then((r) => setSites(r.sites || [])).catch(() => setSites([]));
     api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => { /* optional */ });
     api.me().then((r) => {
       if (typeof r?.user?.freeCutsLeft === "number") {
-        setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3 });
-        if (r.user.freeCutsLeft === 0) setLane("set");
+        setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3, paidCredits: r.user.paidCredits || 0 });
+        if (r.user.freeCutsLeft === 0 && !(r.user.paidCredits > 0)) setLane("set");
       }
     }).catch(() => { /* chip stays quiet */ });
     try { setFirstRun((f) => ({ ...f, draft: !!localStorage.getItem("cf.studioDraft") })); } catch { /* noop */ }
@@ -72,16 +73,30 @@ export default function Home() {
         covers: intake.covers.filter((c) => !String(c.url).startsWith("data:")).map((c) => ({ name: c.name, url: c.url })),
         links: null,
       });
-      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3 }));
-      ledger.record({ orderId: r.orderId, name, price: 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
+      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: r.paid ? Math.max(0, (e0?.paidCredits || 1) - 1) : e0?.paidCredits || 0 }));
+      ledger.record({ orderId: r.orderId, name, price: r.paid ? 149 : 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name })); } catch { /* noop */ }
       nav(`order/${r.orderId}`);
     } catch (e) {
-      if (e.status === 402) { setEnt((e0) => ({ freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3 })); setLane("set"); setErr("Your three free AI cuts are spent. The Set is open for manual filming; paid cuts land soon."); }
+      if (e.status === 402) {
+        setEnt((e0) => ({ ...(e0 || {}), freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: 0 }));
+        setLane("set");
+        setErr("Your three free AI cuts are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
+        api.billingCheckout().then((c) => setBuy(c.url))
+          .catch(() => setErr("Your three free AI cuts are spent. The Set is open for manual filming; the paid register opens soon."));
+      }
       else setErr(friendlyMsg(e));
     } finally { setSending(false); }
   };
   const friendlyMsg = (e) => e?.message || "The studio hit a snag. Try again in a moment.";
+
+  // after the buyer returns from Lemon Squeezy: one click re-syncs the credit
+  // (the webhook lands it server-side; this just refreshes /me)
+  const recheckCredit = () => api.me().then((r) => {
+    const pc = r?.user?.paidCredits || 0;
+    setEnt({ freeCutsLeft: r?.user?.freeCutsLeft ?? 0, freeCutsLimit: r?.user?.freeCutsLimit || 3, paidCredits: pc });
+    if (pc > 0) { setBuy(null); setErr(""); setLane("ai"); }
+  }).catch(() => { /* the credit lands with the webhook; try again in a moment */ });
 
   const roll = () => { if (lane === "ai") rollToDirector(); else rollToSet(); };
 
@@ -135,13 +150,19 @@ export default function Home() {
           />
           {intake.busy && <div className="bkprogress" aria-hidden="true"><div className="fill" /></div>}
           {(intake.error || err) && <div className="bkerr" role="alert">{intake.error || err}</div>}
+          {buy && (
+            <div className="bkbuy">
+              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $149</a>
+              <button type="button" className="btn ghost" onClick={recheckCredit}>I&apos;ve paid — check my credit</button>
+            </div>
+          )}
           <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : sending ? "Sending to the director…" : ""}</span>
           <div className="bkcomprow" style={{ position: "relative" }}>
             <button className="bkplus" title="Attach resume, headshot or project shots" aria-label="Attach resume, headshot or project shots" onClick={() => fileRef.current?.click()}>+</button>
             <div className="bklane" role="radiogroup" aria-label="Who films it">
-              <button role="radio" aria-checked={lane === "ai"} className={lane === "ai" ? "on" : ""} disabled={ent?.freeCutsLeft === 0}
-                title={ent?.freeCutsLeft === 0 ? "Free cuts spent" : "The AI director films it; you wait in the lounge"} onClick={() => setLane("ai")}>
-                ◈ AI Director{ent ? ` · ${ent.freeCutsLeft} free` : ""}
+              <button role="radio" aria-checked={lane === "ai"} className={lane === "ai" ? "on" : ""} disabled={ent?.freeCutsLeft === 0 && !(ent?.paidCredits > 0)}
+                title={ent?.freeCutsLeft === 0 && !(ent?.paidCredits > 0) ? "Free cuts spent — unlock a paid cut" : "The AI director films it; you wait in the lounge"} onClick={() => setLane("ai")}>
+                ◈ AI Director{ent ? ` · ${ent.freeCutsLeft > 0 ? `${ent.freeCutsLeft} free` : ent.paidCredits > 0 ? `${ent.paidCredits} paid` : "0 left"}` : ""}
               </button>
               <button role="radio" aria-checked={lane === "set"} className={lane === "set" ? "on" : ""} title="Film it yourself; renders as you type" onClick={() => setLane("set")}>
                 ◉ The Set

@@ -32,6 +32,14 @@ Structured JSON logs, an SSM-backed circuit breaker for the pipeline, DLQ with r
 
 ## Architecture
 
+![CineFolio architecture on AWS](docs/architecture.svg)
+
+**The flow, by the numbers:**
+① the creator loads the Studio Console (React + Vite SPA off CloudFront/S3) · ② the console calls the HTTP API with a Cognito JWT · ③ the JWT authorizer admits; one Lambda router serves every route · ④ the router reads and writes the single table and the three buckets · ⑤ publish writes an immutable release and atomically flips the CloudFront KeyValueStore pointer — rollback is the same flip back · ⑥ visitors hit `{slug}.cinefolio.dev` and a CloudFront Function resolves the slug to the live release at the edge · ⑦ a production order enqueues to SQS · ⑧ EventBridge Pipes starts the Step Functions build · ⑨ the worker dispatches the brief to the AI director with a task token · ⑩ the agent delivers the cut to `POST /callback`, resuming the state machine · ⑪ finalize readies the cut and SES mails the client · ⑫ exhausted retries land in human review and page the operator via SNS · ⑬ Cognito triggers the auth-mailer for branded codes and the welcome email · ⑭ GitHub Actions assumes the deploy role via OIDC, no long-lived keys.
+
+<details>
+<summary>Text version (Mermaid)</summary>
+
 ```mermaid
 flowchart LR
   subgraph Client
@@ -71,6 +79,8 @@ flowchart LR
   V --> CF2 --> FN --> KVS
   FN --> S3P
 ```
+
+</details>
 
 ## The product, in one paragraph
 

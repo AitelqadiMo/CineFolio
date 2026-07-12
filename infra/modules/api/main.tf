@@ -96,6 +96,8 @@ locals {
     "POST /orders/{id}/revision"    = true
     "GET /profile"                  = true
     "PUT /profile"                  = true
+    "GET /billing/checkout"         = true  # the buyer's personalized Lemon Squeezy checkout URL
+    "POST /billing/webhook"         = false # authenticated by X-Signature HMAC (LS webhook secret) inside the handler
   }
 }
 
