@@ -7,6 +7,7 @@ import * as studio from "./studio.mjs";
 import * as sites from "./sites.mjs";
 import * as orders from "./orders.mjs";
 import * as admin from "./admin.mjs";
+import * as billing from "./billing.mjs";
 
 export const ROUTES = {
   "GET /health": async (_e, ctx) => json(200, { ok: true, service: "cinefolio-api", env: ctx.config.appEnv, ts: new Date().toISOString() }),
@@ -38,6 +39,8 @@ export const ROUTES = {
   "POST /studio/asset": studio.asset,
   "GET /orders": orders.listOrders,
   "POST /orders/{id}/revision": orders.requestRevision,
+  "GET /billing/checkout": billing.checkout,
+  "POST /billing/webhook": billing.webhook,
   "GET /sites/{id}/stats": sites.stats,
   "GET /sites/{id}/inspect": sites.inspect,
   "POST /sites/{id}/domain": sites.connectDomain,

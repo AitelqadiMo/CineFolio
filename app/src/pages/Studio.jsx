@@ -45,7 +45,8 @@ export default function Studio() {
   const [locker, setLocker] = useState([]);   // unassigned assets: { name, url }
   const [arrived, setArrived] = useState(null); // what rode in from a composer handoff
   const [previewKey, setPreviewKey] = useState(0);
-  const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit } from /me
+  const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit, paidCredits } from /me
+  const [buy, setBuy] = useState(null);       // LS checkout url, offered when every cut is spent
   const [films, setFilms] = useState([]);     // the selector: which film is on the bench
   const projPop = usePopover();
 
@@ -119,7 +120,7 @@ export default function Studio() {
   // the account's AI cut entitlement: three free, then the paid path
   useEffect(() => {
     api.me().then((r) => {
-      if (typeof r?.user?.freeCutsLeft === "number") setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3 });
+      if (typeof r?.user?.freeCutsLeft === "number") setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3, paidCredits: r.user.paidCredits || 0 });
     }).catch(() => { /* chip stays quiet */ });
   }, []);
 
@@ -360,7 +361,6 @@ export default function Studio() {
   const directorsCut = async () => {
     setErr("");
     try {
-      const isFree = (ent?.freeCutsLeft ?? 1) > 0;
       const coverUrls = [
         ...projects.filter((p2) => p2.cover && !String(p2.cover).startsWith("data:")).map((p2) => ({ name: p2.name || "cover", url: p2.cover })),
         ...locker.filter((a) => a.url && !String(a.url).startsWith("data:")).map((a) => ({ name: a.name || "asset", url: a.url })),
@@ -381,15 +381,17 @@ export default function Studio() {
         links: q.website || null,
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
-      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3 }));
-      ledger.record({ orderId: r.orderId, name: profile.name, price: isFree ? 0 : 149, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
+      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: r.paid ? Math.max(0, (e0?.paidCredits || 1) - 1) : e0?.paidCredits || 0 }));
+      ledger.record({ orderId: r.orderId, name: profile.name, price: r.paid ? 149 : 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       if (r.production) {
         try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name: profile.name })); } catch { /* noop */ }
       }
     } catch (e2) {
       if (e2.status === 402) {
-        setEnt((e0) => ({ freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3 }));
-        setErr("Your three free AI cuts are spent. The next Director's Cut is $149; reach the studio from Settings to order it.");
+        setEnt((e0) => ({ ...(e0 || {}), freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: 0 }));
+        setErr("Your three free AI cuts are spent. The next Director's Cut is $149 — the register is right below.");
+        api.billingCheckout().then((c) => setBuy(c.url))
+          .catch(() => setErr("Your three free AI cuts are spent. The next Director's Cut is $149; the register opens soon."));
       } else if (e2.status === 401) {
         setErr("Sign in again to order an AI cut.");
       } else setErr(friendly(e2.message));
@@ -718,6 +720,16 @@ export default function Studio() {
               </button>
             </div>
             {err && <div className="err">{err}</div>}
+            {buy && (
+              <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $149</a>
+                <button type="button" className="btn ghost" onClick={() => api.me().then((r) => {
+                  const pc = r?.user?.paidCredits || 0;
+                  setEnt({ freeCutsLeft: r?.user?.freeCutsLeft ?? 0, freeCutsLimit: r?.user?.freeCutsLimit || 3, paidCredits: pc });
+                  if (pc > 0) { setBuy(null); setErr(""); }
+                }).catch(() => { /* the credit lands with the webhook; try again in a moment */ })}>I&apos;ve paid — check my credit</button>
+              </div>
+            )}
             {pub.done && (
               <div className="premiere" style={{ marginTop: 12 }}>
                 <div className="mq">{pub.done.staged ? <>In the can: <em>staged cut #{pub.done.release}</em></> : <>Now screening: <em>release #{pub.done.release}</em></>}</div>
