@@ -612,10 +612,13 @@ test("studio/order: one free cut for new accounts, legacy accounts keep their th
   assert.equal(first.code, 200);
   assert.equal(first.body.freeCutsLeft, 0);
   assert.equal(first.body.price, 0);
+  assert.deepEqual(first.body.entitlement, { plan: "free", aiCuts: 1, freeCutsLeft: 0, freeCutsLimit: 1, paidCredits: 0, publishSlots: 1 }, "the 200 carries the authoritative snapshot");
   const second = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
   assert.equal(second.code, 402);
   assert.equal(second.body.price, 99);
   assert.equal(second.body.checkout, "/billing/checkout");
+  assert.equal(second.body.entitlement.freeCutsLeft, 0, "even the refusal carries the snapshot");
+  assert.equal(second.body.entitlement.paidCredits, 0);
   // the allowance is stamped on the profile so it can never drift
   assert.equal(ctx.ddb._store.get("USER#fc1|PROFILE").freeCutsLimit, 1);
   // a pre-pricing-v3 profile (no stamp) keeps the three it was promised
@@ -634,7 +637,9 @@ test("studio/order: one free cut for new accounts, legacy accounts keep their th
   assert.equal(me.body.user.freeCutsLeft, 0);
   assert.equal(me.body.user.freeCutsLimit, 1);
   assert.equal(me.body.user.aiCuts, 1);
+  assert.equal(me.body.user.publishSlots, 1, "/me reports premiere slots for the console");
   assert.equal(parse(await h(ev("GET /me", { claims: "leg" }))).body.user.freeCutsLimit, 3);
+  assert.equal(parse(await h(ev("GET /me", { claims: "leg" }))).body.user.publishSlots, 3);
   // each buyer lists only their own orders (402s never create orders)
   assert.equal(parse(await h(ev("GET /orders", { claims: "fc1" }))).body.orders.length, 1);
   assert.equal(parse(await h(ev("GET /orders", { claims: "leg" }))).body.orders.length, 1);
@@ -1059,6 +1064,7 @@ test("order: after the free cuts, a paid credit is spent — then an honest 402 
   assert.equal(r1.code, 200);
   assert.equal(r1.body.paid, true, "the response says this cut is bought, not free");
   assert.equal(r1.body.freeCutsLeft, 0);
+  assert.equal(r1.body.entitlement.paidCredits, 0, "the paid spend is reflected in the snapshot");
   assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 0, "the credit is spent, race-safe");
   assert.equal(ctx.queue.sent.length, 1, "the paid order rides the same pipeline");
 

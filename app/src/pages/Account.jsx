@@ -5,6 +5,7 @@
 // wired yet degrade to honest fallbacks, never dead ends.
 import { useEffect, useState } from "react";
 import { api, notWired } from "../api.js";
+import { useEntitlement, refreshEnt, watchForCredits } from "../entitlement.js";
 import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly, Dialog, PromptDialog } from "../ui.jsx";
@@ -22,7 +23,8 @@ const domainIntents = () => { try { return JSON.parse(localStorage.getItem("cf.d
 export default function Account() {
   const { user, nav } = useAuth();
   const [form, setForm] = useState(null);
-  const [plan, setPlan] = useState("free");
+  const ent = useEntitlement();               // the shared studio-pass truth (entitlement.js)
+  const plan = ent?.plan || "free";
   const [sites, setSites] = useState(null);
   const [orders, setOrders] = useState(ledger.list());
   const [ordersWired, setOrdersWired] = useState(false);
@@ -38,8 +40,9 @@ export default function Account() {
 
   useEffect(() => {
     api.me()
-      .then((r) => { setForm({ name: r.user.name || "", company: r.user.company || "", links: r.user.links || "" }); setPlan(r.user.plan || "free"); })
+      .then((r) => { setForm({ name: r.user.name || "", company: r.user.company || "", links: r.user.links || "" }); })
       .catch((e) => setErr(friendly(e.message)));
+    refreshEnt();
     api.sites().then((r) => setSites(r.sites)).catch(() => setSites([]));
     ledger.sync().then((r) => { setOrders(r.orders); setOrdersWired(r.wired); }).catch(() => {});
     if (sessionStorage.getItem("cf.openSupport")) {
@@ -49,7 +52,7 @@ export default function Account() {
   }, []);
 
   const isClient = ledger.isClient(orders) || plan !== "free";
-  const planLabel = isClient ? "DIRECTOR'S CUT CLIENT" : "FREE TAKE";
+  const planLabel = plan === "coach" ? "COACH" : plan === "director" ? "DIRECTOR" : "FREE TAKE";
 
   const save = async (e) => {
     e.preventDefault();
@@ -150,35 +153,32 @@ export default function Account() {
 
           <div className="acctcol">
 
-            {/* ---------- plan ---------- */}
-            <section className="asec" aria-label="Plan">
-              <div className="scene-hd">PLAN</div>
+            {/* ---------- studio pass: the entitlement truth straight from /me ---------- */}
+            <section className="asec" aria-label="Studio pass">
+              <div className="scene-hd">STUDIO PASS</div>
               <div className="panel">
                 <div className="planline">
-                  <b>{isClient ? "Director's Cut client" : "Free take"}</b>
-                  <span className={`badge ${isClient ? "live" : "draft"}`}>{planLabel}</span>
+                  <b>{plan === "coach" ? "The Coach's Slate" : plan === "director" ? "The Director's Cut" : "The Free Cuts"}</b>
+                  <span className={`badge ${plan !== "free" ? "live" : "draft"}`}>{planLabel}</span>
                 </div>
-                <ul className="planlist">
-                  <li>Instant premieres on cinefolio.dev, always included</li>
-                  {isClient ? <>
-                    <li>Bespoke AI film pass, premiered within 24 hours</li>
-                    <li>One revision included per Director's Cut</li>
-                    <li>Your film stays yours: export any time</li>
-                  </> : <li>The Director's Cut ($149, one time) adds a bespoke AI film pass with one revision included</li>}
-                </ul>
-                {(() => {
-                  const paid = orders.filter((o) => o.production && o.status !== "preview_only");
-                  const revLeft = paid.filter((o) => o.status === "ready" && !o.revisionRequested).length;
-                  if (!paid.length) return null;
-                  return (
-                    <div style={{ marginTop: 16 }}>
-                      <div className="mono" style={{ fontSize: 9 }}>STUDIO CREDITS · {paid.length} CUT{paid.length === 1 ? "" : "S"} OWNED · {revLeft} REVISION{revLeft === 1 ? "" : "S"} AVAILABLE</div>
-                      <div style={{ height: 6, borderRadius: 3, background: "rgba(14,28,63,.12)", marginTop: 7, overflow: "hidden" }} aria-hidden="true">
-                        <div style={{ width: `${Math.round((revLeft / paid.length) * 100)}%`, height: "100%", background: "linear-gradient(90deg,#C8102E,#D9A441,#0E9E62)" }} />
-                      </div>
-                    </div>
-                  );
-                })()}
+                {ent ? (
+                  <ul className="planlist">
+                    <li><b>{ent.freeCutsLeft}</b> free AI film{ent.freeCutsLeft === 1 ? "" : "s"} left · <b>{ent.paidCredits}</b> paid production credit{ent.paidCredits === 1 ? "" : "s"} banked</li>
+                    <li><b>{(sites || []).filter((s) => s.status === "live").length}</b> of <b>{ent.publishSlots}</b> premiere slot{ent.publishSlots === 1 ? "" : "s"} screening live</li>
+                    <li>The Set (manual templates) stays unlimited, always</li>
+                    {plan === "free"
+                      ? <li>The Director&apos;s Cut ($99, one time) adds <b>three AI productions</b> and three premiere slots</li>
+                      : <li>Revision messages ride every production · your films export any time, you own everything</li>}
+                  </ul>
+                ) : <p className="dlgtext">Loading your pass…</p>}
+                {plan === "free" && (
+                  <button type="button" className="btn primary" style={{ marginTop: 12 }}
+                    onClick={() => api.billingCheckout()
+                      .then((c) => { watchForCredits(); window.open(c.url, "_blank", "noopener"); })
+                      .catch(() => setErr("The register opens soon — your films keep premiering free."))}>
+                    Unlock the Director&apos;s Cut — $99 · 3 productions
+                  </button>
+                )}
               </div>
             </section>
 
