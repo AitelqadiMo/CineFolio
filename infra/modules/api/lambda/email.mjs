@@ -283,14 +283,16 @@ export function firstPremiereEmail(site, appOrigin) {
 // is the CTA. No order exists yet — the credit is spent when they send a brief.
 export function paymentReceivedEmail(purchase, appOrigin) {
   const ref = esc(String(purchase?.identifier || purchase?.lsOrderId || "").slice(0, 32) || "your order");
+  const n = Number(purchase?.credits) > 0 ? Number(purchase.credits) : 1;
+  const amount = Number(purchase?.totalUsd) > 0 ? `$${purchase.totalUsd}` : null;
   return {
-    subject: "Payment received. Your Director's Cut credit is live.",
+    subject: n === 1 ? "Payment received. Your production credit is live." : `Payment received. ${n} production credits are live.`,
     ...build("Box office", "The studio has your ticket.", [
-      "Your payment for <b>The Director's Cut</b> is in, and a paid cut credit is now on your account.",
-      "Head to the studio, drop your resume and photos, and the AI director starts filming. The credit is only spent when you send a brief.",
+      `Your payment is in, and <b>${n} production credit${n === 1 ? "" : "s"}</b> ${n === 1 ? "is" : "are"} now on your account.`,
+      "Head to the studio, drop your resume and photos, and the AI director starts filming. A credit is only spent when you send a brief.",
     ], appOrigin ? { url: appOrigin, label: "Enter the studio" } : null, {
-      preheader: "Your Director's Cut credit is on your account.",
-      details: [["Reference", ref], ["Amount", "$149"], ["Includes", "AI Director's Cut · revision messages · hosting"]],
+      preheader: `${n} production credit${n === 1 ? "" : "s"} on your account.`,
+      details: [["Reference", ref], ...(amount ? [["Amount", amount]] : []), ["Credits", String(n)], ["Each includes", "AI production · revision messages · hosting"]],
     }),
   };
 }

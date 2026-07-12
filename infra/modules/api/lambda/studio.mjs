@@ -2,7 +2,7 @@
 // generate: create order (idempotent) -> fire agent webhook -> return instant rough cut
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
-import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE } from "./lib.mjs";
+import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE, CUT_PRICE, NEW_FREE_CUTS, LEGACY_FREE_CUTS } from "./lib.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -93,12 +93,11 @@ export async function generate(event, ctx) {
   return ok({ ok: true, orderId, production: false, html: previewHTML(parsed) });
 }
 
-export const FREE_CUTS = 3;
-
 // POST /studio/order — the PRODUCTION surface (JWT enforced at the gateway).
-// Every account holds three free AI cuts; the counter lives on the user record
-// and is spent with a conditional update, so a double-click or a second tab
-// can never mint a fourth. Beyond three: 402, the paid path.
+// Every account holds free AI cuts (one from pricing v3 on; earlier accounts
+// keep their three — the limit is stamped per profile and never reduced).
+// The counter is spent with a conditional update, so a double-click or a
+// second tab can never mint an extra. Beyond the limit: paid credits, then 402.
 // Body: { name, role, cvText, template, palette, customIdea, photo, covers, links, email? }
 export async function order(event, ctx) {
   const claims = claimsOf(event);
@@ -110,16 +109,20 @@ export async function order(event, ctx) {
   const cvText = clampStr(b.cvText, 8000);
   const parsed = parseCV(cvText, clampStr(b.name, 80), clampStr(b.role, 24));
 
-  // spend one free cut, race-safe. The profile row is lazy-upserted by GET /me;
-  // cover the fresh-account path with an upsert-style two-step.
+  // spend one free cut, race-safe. The per-account limit rides the profile row
+  // (stamped once with if_not_exists): profiles without a stamp predate pricing
+  // v3 and keep the legacy three; fresh profiles get today's allowance.
+  const profileKey = { PK: `USER#${claims.sub}`, SK: "PROFILE" };
+  const profile = await ctx.ddb.get(profileKey);
+  const freeLimit = profile ? (profile.freeCutsLimit ?? LEGACY_FREE_CUTS) : NEW_FREE_CUTS;
   let aiCuts = 0;
   let freeCut = true;
   try {
     const updated = await ctx.ddb.update({
-      Key: { PK: `USER#${claims.sub}`, SK: "PROFILE" },
-      UpdateExpression: "SET updatedAt = :u ADD aiCuts :one",
+      Key: profileKey,
+      UpdateExpression: "SET updatedAt = :u, freeCutsLimit = if_not_exists(freeCutsLimit, :lim) ADD aiCuts :one",
       ConditionExpression: "attribute_not_exists(aiCuts) OR aiCuts < :max",
-      ExpressionAttributeValues: { ":one": 1, ":max": FREE_CUTS, ":u": now() },
+      ExpressionAttributeValues: { ":one": 1, ":max": freeLimit, ":lim": freeLimit, ":u": now() },
       ReturnValues: "ALL_NEW",
     });
     aiCuts = updated?.aiCuts ?? 1;
@@ -129,17 +132,17 @@ export async function order(event, ctx) {
     // Same conditional-counter discipline: a double-click can never spend two.
     try {
       await ctx.ddb.update({
-        Key: { PK: `USER#${claims.sub}`, SK: "PROFILE" },
+        Key: profileKey,
         UpdateExpression: "SET updatedAt = :u ADD paidCredits :neg",
         ConditionExpression: "paidCredits >= :one",
         ExpressionAttributeValues: { ":neg": -1, ":one": 1, ":u": now() },
       });
       freeCut = false;
-      aiCuts = FREE_CUTS; // the free counter stays at its cap; entitlement rides paidCredits now
+      aiCuts = freeLimit; // the free counter stays at its cap; entitlement rides paidCredits now
     } catch (e2) {
       if (e2?.name === "ConditionalCheckFailedException") {
         // no credits anywhere: answer with the price AND the way to pay it
-        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: 149, checkout: "/billing/checkout" });
+        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: CUT_PRICE, checkout: "/billing/checkout" });
       }
       throw e2;
     }
@@ -169,7 +172,7 @@ export async function order(event, ctx) {
         palette: clampStr(b.palette, 24) || null,
         customIdea: clampStr(b.customIdea, 1200) || null,
       },
-      freeCut, paid: !freeCut, cutNumber: freeCut ? aiCuts : null,
+      freeCut, paid: !freeCut, price: freeCut ? 0 : CUT_PRICE, cutNumber: freeCut ? aiCuts : null,
       status: "queued", production, createdAt: now(), updatedAt: now(),
     },
     "attribute_not_exists(PK)" // idempotency: uuid collision or client retry can't double-create
@@ -187,7 +190,7 @@ export async function order(event, ctx) {
     await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
 
-  return ok({ ok: true, orderId, production, paid: !freeCut, freeCutsLeft: Math.max(0, FREE_CUTS - aiCuts), html: previewHTML(parsed) });
+  return ok({ ok: true, orderId, production, paid: !freeCut, price: freeCut ? 0 : CUT_PRICE, freeCutsLeft: Math.max(0, freeLimit - aiCuts), html: previewHTML(parsed) });
 }
 
 async function setStatus(ctx, orderId, status, extra = {}) {

@@ -37,10 +37,15 @@ function fakeCtx(overrides = {}) {
       // micro-interpreter for the SET/ADD expressions we actually use
       const resolve = (n) => ExpressionAttributeNames[n] || n;
       for (const clause of UpdateExpression.split(/SET|ADD/).filter(Boolean).map((c) => c.trim())) {
-        for (const part of clause.split(",").map((p) => p.trim()).filter(Boolean)) {
+        // split on commas that are not inside if_not_exists(...) parens
+        for (const part of clause.split(/,(?![^(]*\))/).map((p) => p.trim()).filter(Boolean)) {
           if (part.includes("=")) {
             const [lhs, rhs] = part.split("=").map((x) => x.trim());
-            item[resolve(lhs)] = ExpressionAttributeValues[rhs];
+            const ine = rhs.match(/^if_not_exists\((\S+?),\s*(:\S+)\)$/);
+            if (ine) {
+              const cur = item[resolve(ine[1])];
+              item[resolve(lhs)] = cur !== undefined ? cur : ExpressionAttributeValues[ine[2]];
+            } else item[resolve(lhs)] = ExpressionAttributeValues[rhs];
           } else {
             const m = part.match(/^(\S+)\s+(:\S+)$/); // ADD #c :one
             if (m) item[resolve(m[1])] = (item[resolve(m[1])] || 0) + ExpressionAttributeValues[m[2]];
@@ -156,7 +161,7 @@ test("studio: generate creates order + fires webhook, callback validates + store
   const gen = parse(await h(ev("POST /studio/order", { claims: "n1", body: { email: "n@x.io", name: "Nadia Benali", role: "engineer", cvText: "2021 SRE at Acme\nterraform kubernetes aws" } })));
   assert.equal(gen.code, 200);
   assert.equal(gen.body.production, true);
-  assert.equal(gen.body.freeCutsLeft, 2);
+  assert.equal(gen.body.freeCutsLeft, 0); // pricing v3: a fresh account's single free cut, spent
   assert.match(gen.body.html, /terraform/i);
   const orderId = gen.body.orderId;
   assert.equal(ctx.queue.sent.length, 1);
@@ -598,31 +603,41 @@ test("callback v2: the agent delivers a whole web app as JSON and publish serves
 
 // ---------- ZWIN pass 05: AI cut entitlement ----------
 
-test("studio/order: three free cuts per account, the fourth is 402, accounts are segregated", async () => {
+test("studio/order: one free cut for new accounts, legacy accounts keep their three, then 402", async () => {
   const ctx = fakeCtx();
   const h = makeHandler(async () => ctx);
   const body = { email: "f@x.io", name: "Free Cut", role: "designer", cvText: "2020 designer figma branding", photo: "https://cdn/x.jpg", covers: [{ name: "p1.jpg", url: "https://cdn/p1.jpg" }] };
-  for (let i = 1; i <= 3; i++) {
-    const r = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
-    assert.equal(r.code, 200);
-    assert.equal(r.body.freeCutsLeft, 3 - i);
-  }
-  const fourth = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
-  assert.equal(fourth.code, 402);
-  assert.equal(fourth.body.price, 149);
-  // a different account still holds its own three
-  assert.equal(parse(await h(ev("POST /studio/order", { claims: "fc2", body }))).body.freeCutsLeft, 2);
+  // a fresh account: the first film is on us, the second answers with the register
+  const first = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
+  assert.equal(first.code, 200);
+  assert.equal(first.body.freeCutsLeft, 0);
+  assert.equal(first.body.price, 0);
+  const second = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
+  assert.equal(second.code, 402);
+  assert.equal(second.body.price, 99);
+  assert.equal(second.body.checkout, "/billing/checkout");
+  // the allowance is stamped on the profile so it can never drift
+  assert.equal(ctx.ddb._store.get("USER#fc1|PROFILE").freeCutsLimit, 1);
+  // a pre-pricing-v3 profile (no stamp) keeps the three it was promised
+  ctx.ddb._store.set("USER#leg|PROFILE", { PK: "USER#leg", SK: "PROFILE", type: "user", email: "leg@x.io", aiCuts: 2, createdAt: "2026-07-01T00:00:00.000Z" });
+  const legacy = parse(await h(ev("POST /studio/order", { claims: "leg", body })));
+  assert.equal(legacy.code, 200);
+  assert.equal(legacy.body.freeCutsLeft, 0); // the third of three, spent
+  assert.equal(parse(await h(ev("POST /studio/order", { claims: "leg", body }))).code, 402);
+  assert.equal(ctx.ddb._store.get("USER#leg|PROFILE").freeCutsLimit, 3, "legacy allowance stamped, not reduced");
   // the client's material rides on the order for the pipeline dispatch
   const withAssets = [...ctx.ddb._store.values()].find((v) => v.type === "order" && v.assets?.photo);
   assert.equal(withAssets.assets.photo, "https://cdn/x.jpg");
   assert.equal(withAssets.assets.covers[0].url, "https://cdn/p1.jpg");
-  // /me surfaces the entitlement for the console
+  // /me surfaces the per-account entitlement for the console
   const me = parse(await h(ev("GET /me", { claims: "fc1" })));
   assert.equal(me.body.user.freeCutsLeft, 0);
-  assert.equal(me.body.user.aiCuts, 3);
-  // each buyer lists only their own orders
-  assert.equal(parse(await h(ev("GET /orders", { claims: "fc1" }))).body.orders.length, 4 - 1); // 402 order never created
-  assert.equal(parse(await h(ev("GET /orders", { claims: "fc2" }))).body.orders.length, 1);
+  assert.equal(me.body.user.freeCutsLimit, 1);
+  assert.equal(me.body.user.aiCuts, 1);
+  assert.equal(parse(await h(ev("GET /me", { claims: "leg" }))).body.user.freeCutsLimit, 3);
+  // each buyer lists only their own orders (402s never create orders)
+  assert.equal(parse(await h(ev("GET /orders", { claims: "fc1" }))).body.orders.length, 1);
+  assert.equal(parse(await h(ev("GET /orders", { claims: "leg" }))).body.orders.length, 1);
 });
 
 // ---------- ZWIN pass 07: the agent's asset intake ----------
@@ -951,16 +966,18 @@ test("floor: the kill switch flips the SSM breaker and defaults to enabled", asy
 // ---------- billing: the cash register ----------
 
 // a ctx with the store open: agent secrets (production pipeline) + LS keys
-const lsCtx = () => fakeCtx({
+const lsCtx = (extraSecrets = {}) => fakeCtx({
   secrets: async () => ({
     AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec",
     LS_WEBHOOK_SECRET: "lssec", LS_BUY_URL_DC: "https://cinefolio.lemonsqueezy.com/buy/dc",
+    LS_BUY_URL_COACH: "https://cinefolio.lemonsqueezy.com/buy/coach",
+    ...extraSecrets,
   }),
 });
 const lsSign = (raw) => createHmac("sha256", "lssec").update(raw, "utf8").digest("hex");
-const lsOrderBody = (id, { sub, status = "paid", email = "buyer@x.io", event = "order_created" } = {}) => JSON.stringify({
+const lsOrderBody = (id, { sub, status = "paid", email = "buyer@x.io", event = "order_created", variantId = 111, totalUsd = 9900 } = {}) => JSON.stringify({
   meta: { event_name: event, ...(sub ? { custom_data: { user_sub: sub } } : {}) },
-  data: { id, attributes: { status, user_email: email, identifier: `LS-${id}`, total_usd: 14900, test_mode: true, first_order_item: { product_name: "The Director's Cut" } } },
+  data: { id, attributes: { status, user_email: email, identifier: `LS-${id}`, total_usd: totalUsd, test_mode: true, first_order_item: { product_name: "The Director's Cut", variant_id: variantId, product_id: 222 } } },
 });
 const lsHook = (raw, sig) => ({ ...ev("POST /billing/webhook", { headers: { "x-signature": sig ?? lsSign(raw) } }), body: raw });
 
@@ -968,10 +985,14 @@ test("billing: checkout is personal, priced, and degrades honestly", async () =>
   const h = makeHandler(async () => lsCtx());
   const { code, body } = parse(await h(ev("GET /billing/checkout", { claims: "buyer" })));
   assert.equal(code, 200);
-  assert.equal(body.price, 149);
+  assert.equal(body.price, 99);
   assert.match(body.url, /^https:\/\/cinefolio\.lemonsqueezy\.com\/buy\/dc\?/);
   assert.ok(decodeURIComponent(body.url).includes("checkout[email]=buyer@x.io"), "buyer email is prefilled");
   assert.ok(decodeURIComponent(body.url).includes("checkout[custom][user_sub]=buyer"), "the sub rides along for the webhook");
+  // the coach pack rides the same register with its own link and price
+  const coach = parse(await h(ev("GET /billing/checkout", { claims: "buyer", qs: { product: "coach" } })));
+  assert.equal(coach.body.price, 295);
+  assert.match(coach.body.url, /^https:\/\/cinefolio\.lemonsqueezy\.com\/buy\/coach\?/);
   // no session -> 401 even before the gateway is in play
   assert.equal(parse(await h(ev("GET /billing/checkout"))).code, 401);
   // store not open yet -> an honest 503, never a broken link
@@ -988,7 +1009,8 @@ test("billing: webhook lands one credit, swallows replays, bounces forgeries", a
   const first = parse(await h(lsHook(raw)));
   assert.equal(first.code, 200);
   assert.equal(first.body.credited, true);
-  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 1, "the credit landed on the account");
+  assert.equal(first.body.credits, 3, "the flagship default mints three productions");
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 3, "the credits landed on the account");
   assert.equal(ctx.ddb._store.get("LSORDER#101|META").claimed, true, "the purchase row is on the books");
   assert.equal(ctx.ses.sent.length, 1, "the buyer hears the register ring");
   assert.match(ctx.ses.sent[0].subject, /Payment received/);
@@ -996,7 +1018,7 @@ test("billing: webhook lands one credit, swallows replays, bounces forgeries", a
   // LS retries on non-200s and humans click resend: replays never double-mint
   const replay = parse(await h(lsHook(raw)));
   assert.equal(replay.body.already, true);
-  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 1, "replay minted nothing");
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 3, "replay minted nothing");
 
   // forged or missing signature bounces before anything is read
   assert.equal(parse(await h(lsHook(raw, "0".repeat(64)))).code, 401);
@@ -1007,7 +1029,7 @@ test("billing: webhook lands one credit, swallows replays, bounces forgeries", a
   assert.equal(parse(await h(lsHook(refund))).body.ignored, "order_refunded");
   const pending = lsOrderBody("103", { sub: "buyer", status: "pending" });
   assert.match(parse(await h(lsHook(pending))).body.ignored, /pending/);
-  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 1, "neither touched the balance");
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 3, "neither touched the balance");
 
   // a purchase with no sub is recorded unclaimed — money is never dropped
   const stray = lsOrderBody("104", {});
@@ -1035,7 +1057,7 @@ test("order: after the free cuts, a paid credit is spent — then an honest 402 
 
   // the buyer's ledger prices the paid cut
   const list = parse(await h(ev("GET /orders", { claims: "buyer" })));
-  assert.equal(list.body.orders[0].price, 149);
+  assert.equal(list.body.orders[0].price, 99);
 
   // /me shows the spent balance so the console chip stays truthful
   const me = parse(await h(ev("GET /me", { claims: "buyer" })));
@@ -1045,5 +1067,24 @@ test("order: after the free cuts, a paid credit is spent — then an honest 402 
   const r2 = parse(await h(ev("POST /studio/order", { claims: "buyer", body: orderBody })));
   assert.equal(r2.code, 402);
   assert.equal(r2.body.checkout, "/billing/checkout");
-  assert.equal(r2.body.price, 149);
+  assert.equal(r2.body.price, 99);
+});
+
+test("billing: the credits map prices the pack — a mapped variant mints seven", async () => {
+  const ctx = lsCtx({ LS_CREDITS_MAP: JSON.stringify({ "variant:7777": 7 }) });
+  const h = makeHandler(async () => ctx);
+  const raw = lsOrderBody("201", { sub: "coach1", variantId: 7777, totalUsd: 29500 });
+  const r = parse(await h(lsHook(raw)));
+  assert.equal(r.body.credits, 7);
+  assert.equal(ctx.ddb._store.get("USER#coach1|PROFILE").paidCredits, 7, "the slate landed in one piece");
+  assert.equal(ctx.ddb._store.get("LSORDER#201|META").credits, 7, "the books know the pack size");
+  // an unmapped variant on the same store still mints the flagship default
+  const other = lsOrderBody("202", { sub: "solo", variantId: 111 });
+  assert.equal(parse(await h(lsHook(other))).body.credits, 3);
+  // a broken map never blocks money: flagship default, logged
+  const broken = lsCtx({ LS_CREDITS_MAP: "{not json" });
+  const h2 = makeHandler(async () => broken);
+  const r2 = parse(await h2(lsHook(lsOrderBody("203", { sub: "b2" }))));
+  assert.equal(r2.code, 200);
+  assert.equal(r2.body.credits, 3);
 });
