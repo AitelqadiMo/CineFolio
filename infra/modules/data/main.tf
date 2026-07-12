@@ -159,3 +159,4 @@ output "published_bucket" { value = aws_s3_bucket.b["published"].id }
 output "published_bucket_arn" { value = aws_s3_bucket.b["published"].arn }
 output "published_bucket_regional_domain" { value = aws_s3_bucket.b["published"].bucket_regional_domain_name }
 output "artifacts_bucket" { value = aws_s3_bucket.b["artifacts"].id }
+output "artifacts_bucket_arn" { value = aws_s3_bucket.b["artifacts"].arn }

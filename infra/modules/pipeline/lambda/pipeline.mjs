@@ -9,6 +9,8 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // the SHARED template library: terraform stitches infra/modules/api/lambda/email.mjs
 // into this bundle, so pipeline and api emails can never drift apart.
 import { premiereReadyEmail, revisionPremiereEmail, needsAttentionEmail } from "./email.mjs";
@@ -17,8 +19,10 @@ const region = process.env.AWS_REGION || "eu-central-1";
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), { marshallOptions: { removeUndefinedValues: true } });
 const ssm = new SSMClient({ region });
 const sns = new SNSClient({ region });
+const s3 = new S3Client({ region });
 const TABLE = process.env.TABLE_NAME;
 const TOPIC = process.env.ALARM_TOPIC_ARN;
+const ARTIFACTS = process.env.ARTIFACTS_BUCKET || "";
 
 let secretsCache = null;
 async function secrets() {
@@ -130,6 +134,28 @@ export const handler = async (event) => {
       "</style>",
     ].join("\n");
 
+    // REVISION runs carry the existing cut: a presigned GET url for every file
+    // of the delivered film (pages AND media), so the director EVOLVES the cut
+    // instead of rebuilding it. Modified pages get rewritten; untouched media
+    // is reused by relative path — it already lives next to the cut server-side
+    // and the callback's manifest union keeps it. This is the margin protector:
+    // a revision should cost editing, not a second film shoot.
+    const isRevision = Boolean(order.revisionNotes);
+    let existingCut = null;
+    if (isRevision && Array.isArray(order.cutFiles) && order.cutFiles.length && ARTIFACTS) {
+      try {
+        existingCut = await Promise.all(order.cutFiles.map(async (p) => ({
+          path: p,
+          url: await getSignedUrl(s3, new GetObjectCommand({ Bucket: ARTIFACTS, Key: `orders/${orderId}/cut/${p}` }), { expiresIn: 1800 }),
+        })));
+      } catch (e) {
+        // fail-soft: a presign hiccup downgrades the revision to a fresh build
+        // rather than stalling the order in the queue
+        console.error(JSON.stringify({ level: "warn", msg: "existing cut presign failed; dispatching without it", orderId, err: e?.message }));
+        existingCut = null;
+      }
+    }
+
     const payload = {
       kind: "cinefolio.order",
       orderId,
@@ -138,7 +164,9 @@ export const handler = async (event) => {
       assets: order.assets || null, // { photo, covers: [{name,url}], links } — the client's own material
       kit: SCROLL_KIT, // paste-and-adapt scroll engine: progress var, reveals, pinned video scrub
       brief: order.brief || null, // template/palette/customIdea from the Studio workspace
+      revision: isRevision, // true when this run evolves an earlier delivery
       revisionNotes: order.revisionNotes || null, // set when this run is the included revision
+      existingCut, // [{ path, url }] presigned reads of the delivered cut (~30 min), null on first builds
       instructions: [
         "You are the director on a commissioned portfolio film. The client's resume (cvText), their photo and project shots (assets), and their creative brief ride on this order. Build the portfolio that gets this specific person hired: read the resume for the arc of the career, pick the register their industry respects, and art-direct with conviction. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint.",
         "THE PORTFOLIO IS A SCROLL-STORY. Scrolling index.html must feel like living this person's story, not reading a document: an opening title scene, then the career told in acts that reveal as the visitor scrolls, at least one pinned scene where scrolling drives the motion, and a closing scene that lands on contact plus the resume. Use the kit field (paste it into the page and adapt): --scroll is the page progress variable, data-reveal elements stagger in, data-pin sections pin their .stage while --pin runs 0 to 1, and video[data-scrub] inside a pinned section scrubs with the scroll. Reduced-motion fallbacks are already in the kit; keep them.",
@@ -149,7 +177,7 @@ export const handler = async (event) => {
         "Likeness is sacred: the client's face may ONLY come from assets.photo and assets.covers. Use those exact URLs for any portrait or project imagery of them. Never generate, alter, or substitute a human likeness. If no photo is provided, art-direct without a face.",
         "Ship a working Download Resume affordance: render a print-clean resume.html from cvText with @media print styles, link it prominently from index.html, and wire a download or print button. If you can render a true PDF, also upload it as resume.pdf via upload.url and link that; if you cannot, link ONLY resume.html, never a pdf that does not exist. A visitor must be able to leave with the resume in hand.",
         "Structure: index.html plus projects/{slug}.html case-study pages for the strongest work in the resume. Every file is a self-contained html document (inline CSS, Google Fonts links allowed, no external JS beyond inline scripts). Responsive at 375, 768 and 1440; honor prefers-reduced-motion with static fallbacks; real hrefs for email and links.",
-        "When revisionNotes is set this is a REVISION of your earlier cut for the same client: evolve the existing film per the notes, keep what worked, never start a new concept from scratch.",
+        "When revision is true this is a REVISION of your earlier cut for the same client, and existingCut carries a presigned URL for EVERY file of the delivered film (valid about 30 minutes). Fetch the pages you need, apply revisionNotes, keep what worked — never start a new concept from scratch. REUSE THE EXISTING MEDIA: every image, video and pdf in existingCut already lives next to the cut server-side, so keep referencing it by the same relative path WITHOUT regenerating or re-uploading it; generate new media only where the notes explicitly ask for different imagery. Deliver the COMPLETE page set (modified and unmodified pages alike) the normal way via deliver.url — unchanged media rides along automatically. A revision should cost editing, not a second film shoot: target delivery in minutes.",
         "Deliver within 25 minutes: POST JSON {\"files\":[...]} to deliver.url with deliver.headers. Pages: {\"path\":\"index.html\",\"html\":\"<!doctype html...\"}. Small binary assets (images, fonts, short loops) may ride the bundle as {\"path\":\"assets/hero.jpg\",\"content\":\"<base64>\",\"contentType\":\"image/jpeg\"} and are served next to the pages; reference them by relative path. Heavy video stays an external URL. Max 30 files, 3MB total, index.html required.",
       ].join("\n\n"),
       deliver: {

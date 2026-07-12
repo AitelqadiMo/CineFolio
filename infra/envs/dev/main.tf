@@ -225,12 +225,14 @@ module "pipeline" {
   app_env         = var.env
   table_name      = module.data.table_name
   table_arn       = module.data.table_arn
-  kms_key_arn     = module.kms.key_arn
-  api_domain      = trimsuffix(trimprefix(module.api.api_endpoint, "https://"), "/")
-  alarm_topic_arn = module.observability.alarms_topic_arn
-  ses_from        = var.ses_from
-  app_origin      = var.app_origin
-  tags            = local.tags
+  kms_key_arn          = module.kms.key_arn
+  api_domain           = trimsuffix(trimprefix(module.api.api_endpoint, "https://"), "/")
+  alarm_topic_arn      = module.observability.alarms_topic_arn
+  artifacts_bucket     = module.data.artifacts_bucket
+  artifacts_bucket_arn = module.data.artifacts_bucket_arn
+  ses_from             = var.ses_from
+  app_origin           = var.app_origin
+  tags                 = local.tags
 }
 
 module "cicd" {

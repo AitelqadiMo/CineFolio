@@ -13,6 +13,11 @@ variable "api_domain" {
   description = "API host (no scheme) the agent calls back, e.g. 81ik4yem44.execute-api.eu-central-1.amazonaws.com"
 }
 variable "alarm_topic_arn" { type = string }
+variable "artifacts_bucket" {
+  type        = string
+  description = "Artifacts bucket name; revision dispatches presign the existing cut's files from orders/*"
+}
+variable "artifacts_bucket_arn" { type = string }
 variable "ses_from" {
   type    = string
   default = ""
@@ -123,6 +128,13 @@ data "aws_iam_policy_document" "worker" {
     resources = ["*"]
   }
   statement {
+    # revision dispatches presign GET urls for the delivered cut's files; the
+    # signed url inherits THIS role's permissions, scoped to the cut prefix
+    sid       = "CutRead"
+    actions   = ["s3:GetObject"]
+    resources = ["${var.artifacts_bucket_arn}/orders/*"]
+  }
+  statement {
     sid       = "Page"
     actions   = ["sns:Publish"]
     resources = [var.alarm_topic_arn]
@@ -158,13 +170,14 @@ resource "aws_lambda_function" "worker" {
 
   environment {
     variables = {
-      TABLE_NAME      = var.table_name
-      SSM_PREFIX      = local.ssm_prefix
-      API_DOMAIN      = var.api_domain
-      ALARM_TOPIC_ARN = var.alarm_topic_arn
-      SES_FROM        = var.ses_from
-      APP_ORIGIN      = var.app_origin
-      SES_CONFIG_SET  = var.ses_config_set
+      TABLE_NAME       = var.table_name
+      SSM_PREFIX       = local.ssm_prefix
+      API_DOMAIN       = var.api_domain
+      ALARM_TOPIC_ARN  = var.alarm_topic_arn
+      SES_FROM         = var.ses_from
+      APP_ORIGIN       = var.app_origin
+      SES_CONFIG_SET   = var.ses_config_set
+      ARTIFACTS_BUCKET = var.artifacts_bucket
     }
   }
   depends_on = [aws_cloudwatch_log_group.worker]
