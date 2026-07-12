@@ -38,6 +38,13 @@ export default function Home() {
       if (e && e.freeCutsLeft === 0 && !(e.paidCredits > 0)) setLane("set");
     });
     try { setFirstRun((f) => ({ ...f, draft: !!localStorage.getItem("cf.studioDraft") })); } catch { /* noop */ }
+    // brand-new lot: roll the First Screening once, never twice, always skippable
+    try {
+      if (!localStorage.getItem("cf.fsSeen")) {
+        localStorage.setItem("cf.fsSeen", "1");
+        api.getProfile().then((r) => { if (!r.profile) nav("welcome"); }).catch(() => { /* stay home */ });
+      }
+    } catch { /* private mode: the dossier step below still leads there */ }
   }, []);
 
   const rollToSet = () => {
@@ -215,9 +222,9 @@ export default function Home() {
                   </div>
                   <div className="bkgauge" aria-hidden="true"><div className="fill" style={{ width: `${(done / 4) * 100}%` }} /></div>
                   <div className="bksteps">
-                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav("profile")}>
+                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav(firstRun.dossier ? "profile" : "welcome")}>
                       <span className="no" aria-hidden="true">{firstRun.dossier ? "✓" : "1"}</span>
-                      <span><b>Fill your dossier</b><i>Upload a resume once; every film casts from it.</i></span>
+                      <span><b>{firstRun.dossier ? "Fill your dossier" : "Walk the First Screening"}</b><i>{firstRun.dossier ? "Upload a resume once; every film casts from it." : "Eight scenes, five minutes: the studio learns your story."}</i></span>
                     </button>
                     <button className={`bkstep ${firstRun.draft ? "done" : ""}`} onClick={() => nav("studio")}>
                       <span className="no" aria-hidden="true">{firstRun.draft ? "✓" : "2"}</span>
