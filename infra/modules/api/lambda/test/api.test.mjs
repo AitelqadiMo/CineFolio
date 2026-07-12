@@ -1141,3 +1141,27 @@ test("premiere slots: one live film on free, three on director, takedown frees t
   assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "old", path: { id: o1.siteId }, body: page("O1") }))).code, 200);
   assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "old", path: { id: o2.siteId }, body: page("O2") }))).code, 200, "legacy account keeps room beyond one");
 });
+
+test("cut preview: the path-style address serves pages and assets so relative refs resolve", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "pv1", body: { email: "p@x.io", name: "Preview Test", role: "engineer", cvText: "2022 platform work terraform aws at Example" } })));
+  const orderId = gen.body.orderId;
+  // the agent ships an asset, then delivers a page referencing it relatively
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "assets/hero.png" } }), body: png, isBase64Encoded: true });
+  await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: '<!doctype html><html><body><img src="assets/hero.png">CUT</body></html>' });
+  // path-style page
+  const page = await h(ev("GET /studio/cut/{orderId}/{path+}", { path: { orderId, path: "index.html" } }));
+  assert.equal(page.statusCode, 200);
+  assert.match(page.headers["content-type"], /text\/html/);
+  assert.match(page.body, /CUT/);
+  // path-style asset (the thing that 404'd on the query route in a plain tab)
+  const asset = await h(ev("GET /studio/cut/{orderId}/{path+}", { path: { orderId, path: "assets/hero.png" } }));
+  assert.equal(asset.statusCode, 200);
+  assert.equal(asset.isBase64Encoded, true);
+  // unknown files stay 404, same as the query route
+  assert.equal(parse(await h(ev("GET /studio/cut/{orderId}/{path+}", { path: { orderId, path: "assets/nope.png" } }))).code, 404);
+  // the query route still works for compatibility
+  assert.equal(parse(await h(ev("GET /studio/cut", { qs: { orderId } }))).code, 200);
+});

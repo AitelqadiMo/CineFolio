@@ -199,7 +199,7 @@ export default function Account() {
                       <span className={`badge ${STATUS_CLASS[o.status] || "queued"}`}>{STATUS_LABEL[o.status] || o.status}</span>
                       {o.status === "ready" && (
                         <>
-                          <a className="btn ghost ordbtn" href={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(o.orderId)}`} target="_blank" rel="noopener noreferrer" title="Preview the delivered cut; case-study pages activate at premiere">Watch the cut</a>
+                          <a className="btn ghost ordbtn" href={`${CONFIG.apiBase}/studio/cut/${encodeURIComponent(o.orderId)}/index.html`} target="_blank" rel="noopener noreferrer" title="Preview the delivered cut; relative assets resolve on the path-style address">Watch the cut</a>
                           <button type="button" className="btn primary ordbtn" onClick={() => { try { sessionStorage.setItem("cf.premiereCut", o.orderId); } catch { /* noop */ } nav("dashboard"); }}>Premiere</button>
                         </>
                       )}

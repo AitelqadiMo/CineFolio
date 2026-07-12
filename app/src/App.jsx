@@ -52,6 +52,9 @@ export default function App() {
   const [edge, setEdge] = useState(null); // { ms } ambient status
   const [prod, setProd] = useState(null); // global director's-cut tracking
   const [credits, setCredits] = useState(() => ledger.credits());
+  const [navOpen, setNavOpen] = useState(false); // phone drawer: the sidebar behind a clapper button
+
+  useEffect(() => { setNavOpen(false); }, [route]); // any navigation closes the drawer
 
   useEffect(() => {
     restore().finally(() => setBooting(false));
@@ -185,7 +188,9 @@ export default function App() {
     <AuthCtx.Provider value={{ user, nav }}>
       <CmdK nav={nav} admin={user.admin} />
       <ToastHost />
-      <div className="backlot">
+      <div className={`backlot${navOpen ? " navopen" : ""}`}>
+        <button type="button" className="bkburger" aria-label={navOpen ? "Close navigation" : "Open navigation"} aria-expanded={navOpen} onClick={() => setNavOpen((v) => !v)}>{navOpen ? "✕" : "☰"}</button>
+        {navOpen && <button type="button" className="bkscrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
         <Sidebar user={user} route={head} nav={nav} onSignOut={doSignOut} onCmdK={openCmdK} />
         <div className="bkmain">
           {statusChips}
