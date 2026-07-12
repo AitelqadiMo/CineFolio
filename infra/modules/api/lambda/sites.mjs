@@ -4,7 +4,7 @@
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
 import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf, publishSlots, TRIAL_HOURS } from "./lib.mjs";
-import { sendEmail, firstPremiereEmail } from "./email.mjs";
+import { sendEmail, firstPremiereEmail, trialWarningEmail } from "./email.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -322,6 +322,51 @@ export async function expireTrialIfDue(ctx, site) {
   if (site.trialEndsAt > now()) return false;
   await darkenSite(ctx, site, "trial_ended");
   return true;
+}
+
+// the hourly sweep (EventBridge -> the handler's cfSweep branch): darken every
+// engagement past its end, and send the final-screening call exactly once
+// inside the last 24 hours. The beacon handles viewed sites lazily; the sweep
+// is the guarantee for the unviewed. Single-page scan, same as the Floor's —
+// revisit pagination when the catalog outgrows one page.
+export async function sweepTrials(ctx) {
+  const page = await ctx.ddb.scan({
+    FilterExpression: "#t = :t",
+    ExpressionAttributeNames: { "#t": "type" },
+    ExpressionAttributeValues: { ":t": "site" },
+  });
+  const all = page.items || [];
+  let darkened = 0, warned = 0;
+  const nowIso = now();
+  const warnHorizon = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+  for (const site of all) {
+    if (site.status !== "live" || !site.trialEndsAt) continue;
+    if (site.trialEndsAt <= nowIso) {
+      try { await darkenSite(ctx, site, "trial_ended"); darkened++; }
+      catch (e) { console.error(JSON.stringify({ level: "error", msg: "sweep darken failed", siteId: site.siteId, err: e?.message })); }
+    } else if (site.trialEndsAt <= warnHorizon && !site.trialWarnedAt) {
+      // stamp FIRST (conditional) so overlapping sweeps can never double-send;
+      // the mail rides after, fail-soft as always
+      try {
+        await ctx.ddb.update({
+          Key: { PK: site.PK, SK: "META" },
+          UpdateExpression: "SET trialWarnedAt = :t, updatedAt = :t",
+          ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(trialWarnedAt)",
+          ExpressionAttributeValues: { ":t": nowIso },
+        });
+      } catch (e) {
+        if (e?.name === "ConditionalCheckFailedException") continue;
+        throw e;
+      }
+      const owner = String(site.GSI1PK || "").startsWith("USER#") ? site.GSI1PK.slice(5) : null;
+      const profile = owner ? await ctx.ddb.get({ PK: `USER#${owner}`, SK: "PROFILE" }) : null;
+      if (profile?.email) {
+        await sendEmail(ctx, profile.email, trialWarningEmail({ ...site, url: previewUrl(ctx, site.slug) }, ctx.config.appOrigin || ""));
+        warned++;
+      }
+    }
+  }
+  return { darkened, warned, scanned: all.length };
 }
 
 // POST /sites/{id}/delete: the real delete. Two-step by design: only a

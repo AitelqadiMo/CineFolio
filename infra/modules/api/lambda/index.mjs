@@ -84,6 +84,12 @@ async function buildCtx() {
 export function makeHandler(ctxFactory = buildCtx) {
   return async (event) => {
     const ctx = await ctxFactory();
+    // the hourly limited-engagement sweep rides this same handler: EventBridge
+    // invokes the function with { cfSweep: true } instead of an HTTP event
+    if (event?.cfSweep) {
+      const r = await sites.sweepTrials(ctx);
+      return json(200, { ok: true, ...r });
+    }
     const fn = ROUTES[routeKeyOf(event)];
     if (!fn) return bad("not_found", 404);
     try {

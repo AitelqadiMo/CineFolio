@@ -337,6 +337,31 @@ resource "aws_lambda_permission" "apigw" {
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
 
+# ---------- the trial sweep: an hourly EventBridge tick into the api lambda ----------
+# Darkens limited engagements past their end and sends the final-screening call
+# once inside the last 24 hours. The view beacon handles viewed sites lazily;
+# this tick is the guarantee for the unviewed ones.
+resource "aws_cloudwatch_event_rule" "trial_sweep" {
+  name                = "${var.name_prefix}-trial-sweep"
+  description         = "Hourly limited-engagement sweep: darken expired premieres, send final-screening calls"
+  schedule_expression = "rate(1 hour)"
+  tags                = var.tags
+}
+
+resource "aws_cloudwatch_event_target" "trial_sweep" {
+  rule  = aws_cloudwatch_event_rule.trial_sweep.name
+  arn   = aws_lambda_function.api.arn
+  input = jsonencode({ cfSweep = true })
+}
+
+resource "aws_lambda_permission" "trial_sweep" {
+  statement_id  = "AllowEventBridgeTrialSweep"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.trial_sweep.arn
+}
+
 # ---------- billing (Lemon Squeezy) configuration parameters ----------
 # Terraform owns that these parameters EXIST; the operator owns their VALUES,
 # set out-of-band (aws ssm put-parameter --overwrite) and never committed.
