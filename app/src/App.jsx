@@ -12,6 +12,7 @@ import Studio from "./pages/Studio.jsx";
 import Lounge from "./pages/Lounge.jsx";
 import Admin from "./pages/Admin.jsx";
 import Profile from "./pages/Profile.jsx";
+import Onboarding from "./pages/Onboarding.jsx";
 import Sidebar from "./shell/Sidebar.jsx";
 import CmdK from "./CmdK.jsx";
 import ToastHost from "./shell/Toast.jsx";
@@ -159,6 +160,15 @@ export default function App() {
         <CmdK nav={nav} admin={user.admin} />
         <ToastHost />
         <SetBoundary key={route}><Studio /></SetBoundary>
+      </AuthCtx.Provider>
+    );
+  }
+  /* the First Screening: onboarding walks full-bleed, like a title sequence */
+  if (head === "welcome") {
+    return (
+      <AuthCtx.Provider value={{ user, nav }}>
+        <ToastHost />
+        <SetBoundary key={route}><Onboarding /></SetBoundary>
       </AuthCtx.Provider>
     );
   }
