@@ -117,10 +117,16 @@ export default function Films() {
           {s.status === "live" && s.previewUrl
             ? <iframe title={`poster-${s.slug}`} src={s.previewUrl} sandbox="allow-scripts" loading="lazy" scrolling="no" tabIndex={-1} referrerPolicy="no-referrer" />
             : <span className="ghost">{(s.title || s.slug || "FILM").toUpperCase()}</span>}
-          {s.status === "live" && <span className="pubbadge">Published</span>}
+          {s.status === "live" && !s.trialEndsAt && <span className="pubbadge">Published</span>}
+          {s.status === "live" && s.trialEndsAt && (
+            <span className="pubbadge" style={{ background: "var(--bk-gold)", color: "#132550" }}>
+              Limited · {Math.max(0, Math.round((new Date(s.trialEndsAt) - Date.now()) / 3600000))}h left
+            </span>
+          )}
           {s.orderId && <span className="pubbadge staged" style={{ left: "auto", right: 10, color: "var(--bk-gold)" }}>AI generated</span>}
           {s.stagedRelease && !s.orderId && <span className="pubbadge staged" style={s.status === "live" ? { left: "auto", right: 10 } : undefined}>Staged #{s.stagedRelease}</span>}
           {s.status === "taken_down" && <span className="pubbadge down">Taken down</span>}
+          {s.status === "trial_ended" && <span className="pubbadge down">Engagement ended · unlock to revive</span>}
         </span>
       </button>
       <span className="bkfilmmeta">

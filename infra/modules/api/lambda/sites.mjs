@@ -3,7 +3,7 @@
 // Pointer: CloudFront KVS  slug -> "{siteId}/releases/{n}"   (atomic flip, no invalidation)
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf, publishSlots } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf, publishSlots, TRIAL_HOURS } from "./lib.mjs";
 import { sendEmail, firstPremiereEmail } from "./email.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
@@ -112,8 +112,8 @@ export async function publish(event, ctx) {
   // takedown frees the slot. Two concurrent first-premieres can race past the
   // count — a soft limit by design, preferred over locking legitimate publishes.
   const staged = b.stage === true;
+  const profile = staged ? null : await ctx.ddb.get({ PK: `USER#${claims.sub}`, SK: "PROFILE" });
   if (!staged && site.status !== "live") {
-    const profile = await ctx.ddb.get({ PK: `USER#${claims.sub}`, SK: "PROFILE" });
     const slots = publishSlots(profile);
     const mine = await ctx.ddb.query({
       IndexName: "GSI1",
@@ -171,15 +171,28 @@ export async function publish(event, ctx) {
   }
 
   const firstPremiere = !site.publishedAt; // captured BEFORE the update mutates the record
+
+  // ---- the limited engagement (conversion, pricing v3): a free-plan account's
+  // AI-born premiere screens for TRIAL_HOURS, then returns to the vault —
+  // preserved, address held — until a plan unlock revives it. The Set's manual
+  // films and every paid-plan premiere carry no clock. A re-release during the
+  // window keeps the ORIGINAL clock (releases never extend it); publishing
+  // after an upgrade clears it for good.
+  const paidPlan = profile?.plan === "director" || profile?.plan === "coach";
+  const aiBorn = Boolean(b.orderId || site.orderId);
+  const trialEndsAt = !paidPlan && aiBorn
+    ? (site.trialEndsAt || new Date(Date.now() + TRIAL_HOURS * 3600 * 1000).toISOString())
+    : null;
+
   const flip = await flipPointer(ctx, site.slug, `${site.siteId}/releases/${n}`, site.slug, allPaths);
   // optimistic lock: two concurrent publishes can't both claim release n.
   // A cut premiered onto an existing film marks it AI-born (orderId sticks).
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
-    UpdateExpression: `SET releases = :n, liveRelease = :n, #s = :live, publishedAt = :t, updatedAt = :t, pointerMode = :pm${b.orderId ? ", orderId = :oid" : ""}`,
+    UpdateExpression: `SET releases = :n, liveRelease = :n, #s = :live, publishedAt = :t, updatedAt = :t, pointerMode = :pm, trialEndsAt = :trial${b.orderId ? ", orderId = :oid" : ""}`,
     ConditionExpression: "releases = :prev",
     ExpressionAttributeNames: { "#s": "status" },
-    ExpressionAttributeValues: { ":n": n, ":live": "live", ":t": now(), ":pm": flip.mode, ":prev": site.releases || 0, ...(b.orderId ? { ":oid": b.orderId } : {}) },
+    ExpressionAttributeValues: { ":n": n, ":live": "live", ":t": now(), ":pm": flip.mode, ":trial": trialEndsAt, ":prev": site.releases || 0, ...(b.orderId ? { ":oid": b.orderId } : {}) },
   }).catch((e) => {
     if (e?.name === "ConditionalCheckFailedException") throw Object.assign(new Error("concurrent publish, retry"), { statusCode: 409 });
     throw e;
@@ -191,12 +204,12 @@ export async function publish(event, ctx) {
     // mail can never break a premiere. Runs after the optimistic lock, so a
     // losing concurrent publish can't send a duplicate.
     await sendEmail(ctx, claims.email, firstPremiereEmail(
-      { slug: site.slug, title: site.title, url: previewUrl(ctx, site.slug) },
+      { slug: site.slug, title: site.title, url: previewUrl(ctx, site.slug), trialEndsAt },
       ctx.config.appOrigin || ""
     ));
   }
 
-  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, pages: files.length, assets: (assetCopies || []).length, url: previewUrl(ctx, site.slug) });
+  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, pages: files.length, assets: (assetCopies || []).length, url: previewUrl(ctx, site.slug), trialEndsAt });
 }
 
 // GET /sites/{id}/source?release=n — download a release's HTML (owner/admin)
@@ -270,6 +283,14 @@ export async function takedown(event, ctx) {
   const claims = claimsOf(event);
   const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
   if (err) return err;
+  await darkenSite(ctx, site, "taken_down");
+  return ok({ ok: true, siteId: site.siteId, status: "taken_down" });
+}
+
+// darken a live film — pointer, fallback copies, cache, status — shared by the
+// owner's takedown and the limited-engagement expiry. The releases themselves
+// are never touched: the vault keeps everything, only the marquee goes dark.
+async function darkenSite(ctx, site, statusLabel) {
   try { await ctx.kvs.del(ctx.config.kvsArn, site.slug); } catch { /* fallback mode or never flipped */ }
   // purge the fallback pointer copies (sites/{slug}/...) so the router's
   // KVS-miss path has nothing to serve
@@ -289,9 +310,18 @@ export async function takedown(event, ctx) {
     Key: { PK: site.PK, SK: "META" },
     UpdateExpression: "SET #s = :s, updatedAt = :t",
     ExpressionAttributeNames: { "#s": "status" },
-    ExpressionAttributeValues: { ":s": "taken_down", ":t": now() },
+    ExpressionAttributeValues: { ":s": statusLabel, ":t": now() },
   });
-  return ok({ ok: true, siteId: site.siteId, status: "taken_down" });
+}
+
+// called from the view beacon: an expired limited engagement darkens itself on
+// the first look past its end time. Lazy by design — a trial nobody views
+// costs nothing up, and the beacon fires on every real visit.
+export async function expireTrialIfDue(ctx, site) {
+  if (!site || site.status !== "live" || !site.trialEndsAt) return false;
+  if (site.trialEndsAt > now()) return false;
+  await darkenSite(ctx, site, "trial_ended");
+  return true;
 }
 
 // POST /sites/{id}/delete: the real delete. Two-step by design: only a
@@ -460,6 +490,7 @@ const stagedUrl = (ctx, siteId, n) => `https://${ctx.config.cdnDomain}/_r/${site
 const pub = (s, ctx) => ({
   siteId: s.siteId, slug: s.slug, title: s.title, status: s.status,
   orderId: s.orderId || null, // set when this film was born from an AI cut
+  trialEndsAt: s.trialEndsAt || null, // limited engagement clock; null = permanent
   releases: s.releases, liveRelease: s.liveRelease, stagedRelease: s.stagedRelease ?? null,
   audienceOf: s.audienceOf || null, pointerMode: s.pointerMode,
   customDomain: s.customDomain || null, domainStatus: s.domainStatus || null,
