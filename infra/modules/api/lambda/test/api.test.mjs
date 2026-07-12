@@ -1011,6 +1011,7 @@ test("billing: webhook lands one credit, swallows replays, bounces forgeries", a
   assert.equal(first.body.credited, true);
   assert.equal(first.body.credits, 3, "the flagship default mints three productions");
   assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 3, "the credits landed on the account");
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").plan, "director", "the flagship upgrades the plan");
   assert.equal(ctx.ddb._store.get("LSORDER#101|META").claimed, true, "the purchase row is on the books");
   assert.equal(ctx.ses.sent.length, 1, "the buyer hears the register ring");
   assert.match(ctx.ses.sent[0].subject, /Payment received/);
@@ -1083,6 +1084,7 @@ test("billing: the credits map prices the pack — a mapped variant mints seven"
   const r = parse(await h(lsHook(raw)));
   assert.equal(r.body.credits, 7);
   assert.equal(ctx.ddb._store.get("USER#coach1|PROFILE").paidCredits, 7, "the slate landed in one piece");
+  assert.equal(ctx.ddb._store.get("USER#coach1|PROFILE").plan, "coach", "a slate makes a coach");
   assert.equal(ctx.ddb._store.get("LSORDER#201|META").credits, 7, "the books know the pack size");
   // an unmapped variant on the same store still mints the flagship default
   const other = lsOrderBody("202", { sub: "solo", variantId: 111 });
@@ -1093,4 +1095,43 @@ test("billing: the credits map prices the pack — a mapped variant mints seven"
   const r2 = parse(await h2(lsHook(lsOrderBody("203", { sub: "b2" }))));
   assert.equal(r2.code, 200);
   assert.equal(r2.body.credits, 3);
+});
+
+test("premiere slots: one live film on free, three on director, takedown frees the slot", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const page = (t) => ({ html: `<!doctype html><html><body>${t}</body></html>` });
+
+  // a fresh account (stamped by /me) screens ONE premiere at a time
+  await h(ev("GET /me", { claims: "solo" }));
+  const a = parse(await h(ev("POST /sites", { claims: "solo", body: { title: "Film A" } }))).body.site;
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "solo", path: { id: a.siteId }, body: page("A") }))).code, 200);
+  const b = parse(await h(ev("POST /sites", { claims: "solo", body: { title: "Film B" } }))).body.site;
+  const denied = parse(await h(ev("POST /sites/{id}/publish", { claims: "solo", path: { id: b.siteId }, body: page("B") })));
+  assert.equal(denied.code, 402);
+  assert.equal(denied.body.slots, 1);
+  assert.equal(denied.body.checkout, "/billing/checkout", "the refusal points at the register");
+  // staging is free (drafts don't occupy a slot)…
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "solo", path: { id: b.siteId }, body: { ...page("B"), stage: true } }))).code, 200);
+  // …and re-releasing the film that is already live never re-checks
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "solo", path: { id: a.siteId }, body: page("A2") }))).code, 200);
+  // takedown frees the slot; the second film premieres
+  assert.equal(parse(await h(ev("DELETE /sites/{id}", { claims: "solo", path: { id: a.siteId } }))).code, 200);
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "solo", path: { id: b.siteId }, body: page("B3") }))).code, 200);
+
+  // a director-plan account screens three; the fourth answers with the register
+  ctx.ddb._store.set("USER#dir|PROFILE", { PK: "USER#dir", SK: "PROFILE", type: "user", plan: "director", freeCutsLimit: 1 });
+  for (let i = 1; i <= 3; i++) {
+    const s = parse(await h(ev("POST /sites", { claims: "dir", body: { title: `Dir ${i}` } }))).body.site;
+    assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "dir", path: { id: s.siteId }, body: page(`D${i}`) }))).code, 200, `director premiere ${i}`);
+  }
+  const s4 = parse(await h(ev("POST /sites", { claims: "dir", body: { title: "Dir 4" } }))).body.site;
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "dir", path: { id: s4.siteId }, body: page("D4") }))).code, 402);
+
+  // a pre-pricing-v3 profile (no stamp, no plan) keeps three slots — never reduced
+  ctx.ddb._store.set("USER#old|PROFILE", { PK: "USER#old", SK: "PROFILE", type: "user" });
+  const o1 = parse(await h(ev("POST /sites", { claims: "old", body: { title: "Old 1" } }))).body.site;
+  const o2 = parse(await h(ev("POST /sites", { claims: "old", body: { title: "Old 2" } }))).body.site;
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "old", path: { id: o1.siteId }, body: page("O1") }))).code, 200);
+  assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "old", path: { id: o2.siteId }, body: page("O2") }))).code, 200, "legacy account keeps room beyond one");
 });

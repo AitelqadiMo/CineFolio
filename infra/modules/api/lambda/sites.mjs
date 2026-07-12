@@ -3,7 +3,7 @@
 // Pointer: CloudFront KVS  slug -> "{siteId}/releases/{n}"   (atomic flip, no invalidation)
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf, publishSlots } from "./lib.mjs";
 import { sendEmail, firstPremiereEmail } from "./email.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
@@ -105,6 +105,30 @@ export async function publish(event, ctx) {
   if (!pages.length || !pages.some((f) => f.path === "index.html")) return bad("bundle must include index.html");
   const problem = validateBundle(pages, { maxTotal: 5 * 1024 * 1024 });
   if (problem) return bad(problem, problem.includes("large") ? 413 : 400);
+
+  // ---- premiere slots (pricing v3): drafts and staged releases are free, but
+  // a site GOING LIVE occupies one of the plan's slots. Republishing a film
+  // that is already live never re-checks (its slot is already spent), and a
+  // takedown frees the slot. Two concurrent first-premieres can race past the
+  // count — a soft limit by design, preferred over locking legitimate publishes.
+  const staged = b.stage === true;
+  if (!staged && site.status !== "live") {
+    const profile = await ctx.ddb.get({ PK: `USER#${claims.sub}`, SK: "PROFILE" });
+    const slots = publishSlots(profile);
+    const mine = await ctx.ddb.query({
+      IndexName: "GSI1",
+      KeyConditionExpression: "GSI1PK = :p AND begins_with(GSI1SK, :s)",
+      ExpressionAttributeValues: { ":p": `USER#${claims.sub}`, ":s": "SITE#" },
+    });
+    const live = mine.filter((s) => s.status === "live" && s.siteId !== site.siteId).length;
+    if (live >= slots) {
+      return json(402, {
+        ok: false,
+        error: `your plan screens ${slots} premiere${slots === 1 ? "" : "s"} at a time — unpublish a film, or unlock the Director's Cut for three`,
+        slots, live, checkout: "/billing/checkout",
+      });
+    }
+  }
   const beaconBase = apiBaseOf(event, ctx);
   files = pages.map((f) => ({ path: f.path, html: withBeacon(f.html, beaconBase, site.slug) })); // every page carries the audience beacon
 
@@ -119,7 +143,6 @@ export async function publish(event, ctx) {
       : ctx.s3.getObjectBytes(ctx.config.artifactsBucket, `orders/${b.orderId}/cut/${p}`)
         .then((bytes) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${p}`, bytes, assetTypeOf(p)))));
   }
-  const staged = b.stage === true;
   await ctx.ddb.put({ PK: site.PK, SK: relSK(n), type: "release", n, source, staged, by: claims.sub, createdAt: now(), filePaths: allPaths });
   if (b.orderId) {
     // the order remembers its film: every future revision premieres HERE,
