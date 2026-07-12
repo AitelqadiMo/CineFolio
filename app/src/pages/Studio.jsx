@@ -382,16 +382,16 @@ export default function Studio() {
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
       if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: r.paid ? Math.max(0, (e0?.paidCredits || 1) - 1) : e0?.paidCredits || 0 }));
-      ledger.record({ orderId: r.orderId, name: profile.name, price: r.paid ? 149 : 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
+      ledger.record({ orderId: r.orderId, name: profile.name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       if (r.production) {
         try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name: profile.name })); } catch { /* noop */ }
       }
     } catch (e2) {
       if (e2.status === 402) {
         setEnt((e0) => ({ ...(e0 || {}), freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: 0 }));
-        setErr("Your three free AI cuts are spent. The next Director's Cut is $149 — the register is right below.");
+        setErr("Your free AI films are spent. The Director's Cut is $99 for three productions — the register is right below.");
         api.billingCheckout().then((c) => setBuy(c.url))
-          .catch(() => setErr("Your three free AI cuts are spent. The next Director's Cut is $149; the register opens soon."));
+          .catch(() => setErr("Your free AI films are spent. The Director's Cut is $99 for three productions; the register opens soon."));
       } else if (e2.status === 401) {
         setErr("Sign in again to order an AI cut.");
       } else setErr(friendly(e2.message));
@@ -722,7 +722,7 @@ export default function Studio() {
             {err && <div className="err">{err}</div>}
             {buy && (
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $149</a>
+                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $99 · 3 productions</a>
                 <button type="button" className="btn ghost" onClick={() => api.me().then((r) => {
                   const pc = r?.user?.paidCredits || 0;
                   setEnt({ freeCutsLeft: r?.user?.freeCutsLeft ?? 0, freeCutsLimit: r?.user?.freeCutsLimit || 3, paidCredits: pc });

@@ -1,5 +1,5 @@
 // misc.mjs — profile, waitlist, contact, hits, admin. All handlers take (event, ctx).
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, isEmail, clampStr, now, today, uuid, qs } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, isEmail, clampStr, now, today, uuid, qs, NEW_FREE_CUTS, LEGACY_FREE_CUTS } from "./lib.mjs";
 
 // GET /me — lazy-upsert the profile on first authenticated call (no Cognito trigger needed)
 export async function getMe(event, ctx) {
@@ -10,7 +10,7 @@ export async function getMe(event, ctx) {
     item = {
       PK, SK: "PROFILE", type: "user",
       email: claims.email || null, name: claims.name || null,
-      plan: "free", createdAt: now(),
+      plan: "free", freeCutsLimit: NEW_FREE_CUTS, createdAt: now(),
     };
     try {
       await ctx.ddb.put(item, "attribute_not_exists(PK)");
@@ -40,12 +40,16 @@ export async function putMe(event, ctx) {
   return ok({ ok: true, user: pub(item) });
 }
 
-const FREE_CUTS = 3; // keep in lockstep with studio.mjs FREE_CUTS
-const pub = (i) => ({
-  email: i.email, name: i.name, company: i.company, links: i.links, plan: i.plan, createdAt: i.createdAt,
-  aiCuts: i.aiCuts || 0, freeCutsLeft: Math.max(0, FREE_CUTS - (i.aiCuts || 0)), freeCutsLimit: FREE_CUTS,
-  paidCredits: i.paidCredits || 0, // landed by the billing webhook, spent by /studio/order
-});
+// the free allowance is per-profile: unstamped rows predate pricing v3 and keep
+// the legacy three; new profiles are stamped with today's allowance at creation
+const pub = (i) => {
+  const limit = i.freeCutsLimit ?? LEGACY_FREE_CUTS;
+  return {
+    email: i.email, name: i.name, company: i.company, links: i.links, plan: i.plan, createdAt: i.createdAt,
+    aiCuts: i.aiCuts || 0, freeCutsLeft: Math.max(0, limit - (i.aiCuts || 0)), freeCutsLimit: limit,
+    paidCredits: i.paidCredits || 0, // landed by the billing webhook, spent by /studio/order
+  };
+};
 
 // POST /waitlist { email } — idempotent (conditional put) + O(1) counter
 export async function joinWaitlist(event, ctx) {

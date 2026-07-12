@@ -23,9 +23,9 @@ export const LANDING_HTML = `
     <div class="inner">
       <div class="kicker"><span class="dot"></span>THE AI FILM STUDIO FOR CAREERS</div>
       <h1 id="heroTitle">Portfolios people<br><span class="serif">fall in love with.</span></h1>
-      <p class="sub">Templates all look the same. We cast you as the lead of a <b>cinematic AI film</b>: your story told scene by scene as people scroll, with real film sequences. <b>Premieres in about 20 minutes</b> at yourname.cinefolio.dev. Your first three films are on us.</p>
+      <p class="sub">Templates all look the same. We cast you as the lead of a <b>cinematic AI film</b>: your story told scene by scene as people scroll, with real film sequences. <b>Premieres in about 20 minutes</b> at yourname.cinefolio.dev. Your first film is on us.</p>
       <div class="cta-row">
-        <button class="btn primary magnetic" id="heroEnter">Start free · 3 AI films on us</button>
+        <button class="btn primary magnetic" id="heroEnter">Start free · first AI film on us</button>
         <a class="btn ghost magnetic" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live release ↗</a>
       </div>
       <div class="proof">NO CARD, NO WAITLIST · EVERY CAREER GETS ITS OWN LIGHTING · <a href="#" data-goto="services">SEE THE FORMATS</a></div>
@@ -132,8 +132,8 @@ export const LANDING_HTML = `
     <div class="zellige"></div>
     <div class="wrap" id="waitlist">
       <div class="scene" style="justify-content:center">The cameras are rolling</div>
-      <h2>Your first three films <span class="serif">are on us.</span></h2>
-      <p class="lead">No payment, no waitlist. Create an account, drop your resume and a photo, and the AI director premieres your film at yourname.cinefolio.dev in about twenty minutes.</p><div class="cta-row" style="justify-content:center;margin-bottom:26px"><button class="btn primary magnetic" id="wlEnter">Enter the Studio · start free</button></div><p class="lead" style="font-size:.95em;opacity:.8">Prefer studio notes first? Leave your email.</p>
+      <h2>Your first film <span class="serif">is on us.</span></h2>
+      <p class="lead">No payment, no waitlist. Create an account, drop your resume and a photo, and the AI director premieres your film at yourname.cinefolio.dev in about twenty minutes. The Set — our manual template engine — stays free forever.</p><div class="cta-row" style="justify-content:center;margin-bottom:26px"><button class="btn primary magnetic" id="wlEnter">Enter the Studio · start free</button></div><p class="lead" style="font-size:.95em;opacity:.8">Prefer studio notes first? Leave your email.</p>
       <form class="wl" id="wl" autocomplete="off">
         <input type="email" id="wlEmail" placeholder="you@domain.com" required>
         <select id="wlRole" aria-label="Your role">
@@ -146,7 +146,7 @@ export const LANDING_HTML = `
         <button class="btn gold magnetic" type="submit" id="wlBtn">Join</button>
       </form>
       <div class="result" id="wlResult"></div>
-      <div class="smallnote" id="wlCount">THREE FREE FILMS · NO CARD · NO SPAM, EVER</div>
+      <div class="smallnote" id="wlCount">FREE AI FILM · NO CARD · NO SPAM, EVER</div>
     </div>
   </section>
 </main>
@@ -159,40 +159,42 @@ export const LANDING_HTML = `
       <h2>Pick your <span class="serif">production.</span></h2>
       <div class="packs">
         <div class="pack">
-          <div class="head"><div class="k">FORMAT 01</div><h3>The Free Cuts</h3><div class="price">3 AI films · included with every account</div></div>
+          <div class="head"><div class="k">FORMAT 01</div><h3>The Free Cuts</h3><div class="price">Free · included with every account</div></div>
           <ul>
-            <li>The AI director films your career as a scroll-story</li>
-            <li>Real generated film sequences in every cut</li>
+            <li>Your first AI film: the director shoots your career as a scroll-story, on us</li>
+            <li>The Set: every template family, renders as you type, unlimited</li>
             <li>Resume page with a downloadable PDF</li>
             <li>Premieres at yourname.cinefolio.dev in about 20 minutes</li>
-            <li>Three revision messages to the director per film</li>
+            <li>One premiere live at a time</li>
           </ul>
           <div class="foot"><button class="btn magnetic" data-enter>Start free</button></div>
         </div>
         <div class="pack star">
           <div class="flag">MOST LOVED</div>
-          <div class="head"><div class="k">FORMAT 02</div><h3>The Director's Cut</h3><div class="price">$149 · one time</div></div>
+          <div class="head"><div class="k">FORMAT 02</div><h3>The Director's Cut</h3><div class="price">$99 · one time · 3 productions</div></div>
           <ul>
-            <li>Three AI film scenes: orbit + two story scenes</li>
-            <li>Full scroll-scrub production, section pinning</li>
-            <li>Interactive terminal visitors can type into</li>
-            <li>Verified credentials with real links</li>
-            <li>Your palette, your lighting, your story</li>
+            <li>Three AI-directed productions: film it, refine it, pick the cut you love</li>
+            <li>Full scroll-scrub production: hero orbit, story scenes, section pinning, interactive terminal</li>
+            <li>Revision messages to the director with every production</li>
+            <li>Publish up to three films, each on its own address</li>
+            <li>12 months hosting included · Keep It Live renewal $39/yr after</li>
             <li>Your address, your source export: you own everything</li>
           </ul>
           <div class="foot"><button class="btn primary magnetic" id="joinFromPack">Enter the Studio</button></div>
         </div>
         <div class="pack">
-          <div class="head"><div class="k">FORMAT 03</div><h3>The Franchise</h3><div class="price">Talk to the studio</div></div>
+          <div class="head"><div class="k">FORMAT 03</div><h3>The Coach's Slate</h3><div class="price">$295 · 7 productions</div></div>
           <ul>
-            <li>Everything in The Director's Cut</li>
-            <li>Matching CV redesign (print-grade PDF)</li>
-            <li>Social banner kit: LinkedIn, X, OG cards</li>
-            <li>One revision shoot per quarter, first year</li>
+            <li>Seven Director's Cut productions — $42 a film</li>
+            <li>Built for career coaches, agencies and staffing teams</li>
+            <li>Each client premieres on their own film and address</li>
+            <li>Revision messages included with every production</li>
+            <li>One pack, no subscription</li>
           </ul>
           <div class="foot"><button class="btn magnetic" data-goto="contact">Talk to the studio</button></div>
         </div>
       </div>
+      <p class="smallnote" style="text-align:center;margin-top:18px">ENTERPRISE, BOOTCAMPS, OUTPLACEMENT — <a href="mailto:info@cinefolio.dev" style="color:var(--red);font-weight:600">TALK TO THE STUDIO</a></p>
       <div class="faq">
         <div class="qa"><b>Why a film instead of a template?</b><p>Attention. A recruiter sees three hundred identical portfolio links a week. A cinematic film of you is the one they forward to a colleague.</p></div>
         <div class="qa"><b>Is the AI video really me?</b><p>Yes. Scenes are generated against your photos as identity references and quality-gated for likeness before anything ships.</p></div>
@@ -221,7 +223,7 @@ export const LANDING_HTML = `
         <div>
           <div class="qa"><b>How fast is delivery?</b><p>Typically about twenty minutes from resume to live premiere; intricate cuts can take longer. You watch the whole production live from the Premiere Lounge.</p></div>
           <div class="qa"><b>Will mine look like the reels on the home page?</b><p>No. Every production gets its own lighting, palette and typography. No two releases look alike: that's the whole point.</p></div>
-          <div class="qa"><b>Can I try it before writing in?</b><p>Yes. Your first three AI films are included with every account, no card. Most questions answer themselves after a premiere. <a href="#" data-enter style="color:var(--red);font-weight:600">Enter the Studio →</a></p></div>
+          <div class="qa"><b>Can I try it before writing in?</b><p>Yes. Your first AI film is included with every account, no card — plus unlimited manual filming on The Set. Most questions answer themselves after a premiere. <a href="#" data-enter style="color:var(--red);font-weight:600">Enter the Studio →</a></p></div>
           <div class="qa"><b>The studio inbox</b><p><a href="mailto:info@cinefolio.dev" style="color:var(--red);font-weight:600">Write to us</a>; a human reads everything.</p></div>
         </div>
       </div>
