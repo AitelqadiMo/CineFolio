@@ -100,11 +100,23 @@ export async function webhook(event, ctx) {
   if (userSub) {
     // land the credits on the buyer's account. The profile row may not exist
     // yet (fresh account, webhook won the race) — ADD upserts either way.
-    await ctx.ddb.update({
+    const updated = await ctx.ddb.update({
       Key: { PK: `USER#${userSub}`, SK: "PROFILE" },
       UpdateExpression: "SET updatedAt = :u ADD paidCredits :credits",
       ExpressionAttributeValues: { ":credits": credits, ":u": now() },
+      ReturnValues: "ALL_NEW",
     });
+    // a purchase upgrades the plan (and its premiere slots): the flagship
+    // makes a director, a slate makes a coach. Upgrades only, never down.
+    const plan = credits >= 7 ? "coach" : "director";
+    if (updated?.plan !== "coach" && updated?.plan !== plan) {
+      await ctx.ddb.update({
+        Key: { PK: `USER#${userSub}`, SK: "PROFILE" },
+        UpdateExpression: "SET #p = :p, updatedAt = :u",
+        ExpressionAttributeNames: { "#p": "plan" },
+        ExpressionAttributeValues: { ":p": plan, ":u": now() },
+      });
+    }
   } else {
     // paid outside the console flow: the money is recorded above
     // (claimed: false) so the Floor can resolve it by hand. Never lose a
