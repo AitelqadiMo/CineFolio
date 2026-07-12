@@ -263,15 +263,19 @@ export function needsAttentionEmail(order, appOrigin) {
 // the share kit: fires once, on a film's FIRST premiere (engine builds and
 // AI cuts alike). The live URL is the hero; the console is the follow-up.
 export function firstPremiereEmail(site, appOrigin) {
+  const trial = !!site.trialEndsAt;
   return {
-    subject: `${site.title || site.slug} is live.`,
+    subject: trial ? `${site.title || site.slug} is live — a 72-hour limited engagement.` : `${site.title || site.slug} is live.`,
     ...build("Premiere night", "Your film is live.", [
       `<b>${esc(site.title || site.slug)}</b> just premiered to the world. This is the address to put in your bio, your resume header, your email signature:`,
       `<a href="${site.url}" style="color:${BRAND.navy};font-weight:bold;">${esc(site.url)}</a>`,
+      ...(trial ? [
+        "This premiere is a <b>limited engagement</b>: it screens for 72 hours, then the film returns to your vault — kept safe, address held for you. Love it? <b>The Director's Cut ($99, one time)</b> keeps it live for good and adds two more AI productions.",
+      ] : []),
       "Every visit counts toward your audience stats in the console. New releases premiere in one click, and rollback means a premiere can never go wrong.",
     ], appOrigin ? { url: appOrigin, label: "Open my films" } : null, {
-      preheader: `${site.title || site.slug} just premiered at ${site.url}`,
-      details: [["Live address", esc(site.url)], ["Status", "Now showing"]],
+      preheader: trial ? `${site.title || site.slug} is screening for 72 hours at ${site.url}` : `${site.title || site.slug} just premiered at ${site.url}`,
+      details: [["Live address", esc(site.url)], ["Status", trial ? "Limited engagement · 72 hours" : "Now showing"]],
     }),
   };
 }

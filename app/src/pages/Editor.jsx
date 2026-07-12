@@ -235,6 +235,12 @@ export default function Editor({ siteId }) {
           <button className="edproj" onClick={projPop.toggle} aria-haspopup="menu" aria-expanded={projPop.open}>
             <span className="lens" aria-hidden="true" /><span>{site?.title || "…"}</span>
             {site?.orderId && <span className="bkchip plain gold" style={{ flex: "0 0 auto" }}>AI{typeof messagesLeft === "number" ? ` · ${messagesLeft} MSG` : ""}</span>}
+            {site?.trialEndsAt && site?.status === "live" && (
+              <span className="bkchip plain gold" style={{ flex: "0 0 auto" }} title="Limited engagement — unlock the Director's Cut to keep this premiere live">
+                ⏳ {Math.max(0, Math.round((new Date(site.trialEndsAt) - Date.now()) / 3600000))}H LEFT
+              </span>
+            )}
+            {site?.status === "trial_ended" && <span className="bkchip plain" style={{ flex: "0 0 auto", color: "var(--bk-red)" }}>ENGAGEMENT ENDED</span>}
             <span className="chev" aria-hidden="true">▾</span>
           </button>
           {projPop.open && (

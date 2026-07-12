@@ -182,6 +182,45 @@ export default function Account() {
               </div>
             </section>
 
+            {/* ---------- plans: the box office, every format on the marquee ---------- */}
+            <section className="asec" aria-label="Plans">
+              <div className="scene-hd">PLANS</div>
+              <div className="panel">
+                <div className="planline">
+                  <b>The Free Cuts · $0</b>
+                  {plan === "free" ? <span className="badge draft">CURRENT</span> : <span className="badge draft">INCLUDED</span>}
+                </div>
+                <p className="dlgtext" style={{ margin: "4px 0 14px" }}>1 AI film · The Set unlimited · 1 premiere slot · AI premieres screen as 72-hour limited engagements.</p>
+                <div className="planline">
+                  <b>The Director&apos;s Cut · $99 one time</b>
+                  {plan === "director" ? <span className="badge live">CURRENT</span> : (
+                    <button type="button" className="btn primary" style={{ padding: "7px 14px" }}
+                      onClick={() => api.billingCheckout()
+                        .then((c) => { watchForCredits(); window.open(c.url, "_blank", "noopener"); })
+                        .catch(() => setErr("The register opens soon."))}>
+                      Unlock
+                    </button>
+                  )}
+                </div>
+                <p className="dlgtext" style={{ margin: "4px 0 14px" }}>3 AI productions · 3 premiere slots · <b>premieres stay live</b> · revision messages with every production · 12 months hosting · full export.</p>
+                <div className="planline">
+                  <b>The Coach&apos;s Slate · $295 · 7 productions</b>
+                  {plan === "coach" ? <span className="badge live">CURRENT</span> : (
+                    <button type="button" className="btn ghost" style={{ padding: "7px 14px" }}
+                      onClick={() => api.billingCheckout("coach")
+                        .then((c) => { watchForCredits(); window.open(c.url, "_blank", "noopener"); })
+                        .catch(() => setErr("The register opens soon."))}>
+                      Get the pack
+                    </button>
+                  )}
+                </div>
+                <p className="dlgtext" style={{ margin: "4px 0 14px" }}>$42 a film · 10 premiere slots · built for coaches and agencies producing client portfolios.</p>
+                <p className="dlgtext" style={{ marginTop: 4 }}>
+                  Purchases run through our merchant of record. <a href={LS_ORDERS_URL} target="_blank" rel="noopener noreferrer">Billing &amp; receipts ↗</a>
+                </p>
+              </div>
+            </section>
+
             {/* ---------- orders ---------- */}
             <section className="asec" aria-label="Orders">
               <div className="scene-hd">ORDERS</div>
