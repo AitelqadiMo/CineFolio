@@ -74,16 +74,16 @@ export default function Home() {
         links: null,
       });
       if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: r.paid ? Math.max(0, (e0?.paidCredits || 1) - 1) : e0?.paidCredits || 0 }));
-      ledger.record({ orderId: r.orderId, name, price: r.paid ? 149 : 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
+      ledger.record({ orderId: r.orderId, name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name })); } catch { /* noop */ }
       nav(`order/${r.orderId}`);
     } catch (e) {
       if (e.status === 402) {
         setEnt((e0) => ({ ...(e0 || {}), freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: 0 }));
         setLane("set");
-        setErr("Your three free AI cuts are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
+        setErr("Your free AI films are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
         api.billingCheckout().then((c) => setBuy(c.url))
-          .catch(() => setErr("Your three free AI cuts are spent. The Set is open for manual filming; the paid register opens soon."));
+          .catch(() => setErr("Your free AI films are spent. The Set is open for manual filming; the paid register opens soon."));
       }
       else setErr(friendlyMsg(e));
     } finally { setSending(false); }
@@ -152,8 +152,8 @@ export default function Home() {
           {(intake.error || err) && <div className="bkerr" role="alert">{intake.error || err}</div>}
           {buy && (
             <div className="bkbuy">
-              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $149</a>
-              <button type="button" className="btn ghost" onClick={recheckCredit}>I&apos;ve paid — check my credit</button>
+              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $99 · 3 productions</a>
+              <button type="button" className="btn ghost" onClick={recheckCredit}>I&apos;ve paid — check my credits</button>
             </div>
           )}
           <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : sending ? "Sending to the director…" : ""}</span>
@@ -184,12 +184,12 @@ export default function Home() {
                 </div>
               )}
             </div>
-            <button className="bksend" onClick={roll} disabled={intake.busy || sending} aria-label={lane === "ai" ? "Send to the AI director (uses one free cut)" : "Open The Set with everything attached"}>{sending ? "…" : "↑"}</button>
+            <button className="bksend" onClick={roll} disabled={intake.busy || sending} aria-label={lane === "ai" ? "Send to the AI director (uses one cut)" : "Open The Set with everything attached"}>{sending ? "…" : "↑"}</button>
           </div>
         </div>
         <p className="bkhelper">
           {lane === "ai"
-            ? "Drop the resume and a photo, hit send: the AI director films a scroll-story portfolio while you watch from the lounge. Uses one of your free cuts."
+            ? "Drop the resume and a photo, hit send: the AI director films a scroll-story portfolio while you watch from the lounge. Uses one of your cuts."
             : "Resume as PDF or TXT, images up to 10MB. We read everything in your browser; nothing is filed until you hit send."}
         </p>
       </div>

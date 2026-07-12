@@ -23,6 +23,13 @@ export function safeEqual(a, b) {
 export const isEmail = (e) => typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
 export const clampStr = (s, n) => String(s ?? "").slice(0, n);
 
+// ---- pricing v3 (single source of truth; keep the landing + terms copy in lockstep) ----
+export const CUT_PRICE = 99;        // The Director's Cut: one-time, mints DC_CREDITS productions
+export const COACH_PRICE = 295;     // The Coach's Slate: one-time 7-pack for coaches/agencies
+export const DC_CREDITS = 3;        // production credits per Director's Cut purchase
+export const NEW_FREE_CUTS = 1;     // free AI films for accounts created from pricing v3 on
+export const LEGACY_FREE_CUTS = 3;  // earlier accounts keep the three they were promised
+
 // ---- auth ----
 // HTTP API JWT authorizer puts claims at requestContext.authorizer.jwt.claims
 export function claimsOf(event) {

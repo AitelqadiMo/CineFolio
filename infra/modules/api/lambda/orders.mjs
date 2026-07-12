@@ -1,7 +1,7 @@
 // orders.mjs: the buyer's order surfaces. An order is money; it must always be
 // visible to the person who placed it, and the included revision is enforced
 // server-side (one credit, race-safe).
-import { ok, bad, json, bodyOf, claimsOf, isAdmin, clampStr, now, pathParam } from "./lib.mjs";
+import { ok, bad, json, bodyOf, claimsOf, isAdmin, clampStr, now, pathParam, CUT_PRICE } from "./lib.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const ORDER_ID_RE = /^[a-f0-9-]{8,64}$/i;
@@ -11,7 +11,7 @@ export const REVISION_LIMIT = 3;
 
 const pub = (o) => ({
   orderId: o.orderId, name: o.name || null, status: o.status, production: !!o.production,
-  price: o.freeCut ? 0 : o.production ? 149 : 0, revisionRequested: !!o.revisionRequested,
+  price: o.price ?? (o.freeCut ? 0 : o.production ? CUT_PRICE : 0), revisionRequested: !!o.revisionRequested,
   revisionsUsed: o.revisionsUsed || 0,
   messagesLeft: Math.max(0, REVISION_LIMIT - (o.revisionsUsed || 0)),
   siteId: o.siteId || null, // the film this cut premiered onto; revisions land there
