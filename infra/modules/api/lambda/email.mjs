@@ -276,6 +276,25 @@ export function firstPremiereEmail(site, appOrigin) {
   };
 }
 
+// ---------- billing ----------
+
+// fires from the Lemon Squeezy webhook the moment a payment lands: the buyer
+// paid the merchant of record, the credit is on their account, the studio door
+// is the CTA. No order exists yet — the credit is spent when they send a brief.
+export function paymentReceivedEmail(purchase, appOrigin) {
+  const ref = esc(String(purchase?.identifier || purchase?.lsOrderId || "").slice(0, 32) || "your order");
+  return {
+    subject: "Payment received. Your Director's Cut credit is live.",
+    ...build("Box office", "The studio has your ticket.", [
+      "Your payment for <b>The Director's Cut</b> is in, and a paid cut credit is now on your account.",
+      "Head to the studio, drop your resume and photos, and the AI director starts filming. The credit is only spent when you send a brief.",
+    ], appOrigin ? { url: appOrigin, label: "Enter the studio" } : null, {
+      preheader: "Your Director's Cut credit is on your account.",
+      details: [["Reference", ref], ["Amount", "$149"], ["Includes", "AI Director's Cut · revision messages · hosting"]],
+    }),
+  };
+}
+
 // ---------- fail-soft senders ----------
 
 // low-level: send a built email to one recipient; never throws into the caller

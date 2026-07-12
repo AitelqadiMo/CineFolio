@@ -3,6 +3,7 @@
 // immutable releases + pointer flips, rollback, callback validation.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
 import { makeHandler } from "../index.mjs";
 
 // ---------- fakes ----------
@@ -29,6 +30,9 @@ function fakeCtx(overrides = {}) {
       if (ConditionExpression === "attribute_not_exists(aiCuts) OR aiCuts < :max"
         && item.aiCuts !== undefined && item.aiCuts >= ExpressionAttributeValues[":max"]) {
         throw Object.assign(new Error("spent"), { name: "ConditionalCheckFailedException" });
+      }
+      if (ConditionExpression === "paidCredits >= :one" && !((item.paidCredits || 0) >= ExpressionAttributeValues[":one"])) {
+        throw Object.assign(new Error("no credits"), { name: "ConditionalCheckFailedException" });
       }
       // micro-interpreter for the SET/ADD expressions we actually use
       const resolve = (n) => ExpressionAttributeNames[n] || n;
@@ -942,4 +946,104 @@ test("floor: the kill switch flips the SSM breaker and defaults to enabled", asy
   const roll = parse(await h(ev("POST /admin/pipeline", { claims: "boss", groups: ["admin"], body: { enabled: true } }))).body;
   assert.equal(roll.enabled, true);
   assert.equal(ctx.params._store["/cinefolio/test/PIPELINE_ENABLED"], "true");
+});
+
+// ---------- billing: the cash register ----------
+
+// a ctx with the store open: agent secrets (production pipeline) + LS keys
+const lsCtx = () => fakeCtx({
+  secrets: async () => ({
+    AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec",
+    LS_WEBHOOK_SECRET: "lssec", LS_BUY_URL_DC: "https://cinefolio.lemonsqueezy.com/buy/dc",
+  }),
+});
+const lsSign = (raw) => createHmac("sha256", "lssec").update(raw, "utf8").digest("hex");
+const lsOrderBody = (id, { sub, status = "paid", email = "buyer@x.io", event = "order_created" } = {}) => JSON.stringify({
+  meta: { event_name: event, ...(sub ? { custom_data: { user_sub: sub } } : {}) },
+  data: { id, attributes: { status, user_email: email, identifier: `LS-${id}`, total_usd: 14900, test_mode: true, first_order_item: { product_name: "The Director's Cut" } } },
+});
+const lsHook = (raw, sig) => ({ ...ev("POST /billing/webhook", { headers: { "x-signature": sig ?? lsSign(raw) } }), body: raw });
+
+test("billing: checkout is personal, priced, and degrades honestly", async () => {
+  const h = makeHandler(async () => lsCtx());
+  const { code, body } = parse(await h(ev("GET /billing/checkout", { claims: "buyer" })));
+  assert.equal(code, 200);
+  assert.equal(body.price, 149);
+  assert.match(body.url, /^https:\/\/cinefolio\.lemonsqueezy\.com\/buy\/dc\?/);
+  assert.ok(decodeURIComponent(body.url).includes("checkout[email]=buyer@x.io"), "buyer email is prefilled");
+  assert.ok(decodeURIComponent(body.url).includes("checkout[custom][user_sub]=buyer"), "the sub rides along for the webhook");
+  // no session -> 401 even before the gateway is in play
+  assert.equal(parse(await h(ev("GET /billing/checkout"))).code, 401);
+  // store not open yet -> an honest 503, never a broken link
+  const closed = makeHandler(async () => fakeCtx());
+  assert.equal(parse(await closed(ev("GET /billing/checkout", { claims: "buyer" }))).code, 503);
+});
+
+test("billing: webhook lands one credit, swallows replays, bounces forgeries", async () => {
+  const ctx = lsCtx();
+  ctx.config.sesFrom = "info@cinefolio.dev"; // hear the register ring
+  const h = makeHandler(async () => ctx);
+
+  const raw = lsOrderBody("101", { sub: "buyer" });
+  const first = parse(await h(lsHook(raw)));
+  assert.equal(first.code, 200);
+  assert.equal(first.body.credited, true);
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 1, "the credit landed on the account");
+  assert.equal(ctx.ddb._store.get("LSORDER#101|META").claimed, true, "the purchase row is on the books");
+  assert.equal(ctx.ses.sent.length, 1, "the buyer hears the register ring");
+  assert.match(ctx.ses.sent[0].subject, /Payment received/);
+
+  // LS retries on non-200s and humans click resend: replays never double-mint
+  const replay = parse(await h(lsHook(raw)));
+  assert.equal(replay.body.already, true);
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 1, "replay minted nothing");
+
+  // forged or missing signature bounces before anything is read
+  assert.equal(parse(await h(lsHook(raw, "0".repeat(64)))).code, 401);
+  assert.equal(parse(await h({ ...ev("POST /billing/webhook"), body: raw })).code, 401);
+
+  // other events and unpaid orders are acknowledged, not acted on
+  const refund = lsOrderBody("102", { sub: "buyer", event: "order_refunded" });
+  assert.equal(parse(await h(lsHook(refund))).body.ignored, "order_refunded");
+  const pending = lsOrderBody("103", { sub: "buyer", status: "pending" });
+  assert.match(parse(await h(lsHook(pending))).body.ignored, /pending/);
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 1, "neither touched the balance");
+
+  // a purchase with no sub is recorded unclaimed — money is never dropped
+  const stray = lsOrderBody("104", {});
+  assert.equal(parse(await h(lsHook(stray))).body.credited, false);
+  assert.equal(ctx.ddb._store.get("LSORDER#104|META").claimed, false);
+
+  // store not configured -> 503 so LS keeps retrying until it is
+  const closed = makeHandler(async () => fakeCtx());
+  assert.equal(parse(await closed(lsHook(raw))).code, 503);
+});
+
+test("order: after the free cuts, a paid credit is spent — then an honest 402 with the register", async () => {
+  const ctx = lsCtx();
+  const h = makeHandler(async () => ctx);
+  // an account with every free cut spent and one paid credit banked by the webhook
+  ctx.ddb._store.set("USER#buyer|PROFILE", { PK: "USER#buyer", SK: "PROFILE", type: "user", email: "buyer@x.io", aiCuts: 3, paidCredits: 1 });
+
+  const orderBody = { email: "buyer@x.io", name: "Buyer Test", role: "engineer", cvText: "Buyer Test\n2019 Terraform and AWS platform work at Example Co." };
+  const r1 = parse(await h(ev("POST /studio/order", { claims: "buyer", body: orderBody })));
+  assert.equal(r1.code, 200);
+  assert.equal(r1.body.paid, true, "the response says this cut is bought, not free");
+  assert.equal(r1.body.freeCutsLeft, 0);
+  assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 0, "the credit is spent, race-safe");
+  assert.equal(ctx.queue.sent.length, 1, "the paid order rides the same pipeline");
+
+  // the buyer's ledger prices the paid cut
+  const list = parse(await h(ev("GET /orders", { claims: "buyer" })));
+  assert.equal(list.body.orders[0].price, 149);
+
+  // /me shows the spent balance so the console chip stays truthful
+  const me = parse(await h(ev("GET /me", { claims: "buyer" })));
+  assert.equal(me.body.user.paidCredits, 0);
+
+  // nothing left anywhere -> 402 that points at the register, never silence
+  const r2 = parse(await h(ev("POST /studio/order", { claims: "buyer", body: orderBody })));
+  assert.equal(r2.code, 402);
+  assert.equal(r2.body.checkout, "/billing/checkout");
+  assert.equal(r2.body.price, 149);
 });

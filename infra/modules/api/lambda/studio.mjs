@@ -113,6 +113,7 @@ export async function order(event, ctx) {
   // spend one free cut, race-safe. The profile row is lazy-upserted by GET /me;
   // cover the fresh-account path with an upsert-style two-step.
   let aiCuts = 0;
+  let freeCut = true;
   try {
     const updated = await ctx.ddb.update({
       Key: { PK: `USER#${claims.sub}`, SK: "PROFILE" },
@@ -123,10 +124,25 @@ export async function order(event, ctx) {
     });
     aiCuts = updated?.aiCuts ?? 1;
   } catch (e) {
-    if (e?.name === "ConditionalCheckFailedException") {
-      return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: 149 });
+    if (e?.name !== "ConditionalCheckFailedException") throw e;
+    // free cuts spent -> try a paid credit (landed by the billing webhook).
+    // Same conditional-counter discipline: a double-click can never spend two.
+    try {
+      await ctx.ddb.update({
+        Key: { PK: `USER#${claims.sub}`, SK: "PROFILE" },
+        UpdateExpression: "SET updatedAt = :u ADD paidCredits :neg",
+        ConditionExpression: "paidCredits >= :one",
+        ExpressionAttributeValues: { ":neg": -1, ":one": 1, ":u": now() },
+      });
+      freeCut = false;
+      aiCuts = FREE_CUTS; // the free counter stays at its cap; entitlement rides paidCredits now
+    } catch (e2) {
+      if (e2?.name === "ConditionalCheckFailedException") {
+        // no credits anywhere: answer with the price AND the way to pay it
+        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: 149, checkout: "/billing/checkout" });
+      }
+      throw e2;
     }
-    throw e;
   }
 
   const orderId = uuid();
@@ -153,7 +169,7 @@ export async function order(event, ctx) {
         palette: clampStr(b.palette, 24) || null,
         customIdea: clampStr(b.customIdea, 1200) || null,
       },
-      freeCut: true, cutNumber: aiCuts,
+      freeCut, paid: !freeCut, cutNumber: freeCut ? aiCuts : null,
       status: "queued", production, createdAt: now(), updatedAt: now(),
     },
     "attribute_not_exists(PK)" // idempotency: uuid collision or client retry can't double-create
@@ -171,7 +187,7 @@ export async function order(event, ctx) {
     await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
 
-  return ok({ ok: true, orderId, production, freeCutsLeft: Math.max(0, FREE_CUTS - aiCuts), html: previewHTML(parsed) });
+  return ok({ ok: true, orderId, production, paid: !freeCut, freeCutsLeft: Math.max(0, FREE_CUTS - aiCuts), html: previewHTML(parsed) });
 }
 
 async function setStatus(ctx, orderId, status, extra = {}) {
