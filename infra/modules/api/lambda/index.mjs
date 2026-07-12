@@ -35,6 +35,7 @@ export const ROUTES = {
   "POST /studio/order": studio.order,
   "GET /studio/status": studio.status,
   "GET /studio/cut": studio.cut,
+  "GET /studio/cut/{orderId}/{path+}": studio.cutFile,
   "POST /callback": studio.callback,
   "POST /studio/asset": studio.asset,
   "GET /orders": orders.listOrders,

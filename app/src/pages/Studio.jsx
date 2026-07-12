@@ -6,6 +6,7 @@
 // template drop-down; set dressing is one slate, not a theater.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
+import { useEntitlement, setEnt, refreshEnt, watchForCredits } from "../entitlement.js";
 import { useAuth } from "../App.jsx";
 import { confetti, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
@@ -45,7 +46,7 @@ export default function Studio() {
   const [locker, setLocker] = useState([]);   // unassigned assets: { name, url }
   const [arrived, setArrived] = useState(null); // what rode in from a composer handoff
   const [previewKey, setPreviewKey] = useState(0);
-  const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit, paidCredits } from /me
+  const ent = useEntitlement();               // the shared studio-pass truth (entitlement.js)
   const [buy, setBuy] = useState(null);       // LS checkout url, offered when every cut is spent
   const [films, setFilms] = useState([]);     // the selector: which film is on the bench
   const projPop = usePopover();
@@ -117,12 +118,14 @@ export default function Studio() {
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal, locker, photo]);
 
-  // the account's AI cut entitlement: three free, then the paid path
+  // the account's studio pass: pull the shared truth once; the store keeps
+  // every surface in sync from here on
+  useEffect(() => { refreshEnt(); }, []);
+
+  // credits landing (checkout watcher or manual recheck) close the register
   useEffect(() => {
-    api.me().then((r) => {
-      if (typeof r?.user?.freeCutsLeft === "number") setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3, paidCredits: r.user.paidCredits || 0 });
-    }).catch(() => { /* chip stays quiet */ });
-  }, []);
+    if (buy && (ent?.paidCredits || 0) > 0) { setBuy(null); setErr(""); }
+  }, [buy, ent]);
 
   // the dossier (My Profile) is the casting source of truth: prefill once, never clobber
   const [dossier, setDossier] = useState(null);
@@ -381,14 +384,14 @@ export default function Studio() {
         links: q.website || null,
       });
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
-      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: r.paid ? Math.max(0, (e0?.paidCredits || 1) - 1) : e0?.paidCredits || 0 }));
+      setEnt(r.entitlement); // the server's snapshot, never a client-side guess
       ledger.record({ orderId: r.orderId, name: profile.name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       if (r.production) {
         try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name: profile.name })); } catch { /* noop */ }
       }
     } catch (e2) {
       if (e2.status === 402) {
-        setEnt((e0) => ({ ...(e0 || {}), freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: 0 }));
+        if (e2.body?.entitlement) setEnt(e2.body.entitlement); // the 402 carries the truth too
         setErr("Your free AI films are spent. The Director's Cut is $99 for three productions — the register is right below.");
         api.billingCheckout().then((c) => setBuy(c.url))
           .catch(() => setErr("Your free AI films are spent. The Director's Cut is $99 for three productions; the register opens soon."));
@@ -722,12 +725,8 @@ export default function Studio() {
             {err && <div className="err">{err}</div>}
             {buy && (
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $99 · 3 productions</a>
-                <button type="button" className="btn ghost" onClick={() => api.me().then((r) => {
-                  const pc = r?.user?.paidCredits || 0;
-                  setEnt({ freeCutsLeft: r?.user?.freeCutsLeft ?? 0, freeCutsLimit: r?.user?.freeCutsLimit || 3, paidCredits: pc });
-                  if (pc > 0) { setBuy(null); setErr(""); }
-                }).catch(() => { /* the credit lands with the webhook; try again in a moment */ })}>I&apos;ve paid — check my credit</button>
+                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut — $99 · 3 productions</a>
+                <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid — check my credits</button>
               </div>
             )}
             {pub.done && (

@@ -4,6 +4,7 @@
 // gallery below carries the vault.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
+import { useEntitlement, setEnt, refreshEnt, watchForCredits } from "../entitlement.js";
 import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
 import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
@@ -24,7 +25,7 @@ export default function Home() {
   const { over, dropProps } = useDropzone(intake.addFiles);
 
   const [firstRun, setFirstRun] = useState({ dossier: false, draft: false });
-  const [ent, setEnt] = useState(null);       // { freeCutsLeft, freeCutsLimit, paidCredits } from /me
+  const ent = useEntitlement();               // the shared studio-pass truth (entitlement.js)
   const [lane, setLane] = useState("ai");     // "ai" (express, needs resume) | "set" (manual)
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
@@ -33,13 +34,17 @@ export default function Home() {
   useEffect(() => {
     api.sites().then((r) => setSites(r.sites || [])).catch(() => setSites([]));
     api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => { /* optional */ });
-    api.me().then((r) => {
-      if (typeof r?.user?.freeCutsLeft === "number") {
-        setEnt({ freeCutsLeft: r.user.freeCutsLeft, freeCutsLimit: r.user.freeCutsLimit || 3, paidCredits: r.user.paidCredits || 0 });
-        if (r.user.freeCutsLeft === 0 && !(r.user.paidCredits > 0)) setLane("set");
-      }
-    }).catch(() => { /* chip stays quiet */ });
+    refreshEnt().then((e) => {
+      if (e && e.freeCutsLeft === 0 && !(e.paidCredits > 0)) setLane("set");
+    });
     try { setFirstRun((f) => ({ ...f, draft: !!localStorage.getItem("cf.studioDraft") })); } catch { /* noop */ }
+    // brand-new lot: roll the First Screening once, never twice, always skippable
+    try {
+      if (!localStorage.getItem("cf.fsSeen")) {
+        localStorage.setItem("cf.fsSeen", "1");
+        api.getProfile().then((r) => { if (!r.profile) nav("welcome"); }).catch(() => { /* stay home */ });
+      }
+    } catch { /* private mode: the dossier step below still leads there */ }
   }, []);
 
   const rollToSet = () => {
@@ -73,13 +78,13 @@ export default function Home() {
         covers: intake.covers.filter((c) => !String(c.url).startsWith("data:")).map((c) => ({ name: c.name, url: c.url })),
         links: null,
       });
-      if (typeof r.freeCutsLeft === "number") setEnt((e0) => ({ freeCutsLeft: r.freeCutsLeft, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: r.paid ? Math.max(0, (e0?.paidCredits || 1) - 1) : e0?.paidCredits || 0 }));
+      setEnt(r.entitlement); // the server's snapshot, never a client-side guess
       ledger.record({ orderId: r.orderId, name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name })); } catch { /* noop */ }
       nav(`order/${r.orderId}`);
     } catch (e) {
       if (e.status === 402) {
-        setEnt((e0) => ({ ...(e0 || {}), freeCutsLeft: 0, freeCutsLimit: e0?.freeCutsLimit || 3, paidCredits: 0 }));
+        if (e.body?.entitlement) setEnt(e.body.entitlement); // the 402 carries the truth too
         setLane("set");
         setErr("Your free AI films are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
         api.billingCheckout().then((c) => setBuy(c.url))
@@ -90,13 +95,11 @@ export default function Home() {
   };
   const friendlyMsg = (e) => e?.message || "The studio hit a snag. Try again in a moment.";
 
-  // after the buyer returns from Lemon Squeezy: one click re-syncs the credit
-  // (the webhook lands it server-side; this just refreshes /me)
-  const recheckCredit = () => api.me().then((r) => {
-    const pc = r?.user?.paidCredits || 0;
-    setEnt({ freeCutsLeft: r?.user?.freeCutsLeft ?? 0, freeCutsLimit: r?.user?.freeCutsLimit || 3, paidCredits: pc });
-    if (pc > 0) { setBuy(null); setErr(""); setLane("ai"); }
-  }).catch(() => { /* the credit lands with the webhook; try again in a moment */ });
+  // the moment credits land (the checkout watcher or a manual recheck), the
+  // register closes itself and the AI lane re-opens — on every surface at once
+  useEffect(() => {
+    if (buy && (ent?.paidCredits || 0) > 0) { setBuy(null); setErr(""); setLane("ai"); }
+  }, [buy, ent]);
 
   const roll = () => { if (lane === "ai") rollToDirector(); else rollToSet(); };
 
@@ -152,8 +155,8 @@ export default function Home() {
           {(intake.error || err) && <div className="bkerr" role="alert">{intake.error || err}</div>}
           {buy && (
             <div className="bkbuy">
-              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer">Unlock the Director&apos;s Cut — $99 · 3 productions</a>
-              <button type="button" className="btn ghost" onClick={recheckCredit}>I&apos;ve paid — check my credits</button>
+              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut — $99 · 3 productions</a>
+              <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid — check my credits</button>
             </div>
           )}
           <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : sending ? "Sending to the director…" : ""}</span>
@@ -219,9 +222,9 @@ export default function Home() {
                   </div>
                   <div className="bkgauge" aria-hidden="true"><div className="fill" style={{ width: `${(done / 4) * 100}%` }} /></div>
                   <div className="bksteps">
-                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav("profile")}>
+                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav(firstRun.dossier ? "profile" : "welcome")}>
                       <span className="no" aria-hidden="true">{firstRun.dossier ? "✓" : "1"}</span>
-                      <span><b>Fill your dossier</b><i>Upload a resume once; every film casts from it.</i></span>
+                      <span><b>{firstRun.dossier ? "Fill your dossier" : "Walk the First Screening"}</b><i>{firstRun.dossier ? "Upload a resume once; every film casts from it." : "Eight scenes, five minutes: the studio learns your story."}</i></span>
                     </button>
                     <button className={`bkstep ${firstRun.draft ? "done" : ""}`} onClick={() => nav("studio")}>
                       <span className="no" aria-hidden="true">{firstRun.draft ? "✓" : "2"}</span>

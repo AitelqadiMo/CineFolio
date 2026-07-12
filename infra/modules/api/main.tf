@@ -64,6 +64,7 @@ locals {
     "POST /studio/order"            = true  # AI cuts: an account entitlement (3 free, then paid)
     "GET /studio/status"            = false
     "GET /studio/cut"               = false
+    "GET /studio/cut/{orderId}/{path+}" = false # path-style preview: relative assets resolve in plain tabs and iframes
     "POST /callback"                = false # authenticated by X-CF-Secret (SSM) inside the handler
     "POST /studio/asset"            = false # same X-CF-Secret gate; the agent ships generated binaries here
     "GET /me"                       = true

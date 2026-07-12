@@ -2,7 +2,7 @@
 // generate: create order (idempotent) -> fire agent webhook -> return instant rough cut
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
-import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE, CUT_PRICE, NEW_FREE_CUTS, LEGACY_FREE_CUTS } from "./lib.mjs";
+import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE, CUT_PRICE, NEW_FREE_CUTS, LEGACY_FREE_CUTS, entitlementOf } from "./lib.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -115,6 +115,7 @@ export async function order(event, ctx) {
   const profileKey = { PK: `USER#${claims.sub}`, SK: "PROFILE" };
   const profile = await ctx.ddb.get(profileKey);
   const freeLimit = profile ? (profile.freeCutsLimit ?? LEGACY_FREE_CUTS) : NEW_FREE_CUTS;
+  let profileNow = profile; // the post-spend row: every response carries its snapshot
   let aiCuts = 0;
   let freeCut = true;
   try {
@@ -126,23 +127,27 @@ export async function order(event, ctx) {
       ReturnValues: "ALL_NEW",
     });
     aiCuts = updated?.aiCuts ?? 1;
+    profileNow = updated || profileNow;
   } catch (e) {
     if (e?.name !== "ConditionalCheckFailedException") throw e;
     // free cuts spent -> try a paid credit (landed by the billing webhook).
     // Same conditional-counter discipline: a double-click can never spend two.
     try {
-      await ctx.ddb.update({
+      const updated = await ctx.ddb.update({
         Key: profileKey,
         UpdateExpression: "SET updatedAt = :u ADD paidCredits :neg",
         ConditionExpression: "paidCredits >= :one",
         ExpressionAttributeValues: { ":neg": -1, ":one": 1, ":u": now() },
+        ReturnValues: "ALL_NEW",
       });
       freeCut = false;
       aiCuts = freeLimit; // the free counter stays at its cap; entitlement rides paidCredits now
+      profileNow = updated || profileNow;
     } catch (e2) {
       if (e2?.name === "ConditionalCheckFailedException") {
-        // no credits anywhere: answer with the price AND the way to pay it
-        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: CUT_PRICE, checkout: "/billing/checkout" });
+        // no credits anywhere: answer with the price, the way to pay it, AND
+        // the authoritative snapshot so the console never guesses
+        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: CUT_PRICE, checkout: "/billing/checkout", entitlement: entitlementOf(profileNow || {}) });
       }
       throw e2;
     }
@@ -190,7 +195,7 @@ export async function order(event, ctx) {
     await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
 
-  return ok({ ok: true, orderId, production, paid: !freeCut, price: freeCut ? 0 : CUT_PRICE, freeCutsLeft: Math.max(0, freeLimit - aiCuts), html: previewHTML(parsed) });
+  return ok({ ok: true, orderId, production, paid: !freeCut, price: freeCut ? 0 : CUT_PRICE, freeCutsLeft: Math.max(0, freeLimit - aiCuts), entitlement: entitlementOf(profileNow || {}), html: previewHTML(parsed) });
 }
 
 async function setStatus(ctx, orderId, status, extra = {}) {
@@ -341,14 +346,23 @@ export async function status(event, ctx) {
   return ok({ ok: true, orderId, status: order.status, production: order.production, failCause: order.failCause || null });
 }
 
-// GET /studio/cut?orderId=...&path=... — serves any file of the delivered cut,
-// so the pre-premiere preview resolves its relative images, video and pdf.
+// GET /studio/cut?orderId=...&path=... — serves any file of the delivered cut.
+// GET /studio/cut/{orderId}/{path+} — the SAME files on a path-style address,
+// so the page's RELATIVE references (assets/hero.mp4, projects/x.html) resolve
+// naturally in a plain browser tab and in preview iframes. The query form
+// stays for compatibility; the path form is what previews should use.
 export async function cut(event, ctx) {
-  const orderId = qs(event, "orderId");
+  return serveCutFile(ctx, qs(event, "orderId"), qs(event, "path") || "index.html");
+}
+export async function cutFile(event, ctx) {
+  return serveCutFile(ctx, pathParamOf(event, "orderId"), pathParamOf(event, "path") || "index.html");
+}
+const pathParamOf = (event, k) => event?.pathParameters?.[k];
+async function serveCutFile(ctx, orderId, rawPath) {
   if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
   const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
   if (!order?.cutKey || order.status !== "ready") return bad("cut not ready", 404);
-  const path = String(qs(event, "path") || "index.html").toLowerCase();
+  const path = String(rawPath).toLowerCase();
   if (!BUNDLE_ASSET_PATH_RE.test(path)) return bad("bad path");
   const known = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : ["index.html"];
   if (!known.includes(path)) return bad("not part of this cut", 404);

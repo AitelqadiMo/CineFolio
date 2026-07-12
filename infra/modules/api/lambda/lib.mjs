@@ -40,6 +40,21 @@ export function publishSlots(profile) {
   return profile?.freeCutsLimit ?? LEGACY_FREE_CUTS;
 }
 
+// ONE authoritative entitlement snapshot. /me, order responses (200 and 402
+// alike), and the console's shared store all speak exactly this shape — no
+// surface computes its own version of the truth.
+export function entitlementOf(i = {}) {
+  const limit = i.freeCutsLimit ?? LEGACY_FREE_CUTS;
+  return {
+    plan: i.plan || "free",
+    aiCuts: i.aiCuts || 0,
+    freeCutsLeft: Math.max(0, limit - (i.aiCuts || 0)),
+    freeCutsLimit: limit,
+    paidCredits: i.paidCredits || 0,
+    publishSlots: publishSlots(i),
+  };
+}
+
 // ---- auth ----
 // HTTP API JWT authorizer puts claims at requestContext.authorizer.jwt.claims
 export function claimsOf(event) {

@@ -134,7 +134,7 @@ export default function Lounge({ orderId }) {
         <div className="edcanvaswrap">
           <div className="edcanvas" style={!ready ? { background: "var(--bk-bg-2)", borderColor: "var(--bk-line)" } : undefined}>
             {ready ? (
-              <iframe title="Your delivered portfolio" src={`${CONFIG.apiBase}/studio/cut?orderId=${encodeURIComponent(orderId)}`} />
+              <iframe title="Your delivered portfolio" src={`${CONFIG.apiBase}/studio/cut/${encodeURIComponent(orderId)}/index.html`} />
             ) : (
               <div className="loungeskel" aria-label="Your portfolio is being filmed">
                 <div className="ls-bar"><span className="ls-dot" /><span className="ls-dot" /><span className="ls-dot" /><i className="ls-line w30" /></div>

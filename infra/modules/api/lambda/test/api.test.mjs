@@ -612,10 +612,13 @@ test("studio/order: one free cut for new accounts, legacy accounts keep their th
   assert.equal(first.code, 200);
   assert.equal(first.body.freeCutsLeft, 0);
   assert.equal(first.body.price, 0);
+  assert.deepEqual(first.body.entitlement, { plan: "free", aiCuts: 1, freeCutsLeft: 0, freeCutsLimit: 1, paidCredits: 0, publishSlots: 1 }, "the 200 carries the authoritative snapshot");
   const second = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
   assert.equal(second.code, 402);
   assert.equal(second.body.price, 99);
   assert.equal(second.body.checkout, "/billing/checkout");
+  assert.equal(second.body.entitlement.freeCutsLeft, 0, "even the refusal carries the snapshot");
+  assert.equal(second.body.entitlement.paidCredits, 0);
   // the allowance is stamped on the profile so it can never drift
   assert.equal(ctx.ddb._store.get("USER#fc1|PROFILE").freeCutsLimit, 1);
   // a pre-pricing-v3 profile (no stamp) keeps the three it was promised
@@ -634,7 +637,9 @@ test("studio/order: one free cut for new accounts, legacy accounts keep their th
   assert.equal(me.body.user.freeCutsLeft, 0);
   assert.equal(me.body.user.freeCutsLimit, 1);
   assert.equal(me.body.user.aiCuts, 1);
+  assert.equal(me.body.user.publishSlots, 1, "/me reports premiere slots for the console");
   assert.equal(parse(await h(ev("GET /me", { claims: "leg" }))).body.user.freeCutsLimit, 3);
+  assert.equal(parse(await h(ev("GET /me", { claims: "leg" }))).body.user.publishSlots, 3);
   // each buyer lists only their own orders (402s never create orders)
   assert.equal(parse(await h(ev("GET /orders", { claims: "fc1" }))).body.orders.length, 1);
   assert.equal(parse(await h(ev("GET /orders", { claims: "leg" }))).body.orders.length, 1);
@@ -1059,6 +1064,7 @@ test("order: after the free cuts, a paid credit is spent — then an honest 402 
   assert.equal(r1.code, 200);
   assert.equal(r1.body.paid, true, "the response says this cut is bought, not free");
   assert.equal(r1.body.freeCutsLeft, 0);
+  assert.equal(r1.body.entitlement.paidCredits, 0, "the paid spend is reflected in the snapshot");
   assert.equal(ctx.ddb._store.get("USER#buyer|PROFILE").paidCredits, 0, "the credit is spent, race-safe");
   assert.equal(ctx.queue.sent.length, 1, "the paid order rides the same pipeline");
 
@@ -1134,4 +1140,28 @@ test("premiere slots: one live film on free, three on director, takedown frees t
   const o2 = parse(await h(ev("POST /sites", { claims: "old", body: { title: "Old 2" } }))).body.site;
   assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "old", path: { id: o1.siteId }, body: page("O1") }))).code, 200);
   assert.equal(parse(await h(ev("POST /sites/{id}/publish", { claims: "old", path: { id: o2.siteId }, body: page("O2") }))).code, 200, "legacy account keeps room beyond one");
+});
+
+test("cut preview: the path-style address serves pages and assets so relative refs resolve", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const gen = parse(await h(ev("POST /studio/order", { claims: "pv1", body: { email: "p@x.io", name: "Preview Test", role: "engineer", cvText: "2022 platform work terraform aws at Example" } })));
+  const orderId = gen.body.orderId;
+  // the agent ships an asset, then delivers a page referencing it relatively
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  await h({ ...ev("POST /studio/asset", { headers: { "x-cf-secret": "cbsec" }, qs: { orderId, path: "assets/hero.png" } }), body: png, isBase64Encoded: true });
+  await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: '<!doctype html><html><body><img src="assets/hero.png">CUT</body></html>' });
+  // path-style page
+  const page = await h(ev("GET /studio/cut/{orderId}/{path+}", { path: { orderId, path: "index.html" } }));
+  assert.equal(page.statusCode, 200);
+  assert.match(page.headers["content-type"], /text\/html/);
+  assert.match(page.body, /CUT/);
+  // path-style asset (the thing that 404'd on the query route in a plain tab)
+  const asset = await h(ev("GET /studio/cut/{orderId}/{path+}", { path: { orderId, path: "assets/hero.png" } }));
+  assert.equal(asset.statusCode, 200);
+  assert.equal(asset.isBase64Encoded, true);
+  // unknown files stay 404, same as the query route
+  assert.equal(parse(await h(ev("GET /studio/cut/{orderId}/{path+}", { path: { orderId, path: "assets/nope.png" } }))).code, 404);
+  // the query route still works for compatibility
+  assert.equal(parse(await h(ev("GET /studio/cut", { qs: { orderId } }))).code, 200);
 });

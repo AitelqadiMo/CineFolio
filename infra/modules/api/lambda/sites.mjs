@@ -440,7 +440,11 @@ const apiBaseOf = (event, ctx) => {
 };
 function withBeacon(html, base, slug) {
   if (!base || html.includes("data-cf-beacon")) return html;
-  const s = `<script data-cf-beacon>try{fetch("${base}/hit",{method:"POST",mode:"cors",keepalive:!0,headers:{"content-type":"application/json"},body:JSON.stringify({page:"s/${slug}"})})}catch(e){}</script>`;
+  // page armor rides with the beacon: a phone can NEVER scroll sideways and
+  // media can never blow out the viewport, whatever the cut's own CSS does.
+  // Injected at publish, so every release — engine build or AI cut — is safe.
+  const armor = `<style data-cf-armor>html,body{overflow-x:hidden}img,video{max-width:100%}h1,h2,h3{overflow-wrap:anywhere}</style>`;
+  const s = `${armor}<script data-cf-beacon>try{fetch("${base}/hit",{method:"POST",mode:"cors",keepalive:!0,headers:{"content-type":"application/json"},body:JSON.stringify({page:"s/${slug}"})})}catch(e){}</script>`;
   return html.includes("</body>") ? html.replace("</body>", `${s}</body>`) : html + s;
 }
 

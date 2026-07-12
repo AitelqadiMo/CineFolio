@@ -16,6 +16,7 @@ async function req(path, { method = "GET", body, auth = false } = {}) {
   if (!r.ok) {
     const e = new Error(isJson ? data.error || `Request failed (${r.status})` : `Request failed (${r.status})`);
     e.status = r.status;
+    e.body = isJson ? data : null; // 402s carry { entitlement, checkout, price } — the console reads them
     throw e;
   }
   return data;
