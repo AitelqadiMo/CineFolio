@@ -346,14 +346,23 @@ export async function status(event, ctx) {
   return ok({ ok: true, orderId, status: order.status, production: order.production, failCause: order.failCause || null });
 }
 
-// GET /studio/cut?orderId=...&path=... — serves any file of the delivered cut,
-// so the pre-premiere preview resolves its relative images, video and pdf.
+// GET /studio/cut?orderId=...&path=... — serves any file of the delivered cut.
+// GET /studio/cut/{orderId}/{path+} — the SAME files on a path-style address,
+// so the page's RELATIVE references (assets/hero.mp4, projects/x.html) resolve
+// naturally in a plain browser tab and in preview iframes. The query form
+// stays for compatibility; the path form is what previews should use.
 export async function cut(event, ctx) {
-  const orderId = qs(event, "orderId");
+  return serveCutFile(ctx, qs(event, "orderId"), qs(event, "path") || "index.html");
+}
+export async function cutFile(event, ctx) {
+  return serveCutFile(ctx, pathParamOf(event, "orderId"), pathParamOf(event, "path") || "index.html");
+}
+const pathParamOf = (event, k) => event?.pathParameters?.[k];
+async function serveCutFile(ctx, orderId, rawPath) {
   if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
   const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
   if (!order?.cutKey || order.status !== "ready") return bad("cut not ready", 404);
-  const path = String(qs(event, "path") || "index.html").toLowerCase();
+  const path = String(rawPath).toLowerCase();
   if (!BUNDLE_ASSET_PATH_RE.test(path)) return bad("bad path");
   const known = Array.isArray(order.cutFiles) && order.cutFiles.length ? order.cutFiles : ["index.html"];
   if (!known.includes(path)) return bad("not part of this cut", 404);

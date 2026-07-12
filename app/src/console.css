@@ -583,7 +583,12 @@
 .bklane button { background: none; border: 0; color: var(--bk-dim); font: inherit; font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 99px; cursor: pointer; white-space: nowrap; }
 .bklane button.on { color: var(--bk-ink); background: var(--bk-card-2); }
 .bklane button[disabled] { opacity: .4; cursor: default; }
-@media (max-width: 560px) { .bklane { display: none; } }
+/* phones keep the lane switcher: wrapping beats hiding the AI/Set choice */
+@media (max-width: 560px) {
+  .bkcomprow { flex-wrap: wrap; row-gap: 8px; }
+  .bklane { flex-wrap: wrap; }
+  .bklane button { font-size: 10.5px; padding: 6px 9px; }
+}
 
 /* ================= the premiere lounge skeleton ================= */
 .loungeskel { position: relative; height: 100%; padding: 0 clamp(24px, 8vw, 90px); display: flex; flex-direction: column; overflow: hidden; }
@@ -607,8 +612,22 @@
 @media (prefers-reduced-motion: reduce) { .loungeskel i { animation: none; } .ls-glow { animation: none; } }
 
 /* ================= responsive care ================= */
+/* ---- phone console: the sidebar becomes a drawer behind a clapper button ---- */
+.bkburger { display: none; }
 @media (max-width: 1020px) {
+  .bkburger {
+    display: grid; place-items: center; position: fixed; top: 10px; left: 12px; z-index: 46;
+    width: 42px; height: 42px; border-radius: 12px; background: var(--bk-bg-2);
+    border: 1px solid var(--bk-line); color: var(--bk-ink); font-size: 16px; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  }
   .bkside { display: none; }
+  .backlot.navopen .bkside {
+    display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: min(300px, 84vw);
+    z-index: 45; box-shadow: 24px 0 60px rgba(0, 0, 0, .45); height: 100dvh;
+  }
+  .bkscrim { position: fixed; inset: 0; z-index: 44; background: rgba(10, 17, 38, .55); backdrop-filter: blur(2px); border: 0; padding: 0; cursor: pointer; }
+  .bkstatus { padding-left: 62px; } /* clear the clapper button */
   .bkgallery { margin: 0 14px 40px; }
   .edsplit, .edshell .workspace { flex-direction: column; overflow-y: auto; }
   .edcfg, .edshell .rail { width: 100%; border-right: 0; border-bottom: 1px solid var(--bk-line); max-height: 60vh; }
@@ -621,6 +640,13 @@
 @media (max-width: 1020px) {
   .edbar { overflow-x: auto; }
   .edshell .setbody > .workspace { height: auto; }
+}
+/* phones: the chrome bar wraps to two rows — every control visible, nothing
+   clipped off the right edge, no sideways scrolling for the Premiere button */
+@media (max-width: 700px) {
+  .edbar { flex-wrap: wrap; height: auto; min-height: var(--bk-chrome-h); padding: 8px 10px; row-gap: 6px; overflow-x: visible; }
+  .edproj { max-width: 58vw; }
+  .edpagesel { max-width: 44vw; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bkmenu, .bkmodalbox { animation: none; }
