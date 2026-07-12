@@ -22,15 +22,19 @@ const SANS = "Arial,Helvetica,sans-serif";
 export const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // x: { preheader, details: [[label, value]], code, secondary }
+// The call sheet, 2026 edition: table-based (survives Outlook), zero images,
+// dark-mode aware (class-based overrides; inline styles remain the light-mode
+// truth for clients that strip <style>), bulletproof VML CTA for Outlook
+// desktop, 44px tap targets, fluid under 480px, footer with the legal reel.
 function shell(kicker, title, lines, cta, x = {}) {
   const rows = lines.map((l) =>
-    `<p style="margin:0 0 14px;font-family:${SANS};font-size:15px;line-height:1.7;color:${BRAND.ink};">${l}</p>`).join("");
+    `<p class="cf-txt" style="margin:0 0 14px;font-family:${SANS};font-size:15px;line-height:1.7;color:${BRAND.ink};">${l}</p>`).join("");
 
   const codeHero = x.code ? `
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:6px 0 20px;">
-          <tr><td align="center" style="background:${BRAND.bone};border:1px dashed ${BRAND.gold};border-radius:10px;padding:22px 12px;">
-            <div style="font-family:${MONO};font-size:10px;letter-spacing:.3em;color:${BRAND.dim};text-transform:uppercase;padding-bottom:8px;">Your code</div>
-            <div style="font-family:${MONO};font-size:30px;font-weight:bold;letter-spacing:.28em;color:${BRAND.navy};">${x.code}</div>
+          <tr><td align="center" class="cf-codebox" style="background:${BRAND.bone};border:1px dashed ${BRAND.gold};border-radius:10px;padding:22px 12px;">
+            <div class="cf-dim" style="font-family:${MONO};font-size:10px;letter-spacing:.3em;color:${BRAND.dim};text-transform:uppercase;padding-bottom:8px;">Your code</div>
+            <div class="cf-strong" style="font-family:${MONO};font-size:30px;font-weight:bold;letter-spacing:.28em;color:${BRAND.navy};">${x.code}</div>
           </td></tr>
         </table>` : "";
 
@@ -38,20 +42,30 @@ function shell(kicker, title, lines, cta, x = {}) {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 18px;">
           ${x.details.map(([k, v]) => `
           <tr>
-            <td style="font-family:${MONO};font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:${BRAND.dim};padding:9px 0;border-top:1px solid ${BRAND.hairline};white-space:nowrap;">${k}</td>
-            <td align="right" style="font-family:${MONO};font-size:12px;color:${BRAND.navy};padding:9px 0 9px 14px;border-top:1px solid ${BRAND.hairline};word-break:break-all;">${v}</td>
+            <td class="cf-dim cf-hair" style="font-family:${MONO};font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:${BRAND.dim};padding:9px 0;border-top:1px solid ${BRAND.hairline};white-space:nowrap;">${k}</td>
+            <td class="cf-strong cf-hair" align="right" style="font-family:${MONO};font-size:12px;color:${BRAND.navy};padding:9px 0 9px 14px;border-top:1px solid ${BRAND.hairline};word-break:break-all;">${v}</td>
           </tr>`).join("")}
         </table>` : "";
 
+  // bulletproof CTA: VML fallback renders the button in Outlook desktop; the
+  // anchor keeps a 44px-min tap target everywhere else
   const button = cta ? `
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;">
-          <tr><td align="center" bgcolor="${BRAND.red}" style="border-radius:8px;">
-            <a href="${cta.url}" style="display:inline-block;font-family:${SANS};font-size:13px;font-weight:bold;letter-spacing:.1em;text-transform:uppercase;color:#ffffff;text-decoration:none;padding:14px 26px;border-radius:8px;">${cta.label}</a>
+          <tr><td align="center" bgcolor="${BRAND.red}" style="border-radius:10px;mso-padding-alt:15px 28px;">
+            <!--[if mso]>
+            <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${cta.url}" style="height:46px;v-text-anchor:middle;width:260px;" arcsize="18%" fillcolor="${BRAND.red}" stroke="f">
+              <w:anchorlock/>
+              <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:13px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">${cta.label}</center>
+            </v:roundrect>
+            <![endif]-->
+            <!--[if !mso]><!-->
+            <a href="${cta.url}" style="display:inline-block;font-family:${SANS};font-size:13px;font-weight:bold;letter-spacing:.1em;text-transform:uppercase;color:#ffffff;text-decoration:none;padding:15px 28px;border-radius:10px;min-height:16px;">${cta.label}</a>
+            <!--<![endif]-->
           </td></tr>
         </table>` : "";
 
   const secondary = x.secondary
-    ? `<p style="margin:18px 0 0;font-family:${SANS};font-size:12.5px;line-height:1.6;color:${BRAND.dim};border-top:1px solid ${BRAND.hairline};padding-top:14px;">${x.secondary}</p>`
+    ? `<p class="cf-dim cf-hair" style="margin:18px 0 0;font-family:${SANS};font-size:12.5px;line-height:1.6;color:${BRAND.dim};border-top:1px solid ${BRAND.hairline};padding-top:14px;">${x.secondary}</p>`
     : "";
 
   const preheader = x.preheader
@@ -59,22 +73,42 @@ function shell(kicker, title, lines, cta, x = {}) {
     : "";
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:v="urn:schemas-microsoft-com:vml">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
+<meta name="color-scheme" content="light dark">
+<meta name="supported-color-schemes" content="light dark">
 <title>${esc(title)}</title>
+<style>
+  /* dark mode: class overrides only — inline styles stay the light truth for
+     clients that strip this block. Outlook desktop ignores it and stays light. */
+  @media (prefers-color-scheme: dark) {
+    body, .cf-bg { background: #0B1430 !important; }
+    .cf-card { background: #132550 !important; border-color: rgba(244,239,230,.16) !important; }
+    .cf-txt { color: #D9DEEA !important; }
+    .cf-strong { color: #F4EFE6 !important; }
+    .cf-dim { color: #9AA3B8 !important; }
+    .cf-hair { border-color: rgba(244,239,230,.16) !important; }
+    .cf-codebox { background: #0E1C3F !important; }
+  }
+  /* small screens: the card breathes, the type steps up for thumbs */
+  @media only screen and (max-width: 480px) {
+    .cf-card { padding: 26px 20px 24px !important; }
+    .cf-slate { padding: 16px 20px 14px !important; }
+    .cf-h1 { font-size: 21px !important; }
+  }
+</style>
 </head>
-<body style="margin:0;padding:0;background:${BRAND.bone};">
+<body class="cf-bg" style="margin:0;padding:0;background:${BRAND.bone};">
 ${preheader}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.bone};">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" class="cf-bg" style="background:${BRAND.bone};">
   <tr><td align="center" style="padding:36px 14px;">
+    <!--[if mso]><table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:560px;">
 
       <!-- header band: the studio slate -->
-      <tr><td style="background:${BRAND.navy};border-radius:14px 14px 0 0;padding:20px 32px 18px;">
+      <tr><td class="cf-slate" style="background:${BRAND.navy};border-radius:14px 14px 0 0;padding:20px 32px 18px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
           <td style="font-family:${MONO};font-size:12px;letter-spacing:.3em;color:${BRAND.bone};white-space:nowrap;">CINEFOLIO&nbsp;<span style="color:${BRAND.gold};">STUDIOS</span></td>
           <td align="right" style="font-family:${MONO};font-size:10px;letter-spacing:.22em;color:rgba(244,239,230,.55);white-space:nowrap;">EST.&nbsp;2026</td>
@@ -84,9 +118,9 @@ ${preheader}
       <tr><td style="height:3px;line-height:3px;font-size:0;background:${BRAND.red};background:linear-gradient(90deg,${BRAND.red},${BRAND.gold},${BRAND.green});">&nbsp;</td></tr>
 
       <!-- the card -->
-      <tr><td style="background:#ffffff;border:1px solid ${BRAND.hairline};border-top:0;border-radius:0 0 14px 14px;padding:34px 32px 30px;">
+      <tr><td class="cf-card" style="background:#ffffff;border:1px solid ${BRAND.hairline};border-top:0;border-radius:0 0 14px 14px;padding:34px 32px 30px;">
         <div style="font-family:${MONO};font-size:10px;letter-spacing:.32em;text-transform:uppercase;color:${BRAND.gold};padding-bottom:12px;">${kicker}</div>
-        <h1 style="margin:0 0 16px;font-family:${SANS};font-weight:800;font-size:24px;line-height:1.15;letter-spacing:.01em;text-transform:uppercase;color:${BRAND.navy};">${title}</h1>
+        <h1 class="cf-h1 cf-strong" style="margin:0 0 16px;font-family:${SANS};font-weight:800;font-size:24px;line-height:1.15;letter-spacing:.01em;text-transform:uppercase;color:${BRAND.navy};">${title}</h1>
         ${rows}
         ${codeHero}
         ${details}
@@ -94,13 +128,20 @@ ${preheader}
         ${secondary}
       </td></tr>
 
-      <!-- footer -->
+      <!-- footer: the credit line and the legal reel -->
       <tr><td align="center" style="padding:20px 10px 4px;">
-        <p style="margin:0 0 6px;font-family:${MONO};font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:${BRAND.dim};">CineFolio Studios · Your career, filmed.</p>
-        <p style="margin:0;font-family:${MONO};font-size:10px;letter-spacing:.2em;"><a href="https://www.cinefolio.dev" style="color:${BRAND.dim};text-decoration:underline;">cinefolio.dev</a></p>
+        <p class="cf-dim" style="margin:0 0 6px;font-family:${MONO};font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:${BRAND.dim};">CineFolio Studios · Your career, filmed.</p>
+        <p class="cf-dim" style="margin:0 0 6px;font-family:${MONO};font-size:10px;letter-spacing:.18em;">
+          <a href="https://www.cinefolio.dev" style="color:${BRAND.dim};text-decoration:underline;">cinefolio.dev</a>
+          &nbsp;·&nbsp;<a href="https://www.cinefolio.dev/terms.html" style="color:${BRAND.dim};text-decoration:underline;">Terms</a>
+          &nbsp;·&nbsp;<a href="https://www.cinefolio.dev/privacy.html" style="color:${BRAND.dim};text-decoration:underline;">Privacy</a>
+          &nbsp;·&nbsp;<a href="mailto:info@cinefolio.dev" style="color:${BRAND.dim};text-decoration:underline;">Support</a>
+        </p>
+        <p class="cf-dim" style="margin:0;font-family:${MONO};font-size:9px;letter-spacing:.14em;color:${BRAND.dim};">You receive call sheets because you hold a CineFolio studio pass.</p>
       </td></tr>
 
     </table>
+    <!--[if mso]></td></tr></table><![endif]-->
   </td></tr>
 </table>
 </body>
@@ -297,6 +338,24 @@ export function paymentReceivedEmail(purchase, appOrigin) {
     ], appOrigin ? { url: appOrigin, label: "Enter the studio" } : null, {
       preheader: `${n} production credit${n === 1 ? "" : "s"} on your account.`,
       details: [["Reference", ref], ...(amount ? [["Amount", amount]] : []), ["Credits", String(n)], ["Each includes", "AI production · revision messages · hosting"]],
+    }),
+  };
+}
+
+// the final-screening call: fires once, inside the last 24 hours of a limited
+// engagement. Loss aversion with total honesty: nothing is deleted, the vault
+// and the address wait, and the Director's Cut keeps the marquee lit.
+export function trialWarningEmail(site, appOrigin) {
+  const hoursLeft = Math.max(1, Math.round((new Date(site.trialEndsAt) - Date.now()) / 3600000));
+  return {
+    subject: `Final screening: ${site.title || site.slug} goes dark in about ${hoursLeft} hours.`,
+    ...build("Last call", "The marquee dims soon.", [
+      `<b>${esc(site.title || site.slug)}</b> is a limited engagement, and its 72 hours are almost up: in about <b>${hoursLeft} hours</b> the premiere leaves ${site.url ? `<a href="${site.url}" style="color:${BRAND.navy};font-weight:bold;">${esc(site.url)}</a>` : "its address"}.`,
+      "Nothing is lost when that happens. The film and every release stay in your vault, and the address stays reserved for you.",
+      "<b>The Director's Cut ($99, one time)</b> keeps this premiere live for good — and adds two more AI productions, three premiere slots, and revision messages with every production.",
+    ], appOrigin ? { url: `${appOrigin}/settings`, label: "Keep it live — $99" } : null, {
+      preheader: `${site.title || site.slug} goes dark in ~${hoursLeft}h. Keep it live for $99 — nothing is ever deleted.`,
+      details: [["Film", esc(site.title || site.slug)], ["Screens until", esc(String(site.trialEndsAt).slice(0, 16).replace("T", " ")) + " UTC"], ["After that", "The vault — kept safe, address held"]],
     }),
   };
 }
