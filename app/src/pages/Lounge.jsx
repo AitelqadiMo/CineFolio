@@ -49,7 +49,11 @@ export default function Lounge({ orderId }) {
     };
     tick();
     const t = setInterval(tick, POLL_MS);
-    const clock = setInterval(() => setElapsed(Math.floor((Date.now() - t0.current) / 1000)), 1000);
+    // the elapsed clock only matters while filming; stop it once delivered so a
+    // per-second re-render never disturbs the premiere dialog's input focus
+    const clock = setInterval(() => {
+      setStatus((s) => { if (s === "ready") return s; setElapsed(Math.floor((Date.now() - t0.current) / 1000)); return s; });
+    }, 1000);
     return () => { alive = false; clearInterval(t); clearInterval(clock); };
   }, [orderId]);
 
@@ -155,7 +159,7 @@ export default function Lounge({ orderId }) {
 
       <PromptDialog
         open={naming} kicker="THE PREMIERE" title="Pick your address"
-        body="This becomes the film's home. Lowercase letters, numbers and hyphens; you can change cuts later, the address stays."
+        body="This becomes the film's home — lowercase letters, numbers and hyphens. Examples: ada-lovelace, ada-lovelace-dev, ada-eng. You can change cuts later; the address stays."
         placeholder={suggestedSlug} initial={suggestedSlug}
         validate={slugProblem} preview={(v) => `https://${v}.cinefolio.dev`}
         submitLabel="Premiere it" busy={busy}

@@ -57,17 +57,23 @@ export function friendly(message) {
 export function Dialog({ open, title, kicker, children, onClose, width = 480 }) {
   const boxRef = useRef(null);
   const returnRef = useRef(null);
+  // onClose via ref so the effect never lists it as a dependency: callers pass
+  // an inline onClose (new identity each render), and a parent that re-renders
+  // on a timer (e.g. the Lounge clock) would otherwise re-run this effect every
+  // tick — thrashing focus out of the input mid-keystroke. Deps are [open] only.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
 
   useEffect(() => {
     if (!open) return;
     returnRef.current = document.activeElement;
     const box = boxRef.current;
-    setTimeout(() => {
+    const focusTimer = setTimeout(() => {
       const first = box?.querySelector("input, textarea, select, button");
       first?.focus();
     }, 30);
     const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); onClose(); }
+      if (e.key === "Escape") { e.stopPropagation(); onCloseRef.current(); }
       if (e.key === "Tab" && box) {
         const items = [...box.querySelectorAll("input, textarea, select, button, a[href]")].filter((el) => !el.disabled);
         if (!items.length) return;
@@ -78,10 +84,11 @@ export function Dialog({ open, title, kicker, children, onClose, width = 480 }) 
     };
     document.addEventListener("keydown", onKey, true);
     return () => {
+      clearTimeout(focusTimer);
       document.removeEventListener("keydown", onKey, true);
       if (returnRef.current?.focus) returnRef.current.focus();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
   return (
