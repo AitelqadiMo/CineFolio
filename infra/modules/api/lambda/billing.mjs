@@ -26,8 +26,10 @@ export async function checkout(event, ctx) {
   if (!claims?.sub) return json(401, { ok: false, error: "sign in to unlock a paid cut" });
   const secrets = await ctx.secrets();
   const coach = qs(event, "product") === "coach"; // ?product=coach -> the 7-pack
+  const base = coach ? secrets.LS_BUY_URL_COACH : secrets.LS_BUY_URL_DC;
   let url;
-  try { url = new URL(coach ? secrets.LS_BUY_URL_COACH : secrets.LS_BUY_URL_DC); } catch { return json(503, { ok: false, error: "checkout_unavailable" }); }
+  // the Terraform placeholder ("unset") fails URL parsing -> honest 503
+  try { url = new URL(base); } catch { return json(503, { ok: false, error: "checkout_unavailable" }); }
   if (claims.email) url.searchParams.set("checkout[email]", String(claims.email));
   url.searchParams.set("checkout[custom][user_sub]", String(claims.sub));
   return ok({ ok: true, url: url.toString(), price: coach ? COACH_PRICE : CUT_PRICE });
@@ -39,7 +41,9 @@ export async function checkout(event, ctx) {
 export async function webhook(event, ctx) {
   const secrets = await ctx.secrets();
   const secret = secrets.LS_WEBHOOK_SECRET;
-  if (!secret) return json(503, { ok: false, error: "billing not configured" });
+  // a real signing secret is long random hex; anything short is the Terraform
+  // placeholder ("unset") or a misconfiguration — never verify against those
+  if (!secret || secret.length < 16) return json(503, { ok: false, error: "billing not configured" });
   const raw = event.isBase64Encoded ? Buffer.from(event.body || "", "base64").toString("utf8") : event.body || "";
   const given = event.headers?.["x-signature"] || event.headers?.["X-Signature"];
   const expected = createHmac("sha256", secret).update(raw, "utf8").digest("hex");
