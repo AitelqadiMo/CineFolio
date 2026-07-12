@@ -34,6 +34,10 @@ function fakeCtx(overrides = {}) {
       if (ConditionExpression === "paidCredits >= :one" && !((item.paidCredits || 0) >= ExpressionAttributeValues[":one"])) {
         throw Object.assign(new Error("no credits"), { name: "ConditionalCheckFailedException" });
       }
+      if (ConditionExpression === "attribute_exists(PK) AND attribute_not_exists(trialWarnedAt)"
+        && (!store.has(k) || item.trialWarnedAt !== undefined)) {
+        throw Object.assign(new Error("already warned"), { name: "ConditionalCheckFailedException" });
+      }
       // micro-interpreter for the SET/ADD expressions we actually use
       const resolve = (n) => ExpressionAttributeNames[n] || n;
       for (const clause of UpdateExpression.split(/SET|ADD/).filter(Boolean).map((c) => c.trim())) {
@@ -1215,4 +1219,39 @@ test("limited engagement: free AI premieres carry the 72h clock, the beacon dark
   assert.equal(revive.code, 200);
   assert.equal(revive.body.trialEndsAt ?? null, null, "the upgrade cleared the clock for good");
   assert.equal(ctx.ddb._store.get(`SITE#${s1.siteId}|META`).status, "live", "the film is back on the marquee");
+});
+
+test("trial sweep: darkens the expired, warns the final day exactly once, leaves the rest alone", async () => {
+  const ctx = fakeCtx();
+  ctx.config.sesFrom = "info@cinefolio.dev";
+  const h = makeHandler(async () => ctx);
+  const mk = (id, extra) => ctx.ddb._store.set(`SITE#${id}|META`, {
+    PK: `SITE#${id}`, SK: "META", type: "site", siteId: id, slug: id, title: id,
+    status: "live", owner: "ow1", GSI1PK: "USER#ow1", releases: 1, ...extra,
+  });
+  ctx.ddb._store.set("USER#ow1|PROFILE", { PK: "USER#ow1", SK: "PROFILE", type: "user", email: "ow1@x.io" });
+  mk("expired1", { trialEndsAt: "2020-01-01T00:00:00.000Z" });
+  mk("warnme1", { trialEndsAt: new Date(Date.now() + 10 * 3600 * 1000).toISOString() });
+  mk("safe1", { trialEndsAt: new Date(Date.now() + 60 * 3600 * 1000).toISOString() });
+  mk("perm1", {}); // a permanent premiere: no clock, never touched
+
+  const r = parse(await h({ cfSweep: true }));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.darkened, 1);
+  assert.equal(r.body.warned, 1);
+  assert.equal(ctx.ddb._store.get("SITE#expired1|META").status, "trial_ended", "past the end -> the marquee goes dark");
+  assert.ok(ctx.kvs.dels.includes("expired1"), "the pointer was pulled");
+  assert.equal(ctx.ddb._store.get("SITE#warnme1|META").status, "live", "inside the last day -> still screening");
+  assert.ok(ctx.ddb._store.get("SITE#warnme1|META").trialWarnedAt, "the final-screening call is stamped");
+  assert.equal(ctx.ddb._store.get("SITE#safe1|META").trialWarnedAt ?? null, null, "outside the horizon -> untouched");
+  assert.equal(ctx.ddb._store.get("SITE#perm1|META").status, "live", "permanent premieres never sweep");
+  assert.equal(ctx.ses.sent.length, 1);
+  assert.match(ctx.ses.sent[0].subject, /Final screening/);
+  assert.match(ctx.ses.sent[0].html, /Keep it live/);
+
+  // idempotent: the next tick re-darkens nothing and never double-sends
+  const r2 = parse(await h({ cfSweep: true }));
+  assert.equal(r2.body.darkened, 0);
+  assert.equal(r2.body.warned, 0);
+  assert.equal(ctx.ses.sent.length, 1, "one final-screening call, ever");
 });
