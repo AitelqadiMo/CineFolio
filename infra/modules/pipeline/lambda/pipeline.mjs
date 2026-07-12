@@ -41,6 +41,21 @@ async function secrets() {
 const getOrder = (orderId) =>
   doc.send(new GetCommand({ TableName: TABLE, Key: { PK: `ORDER#${orderId}`, SK: "META" } })).then((r) => r.Item || null);
 
+// the client's curated dossier (My Profile / the onboarding guide writes it).
+// Read fresh at dispatch time — not stored on the order — so edits made after
+// ordering still reach the director, and revision runs see today's record.
+// Fail-soft: a missing dossier never blocks a build; cvText remains the script.
+const getDossier = async (order) => {
+  const sub = String(order?.GSI1PK || "").startsWith("USER#") ? order.GSI1PK.slice(5) : null;
+  if (!sub || sub === "anon") return null;
+  try {
+    const r = await doc.send(new GetCommand({ TableName: TABLE, Key: { PK: `USER#${sub}`, SK: "PORTFOLIO" } }));
+    return r.Item?.data || null;
+  } catch {
+    return null;
+  }
+};
+
 async function setStatus(orderId, status, extra = {}) {
   const sets = ["#s = :s", "GSI2PK = :g", "updatedAt = :u"];
   const vals = { ":s": status, ":g": `STATUS#${status}`, ":u": new Date().toISOString() };
@@ -140,6 +155,7 @@ export const handler = async (event) => {
     // is reused by relative path — it already lives next to the cut server-side
     // and the callback's manifest union keeps it. This is the margin protector:
     // a revision should cost editing, not a second film shoot.
+    const dossier = await getDossier(order);
     const isRevision = Boolean(order.revisionNotes);
     let existingCut = null;
     if (isRevision && Array.isArray(order.cutFiles) && order.cutFiles.length && ARTIFACTS) {
@@ -164,11 +180,13 @@ export const handler = async (event) => {
       assets: order.assets || null, // { photo, covers: [{name,url}], links } — the client's own material
       kit: SCROLL_KIT, // paste-and-adapt scroll engine: progress var, reveals, pinned video scrub
       brief: order.brief || null, // template/palette/customIdea from the Studio workspace
+      dossier, // the client's CURATED record (My Profile): identity, story, experience, projects, certificates, links — when present, the approved screenplay
       revision: isRevision, // true when this run evolves an earlier delivery
       revisionNotes: order.revisionNotes || null, // set when this run is the included revision
       existingCut, // [{ path, url }] presigned reads of the delivered cut (~30 min), null on first builds
       instructions: [
         "You are the director on a commissioned portfolio film. The client's resume (cvText), their photo and project shots (assets), and their creative brief ride on this order. Build the portfolio that gets this specific person hired: read the resume for the arc of the career, pick the register their industry respects, and art-direct with conviction. Any style is valid; the jersey palette (navy #0E1C3F, crimson #E63946, gold #D9A441, bone #F4EFE6, green #0E9E62) is the house default, never a constraint.",
+        "When dossier is present it is the client's CURATED record — their identity, headline, story, experience, projects, certificates, hobbies and links exactly as they want them told. Treat it as the approved screenplay and cvText as the raw script: names, titles, dates, links and project facts come from the dossier VERBATIM, and where the two disagree the dossier wins. Fields like dossier.story (what makes this career worth watching) and dossier.hobbies are creative direction — use them to give the film its human register.",
         "THE PORTFOLIO IS A SCROLL-STORY. Scrolling index.html must feel like living this person's story, not reading a document: an opening title scene, then the career told in acts that reveal as the visitor scrolls, at least one pinned scene where scrolling drives the motion, and a closing scene that lands on contact plus the resume. Use the kit field (paste it into the page and adapt): --scroll is the page progress variable, data-reveal elements stagger in, data-pin sections pin their .stage while --pin runs 0 to 1, and video[data-scrub] inside a pinned section scrubs with the scroll. Reduced-motion fallbacks are already in the kit; keep them.",
         "AT LEAST ONE GENERATED VIDEO IS REQUIRED in the scroll experience. Generate a short cinematic clip (5 to 8 seconds, 720p, no likeness of the client unless assets.photo drives it) with your video tools, upload it via upload.url as assets/hero.mp4 (8MB max; compress or trim to fit), and use it either as a scroll-scrubbed pinned scene (muted, playsinline, preload=auto, no controls) or as an autoplaying muted loop behind the title. Always set a poster image and keep the page alive without the video (reduced motion or slow network).",
         "Generate still imagery with your image tools where it elevates the acts (atmospheres, section backdrops, project mood frames). Work FAST: generate all media first in parallel, upload as each finishes, then write the pages. Target delivery well under the window; twenty polished minutes beats a slow masterpiece.",
