@@ -336,6 +336,29 @@ resource "aws_lambda_permission" "apigw" {
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
 
+# ---------- billing (Lemon Squeezy) configuration parameters ----------
+# Terraform owns that these parameters EXIST; the operator owns their VALUES,
+# set out-of-band (aws ssm put-parameter --overwrite) and never committed.
+# ignore_changes keeps applies from reverting a real value to the placeholder.
+# The handler treats the placeholder as unconfigured (fail-soft 503), so a
+# freshly applied environment can never verify webhooks against a known string.
+resource "aws_ssm_parameter" "billing" {
+  for_each = toset([
+    "LS_BUY_URL_DC",     # Director's Cut checkout link
+    "LS_BUY_URL_COACH",  # Coach's Slate checkout link
+    "LS_WEBHOOK_SECRET", # webhook signing secret (X-Signature HMAC key)
+    "LS_CREDITS_MAP",    # JSON: {"variant:<id>": credits} — packs beyond the flagship default
+  ])
+  name  = "${local.ssm_prefix}/${each.key}"
+  type  = "SecureString"
+  value = "unset"
+  tags  = var.tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 output "api_endpoint" { value = aws_apigatewayv2_stage.default.invoke_url }
 output "function_name" { value = aws_lambda_function.api.function_name }
 output "route_count" { value = length(local.routes) }

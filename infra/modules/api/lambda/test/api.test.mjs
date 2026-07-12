@@ -969,12 +969,12 @@ test("floor: the kill switch flips the SSM breaker and defaults to enabled", asy
 const lsCtx = (extraSecrets = {}) => fakeCtx({
   secrets: async () => ({
     AGENT_WEBHOOK_URL: "https://agent.example/hook", AGENT_WEBHOOK_SECRET: "whsec", CF_CALLBACK_SECRET: "cbsec",
-    LS_WEBHOOK_SECRET: "lssec", LS_BUY_URL_DC: "https://cinefolio.lemonsqueezy.com/buy/dc",
+    LS_WEBHOOK_SECRET: "lssec-1234567890abcdef", LS_BUY_URL_DC: "https://cinefolio.lemonsqueezy.com/buy/dc",
     LS_BUY_URL_COACH: "https://cinefolio.lemonsqueezy.com/buy/coach",
     ...extraSecrets,
   }),
 });
-const lsSign = (raw) => createHmac("sha256", "lssec").update(raw, "utf8").digest("hex");
+const lsSign = (raw) => createHmac("sha256", "lssec-1234567890abcdef").update(raw, "utf8").digest("hex");
 const lsOrderBody = (id, { sub, status = "paid", email = "buyer@x.io", event = "order_created", variantId = 111, totalUsd = 9900 } = {}) => JSON.stringify({
   meta: { event_name: event, ...(sub ? { custom_data: { user_sub: sub } } : {}) },
   data: { id, attributes: { status, user_email: email, identifier: `LS-${id}`, total_usd: totalUsd, test_mode: true, first_order_item: { product_name: "The Director's Cut", variant_id: variantId, product_id: 222 } } },
@@ -1039,6 +1039,12 @@ test("billing: webhook lands one credit, swallows replays, bounces forgeries", a
   // store not configured -> 503 so LS keeps retrying until it is
   const closed = makeHandler(async () => fakeCtx());
   assert.equal(parse(await closed(lsHook(raw))).code, 503);
+
+  // the Terraform placeholder is never a usable HMAC key: short secret = unconfigured.
+  // Even a request SIGNED with the placeholder bounces 503, not 200.
+  const placeheld = makeHandler(async () => lsCtx({ LS_WEBHOOK_SECRET: "unset" }));
+  const forged = { ...ev("POST /billing/webhook", { headers: { "x-signature": createHmac("sha256", "unset").update(raw, "utf8").digest("hex") } }), body: raw };
+  assert.equal(parse(await placeheld(forged)).code, 503);
 });
 
 test("order: after the free cuts, a paid credit is spent — then an honest 402 with the register", async () => {
