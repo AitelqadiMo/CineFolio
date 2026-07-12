@@ -30,6 +30,16 @@ export const DC_CREDITS = 3;        // production credits per Director's Cut pur
 export const NEW_FREE_CUTS = 1;     // free AI films for accounts created from pricing v3 on
 export const LEGACY_FREE_CUTS = 3;  // earlier accounts keep the three they were promised
 
+// premiere slots: how many films a plan screens LIVE at once. Free accounts
+// track their free-film era (1 from pricing v3, 3 for legacy profiles), the
+// flagship unlocks three, the slate is built for client rosters.
+export const PUBLISH_SLOTS = { director: 3, coach: 10 };
+export function publishSlots(profile) {
+  if (profile?.plan === "coach") return PUBLISH_SLOTS.coach;
+  if (profile?.plan === "director") return PUBLISH_SLOTS.director;
+  return profile?.freeCutsLimit ?? LEGACY_FREE_CUTS;
+}
+
 // ---- auth ----
 // HTTP API JWT authorizer puts claims at requestContext.authorizer.jwt.claims
 export function claimsOf(event) {
