@@ -1,5 +1,6 @@
 // misc.mjs — profile, waitlist, contact, hits, admin. All handlers take (event, ctx).
 import { ok, bad, json, claimsOf, isAdmin, bodyOf, isEmail, clampStr, now, today, uuid, qs, NEW_FREE_CUTS, entitlementOf } from "./lib.mjs";
+import { expireTrialIfDue } from "./sites.mjs";
 
 // GET /me — lazy-upsert the profile on first authenticated call (no Cognito trigger needed)
 export async function getMe(event, ctx) {
@@ -130,6 +131,18 @@ export async function hit(event, ctx) {
     ExpressionAttributeNames: { "#c": "count" },
     ExpressionAttributeValues: { ":one": 1, ":g": "HIT", ":s": `${today()}#${page}` },
   });
+  // a site view doubles as the limited-engagement check: an expired trial
+  // darkens on the first look past its end time. Fail-soft, after the count —
+  // expiry can never break the beacon.
+  if (page.startsWith("s/")) {
+    try {
+      const claim = await ctx.ddb.get({ PK: `SLUG#${page.slice(2)}`, SK: "CLAIM" });
+      if (claim?.siteId) {
+        const site = await ctx.ddb.get({ PK: `SITE#${claim.siteId}`, SK: "META" });
+        await expireTrialIfDue(ctx, site);
+      }
+    } catch { /* the count already landed; expiry rides the next view */ }
+  }
   return ok({ ok: true });
 }
 

@@ -30,6 +30,11 @@ export const DC_CREDITS = 3;        // production credits per Director's Cut pur
 export const NEW_FREE_CUTS = 1;     // free AI films for accounts created from pricing v3 on
 export const LEGACY_FREE_CUTS = 3;  // earlier accounts keep the three they were promised
 
+// the limited engagement: a free-plan account's AI-born premiere screens for
+// this many hours, then returns to the vault (preserved, address held) until
+// a plan unlock revives it. The Set's manual films and paid plans have no clock.
+export const TRIAL_HOURS = 72;
+
 // premiere slots: how many films a plan screens LIVE at once. Free accounts
 // track their free-film era (1 from pricing v3, 3 for legacy profiles), the
 // flagship unlocks three, the slate is built for client rosters.

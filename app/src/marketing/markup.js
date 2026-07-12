@@ -165,7 +165,7 @@ export const LANDING_HTML = `
             <li>The Set: every template family, renders as you type, unlimited</li>
             <li>Resume page with a downloadable PDF</li>
             <li>Premieres at yourname.cinefolio.dev in about 20 minutes</li>
-            <li>One premiere live at a time</li>
+            <li>AI premieres screen as 72-hour limited engagements · Set premieres stay up</li>
           </ul>
           <div class="foot"><button class="btn magnetic" data-enter>Start free</button></div>
         </div>
@@ -174,6 +174,7 @@ export const LANDING_HTML = `
           <div class="head"><div class="k">FORMAT 02</div><h3>The Director's Cut</h3><div class="price">$99 · one time · 3 productions</div></div>
           <ul>
             <li>Three AI-directed productions: film it, refine it, pick the cut you love</li>
+            <li><b>Your premieres stay live</b> — no clocks, no limited engagements</li>
             <li>Full scroll-scrub production: hero orbit, story scenes, section pinning, interactive terminal</li>
             <li>Revision messages to the director with every production</li>
             <li>Publish up to three films, each on its own address</li>

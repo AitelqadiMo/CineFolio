@@ -1165,3 +1165,54 @@ test("cut preview: the path-style address serves pages and assets so relative re
   // the query route still works for compatibility
   assert.equal(parse(await h(ev("GET /studio/cut", { qs: { orderId } }))).code, 200);
 });
+
+test("limited engagement: free AI premieres carry the 72h clock, the beacon darkens expired ones, upgrades clear it", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const page = (t) => ({ html: `<!doctype html><html><body>${t}</body></html>` });
+
+  // a free account premieres an AI-born film -> the clock is on
+  await h(ev("GET /me", { claims: "trial1" }));
+  const gen = parse(await h(ev("POST /studio/order", { claims: "trial1", body: { email: "t@x.io", name: "Trial One", role: "engineer", cvText: "2023 engineer aws terraform platform" } })));
+  const orderId = gen.body.orderId;
+  await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }), body: "<!doctype html><html><body>CUT</body></html>" });
+  const s1 = parse(await h(ev("POST /sites", { claims: "trial1", body: { title: "Trial Film" } }))).body.site;
+  const pub1 = parse(await h(ev("POST /sites/{id}/publish", { claims: "trial1", path: { id: s1.siteId }, body: { orderId } })));
+  assert.equal(pub1.code, 200);
+  assert.ok(pub1.body.trialEndsAt, "the limited engagement clock is set");
+
+  // The Set (manual) premieres without a clock, even on the free plan
+  await h(ev("GET /me", { claims: "manual1" }));
+  const s2 = parse(await h(ev("POST /sites", { claims: "manual1", body: { title: "Manual Film" } }))).body.site;
+  const pub2 = parse(await h(ev("POST /sites/{id}/publish", { claims: "manual1", path: { id: s2.siteId }, body: page("M") })));
+  assert.equal(pub2.code, 200);
+  assert.equal(pub2.body.trialEndsAt ?? null, null, "The Set premieres without a clock");
+
+  // a paid plan's AI premiere is permanent from the first release
+  ctx.ddb._store.set("USER#dir1|PROFILE", { PK: "USER#dir1", SK: "PROFILE", type: "user", plan: "director", freeCutsLimit: 1 });
+  const genD = parse(await h(ev("POST /studio/order", { claims: "dir1", body: { email: "d@x.io", name: "Dir One", role: "engineer", cvText: "2023 engineer aws kubernetes" } })));
+  await h({ ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": genD.body.orderId } }), body: "<!doctype html><html><body>DCUT</body></html>" });
+  const s3 = parse(await h(ev("POST /sites", { claims: "dir1", body: { title: "Director Film" } }))).body.site;
+  const pub3 = parse(await h(ev("POST /sites/{id}/publish", { claims: "dir1", path: { id: s3.siteId }, body: { orderId: genD.body.orderId } })));
+  assert.equal(pub3.body.trialEndsAt ?? null, null, "paid plans premiere without a clock");
+
+  // expiry: backdate the clock, then a view beacon darkens the engagement
+  const row = ctx.ddb._store.get(`SITE#${s1.siteId}|META`);
+  row.trialEndsAt = "2020-01-01T00:00:00.000Z";
+  ctx.ddb._store.set(`SITE#${s1.siteId}|META`, row);
+  assert.equal(parse(await h(ev("POST /hit", { body: { page: `s/${s1.slug}` } }))).code, 200, "the beacon never breaks");
+  const after = ctx.ddb._store.get(`SITE#${s1.siteId}|META`);
+  assert.equal(after.status, "trial_ended", "the expired engagement went dark");
+  assert.ok(ctx.kvs.dels.includes(s1.slug), "the pointer was pulled");
+  // the vault kept every release row
+  assert.ok([...ctx.ddb._store.keys()].some((k) => k.startsWith(`SITE#${s1.siteId}|RELEASE#`)), "releases preserved");
+
+  // upgrade -> revive: the plan flips, the same film republishes permanent
+  const prof = ctx.ddb._store.get("USER#trial1|PROFILE");
+  prof.plan = "director";
+  ctx.ddb._store.set("USER#trial1|PROFILE", prof);
+  const revive = parse(await h(ev("POST /sites/{id}/publish", { claims: "trial1", path: { id: s1.siteId }, body: { orderId } })));
+  assert.equal(revive.code, 200);
+  assert.equal(revive.body.trialEndsAt ?? null, null, "the upgrade cleared the clock for good");
+  assert.equal(ctx.ddb._store.get(`SITE#${s1.siteId}|META`).status, "live", "the film is back on the marquee");
+});
