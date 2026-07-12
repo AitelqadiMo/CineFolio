@@ -12,6 +12,7 @@ import Studio from "./pages/Studio.jsx";
 import Lounge from "./pages/Lounge.jsx";
 import Admin from "./pages/Admin.jsx";
 import Profile from "./pages/Profile.jsx";
+import Onboarding from "./pages/Onboarding.jsx";
 import Sidebar from "./shell/Sidebar.jsx";
 import CmdK from "./CmdK.jsx";
 import ToastHost from "./shell/Toast.jsx";
@@ -51,6 +52,9 @@ export default function App() {
   const [edge, setEdge] = useState(null); // { ms } ambient status
   const [prod, setProd] = useState(null); // global director's-cut tracking
   const [credits, setCredits] = useState(() => ledger.credits());
+  const [navOpen, setNavOpen] = useState(false); // phone drawer: the sidebar behind a clapper button
+
+  useEffect(() => { setNavOpen(false); }, [route]); // any navigation closes the drawer
 
   useEffect(() => {
     restore().finally(() => setBooting(false));
@@ -162,6 +166,15 @@ export default function App() {
       </AuthCtx.Provider>
     );
   }
+  /* the First Screening: onboarding walks full-bleed, like a title sequence */
+  if (head === "welcome") {
+    return (
+      <AuthCtx.Provider value={{ user, nav }}>
+        <ToastHost />
+        <SetBoundary key={route}><Onboarding /></SetBoundary>
+      </AuthCtx.Provider>
+    );
+  }
 
   /* dashboard routes share the one sidebar */
   const PAGES = {
@@ -175,7 +188,9 @@ export default function App() {
     <AuthCtx.Provider value={{ user, nav }}>
       <CmdK nav={nav} admin={user.admin} />
       <ToastHost />
-      <div className="backlot">
+      <div className={`backlot${navOpen ? " navopen" : ""}`}>
+        <button type="button" className="bkburger" aria-label={navOpen ? "Close navigation" : "Open navigation"} aria-expanded={navOpen} onClick={() => setNavOpen((v) => !v)}>{navOpen ? "✕" : "☰"}</button>
+        {navOpen && <button type="button" className="bkscrim" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
         <Sidebar user={user} route={head} nav={nav} onSignOut={doSignOut} onCmdK={openCmdK} />
         <div className="bkmain">
           {statusChips}
