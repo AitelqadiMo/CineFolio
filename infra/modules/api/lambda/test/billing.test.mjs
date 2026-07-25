@@ -7,7 +7,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { checkout, webhook } from "../billing.mjs";
+import { checkout, webhook, foundingSeatsLeft } from "../billing.mjs";
+import { getMe } from "../misc.mjs";
+import { order } from "../studio.mjs";
 import { entitlementOf, foundingSeatsLeftFrom, FOUNDING_PRICE, FOUNDING_SEATS, CUT_PRICE, DC_CREDITS } from "../lib.mjs";
 
 // ---------- fakes (the in-memory ctx pattern from test/api.test.mjs) ----------
@@ -27,6 +29,17 @@ function fakeCtx(overrides = {}) {
       const item = store.get(k) || { ...Key };
       if (ConditionExpression === "attribute_exists(PK)" && !store.has(k)) {
         throw Object.assign(new Error("missing"), { name: "ConditionalCheckFailedException" });
+      }
+      // the free-cut and paid-credit spend guards from studio.mjs order(): the
+      // seat-count tests exercise the real order handler, so this fake must
+      // reject a spend past the limit exactly as DynamoDB would (mirrors the
+      // same two conditions in test/api.test.mjs).
+      if (ConditionExpression === "attribute_not_exists(aiCuts) OR aiCuts < :max"
+        && item.aiCuts !== undefined && item.aiCuts >= ExpressionAttributeValues[":max"]) {
+        throw Object.assign(new Error("spent"), { name: "ConditionalCheckFailedException" });
+      }
+      if (ConditionExpression === "paidCredits >= :one" && !((item.paidCredits || 0) >= ExpressionAttributeValues[":one"])) {
+        throw Object.assign(new Error("no credits"), { name: "ConditionalCheckFailedException" });
       }
       // micro-interpreter for the SET/ADD expressions we actually use
       const resolve = (n) => ExpressionAttributeNames[n] || n;
@@ -312,4 +325,125 @@ test("foundingSeatsLeftFrom: clamps untrusted input, never a fake number", () =>
   assert.equal(foundingSeatsLeftFrom(0), FOUNDING_SEATS);
   assert.equal(foundingSeatsLeftFrom(FOUNDING_SEATS + 3), 0, "oversold clamps to zero, never negative");
   assert.equal(foundingSeatsLeftFrom("nonsense"), null, "unparseable -> unknown, not a guess");
+});
+
+// ---------- the real seat count reaches every entitlement snapshot ----------
+// Pricing v4 makes scarcity honest exactly where a user decides to pay. The
+// counter is read via ONE shared helper (billing.mjs foundingSeatsLeft), so /me
+// and both order responses (the 200 success and the 402 refusal, the moment of
+// decision) all speak the same true number the checkout already quotes.
+
+// GET /me event for a signed-in user
+const meEv = (sub, email = `${sub}@x.io`) => ({
+  requestContext: { routeKey: "GET /me", authorizer: { jwt: { claims: { sub, email } } } },
+  headers: {}, queryStringParameters: null,
+});
+// POST /studio/order event for a signed-in user; a valid CV so parseCV is happy
+const orderEv = (sub, email = `${sub}@x.io`) => ({
+  requestContext: { routeKey: "POST /studio/order", authorizer: { jwt: { claims: { sub, email } } } },
+  headers: {}, queryStringParameters: null,
+  body: JSON.stringify({ email, name: "Buyer", role: "designer", cvText: "2020 designer figma branding" }),
+  isBase64Encoded: false,
+});
+// seed the founding counter to a chosen number of sold seats
+const seedFounding = (ctx, soldCount) => ctx.ddb._store.set("COUNTER|FOUNDING", { PK: "COUNTER", SK: "FOUNDING", count: soldCount });
+
+test("shared reader: foundingSeatsLeft is the ONE helper and reads COUNTER/FOUNDING identically", async () => {
+  const ctx = fakeCtx();
+  // a missing row is zero founding purchases -> the full FOUNDING_SEATS, never null
+  assert.equal(await foundingSeatsLeft(ctx), FOUNDING_SEATS, "missing row reads as full seats, not null");
+  seedFounding(ctx, 5);
+  assert.equal(await foundingSeatsLeft(ctx), FOUNDING_SEATS - 5, "a real count yields real seats-left");
+  seedFounding(ctx, FOUNDING_SEATS + 4);
+  assert.equal(await foundingSeatsLeft(ctx), 0, "oversold clamps to zero");
+});
+
+test("/me: the real founding-seat count reaches the entitlement snapshot", async () => {
+  const ctx = fakeCtx();
+  seedFounding(ctx, 5); // 5 sold -> 15 seats left
+  const r = parse(await getMe(meEv("me-real"), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.user.foundingSeatsLeft, FOUNDING_SEATS - 5, "/me carries the real number, not null");
+  assert.equal(r.body.user.foundingPrice, FOUNDING_PRICE, "seats remain -> founding price still shown");
+});
+
+test("/me: a missing counter row reads as FULL seats, never null (the honest answer is computable)", async () => {
+  const ctx = fakeCtx(); // no COUNTER/FOUNDING row seeded
+  const r = parse(await getMe(meEv("me-missing"), ctx));
+  assert.equal(r.body.user.foundingSeatsLeft, FOUNDING_SEATS, "no founding purchases yet -> all seats open, not null");
+  assert.equal(r.body.user.foundingPrice, FOUNDING_PRICE);
+});
+
+test("/me: the seat count clamps at zero and the price flips to CUT_PRICE once the window closes", async () => {
+  const ctx = fakeCtx();
+  seedFounding(ctx, FOUNDING_SEATS + 3); // oversold: clamps to zero, never negative
+  const r = parse(await getMe(meEv("me-closed"), ctx));
+  assert.equal(r.body.user.foundingSeatsLeft, 0, "clamped at zero, never below");
+  assert.equal(r.body.user.foundingPrice, CUT_PRICE, "window closed -> the post-founding price");
+});
+
+test("/me: a counter read failure degrades to null (unknown), never breaks sign-in", async () => {
+  const ctx = fakeCtx();
+  const realGet = ctx.ddb.get.bind(ctx.ddb);
+  // only the counter read fails; the profile read must still succeed so /me works
+  ctx.ddb.get = async (Key) => {
+    if (Key.PK === "COUNTER" && Key.SK === "FOUNDING") throw new Error("ddb hiccup");
+    return realGet(Key);
+  };
+  const r = parse(await getMe(meEv("me-degraded"), ctx));
+  assert.equal(r.code, 200, "sign-in still succeeds through a counter hiccup");
+  assert.equal(r.body.user.foundingSeatsLeft, null, "unknown, never a fabricated or zero seat number");
+  assert.equal(r.body.user.foundingPrice, FOUNDING_PRICE, "null holds the founding price open");
+});
+
+test("order 200: the real founding-seat count reaches the success snapshot", async () => {
+  const ctx = fakeCtx();
+  seedFounding(ctx, 5); // 15 seats left
+  const r = parse(await order(orderEv("ord-real"), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.entitlement.foundingSeatsLeft, FOUNDING_SEATS - 5, "the 200 carries the real number");
+  assert.equal(r.body.entitlement.foundingPrice, FOUNDING_PRICE);
+});
+
+test("order 200: a missing counter row reads as FULL seats, not null", async () => {
+  const ctx = fakeCtx(); // no counter row
+  const r = parse(await order(orderEv("ord-missing"), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.entitlement.foundingSeatsLeft, FOUNDING_SEATS, "the honest answer is computable -> full seats");
+});
+
+test("order 402: the refusal (the moment of decision) carries the real seat count too", async () => {
+  const ctx = fakeCtx();
+  seedFounding(ctx, 5); // 15 seats left
+  // spend the single free cut first (NEW_FREE_CUTS = 1), so the second order refuses
+  const first = parse(await order(orderEv("ord-402"), ctx));
+  assert.equal(first.code, 200);
+  const second = parse(await order(orderEv("ord-402"), ctx));
+  assert.equal(second.code, 402, "free cut spent, no paid credit -> the register");
+  assert.equal(second.body.entitlement.foundingSeatsLeft, FOUNDING_SEATS - 5, "scarcity rides the refusal, honestly");
+  assert.equal(second.body.entitlement.foundingPrice, FOUNDING_PRICE);
+});
+
+test("order 402: the seat count clamps at zero and the price flips to CUT_PRICE when closed", async () => {
+  const ctx = fakeCtx();
+  seedFounding(ctx, FOUNDING_SEATS + 2); // oversold
+  const first = parse(await order(orderEv("ord-402-closed"), ctx));
+  assert.equal(first.code, 200);
+  const second = parse(await order(orderEv("ord-402-closed"), ctx));
+  assert.equal(second.code, 402);
+  assert.equal(second.body.entitlement.foundingSeatsLeft, 0, "clamped at zero on the refusal");
+  assert.equal(second.body.entitlement.foundingPrice, CUT_PRICE, "window closed -> 99 on the refusal");
+});
+
+test("order: a counter read failure degrades to null without failing the purchase (200 stays 200)", async () => {
+  const ctx = fakeCtx();
+  const realGet = ctx.ddb.get.bind(ctx.ddb);
+  ctx.ddb.get = async (Key) => {
+    if (Key.PK === "COUNTER" && Key.SK === "FOUNDING") throw new Error("ddb hiccup");
+    return realGet(Key);
+  };
+  const r = parse(await order(orderEv("ord-degraded"), ctx));
+  assert.equal(r.code, 200, "a counter hiccup never breaks a purchase");
+  assert.equal(r.body.entitlement.foundingSeatsLeft, null, "degraded to unknown, not a fabricated or zero number");
+  assert.equal(r.body.entitlement.foundingPrice, FOUNDING_PRICE, "null holds the founding price open");
 });

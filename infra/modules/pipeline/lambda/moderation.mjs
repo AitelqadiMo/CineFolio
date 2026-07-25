@@ -127,7 +127,11 @@ const CATEGORIES = [
       /\b(mass\s+shooting|school\s+shooting|massacre|bloodbath)\b/,
       /\b(how\s+to\s+(?:kill|murder|hurt|attack)|instructions?\s+to\s+kill)\b/,
       /\b(graphic\s+violence|brutal\s+killing|execution\s+video)\b/,
-      /\b(kill|murder|assassinate|attack|shoot|stab|bomb)\s+(?:my|the|a|him|her|them)\b/,
+      // Target must be a PERSON, not an object. Our customers are creative
+      // professionals: a photographer writes "I shoot the campaign", an engineer
+      // writes "kill the legacy system". The old pattern matched an object after
+      // the verb and terminally rejected those paid orders as violent content.
+      /\b(kill|murder|assassinate|attack|stab|shoot)\s+(?:him|her|them|someone|somebody|people|a\s+(?:person|man|woman|child)|my\s+(?:boss|ex|neighbou?r|wife|husband))\b/,
     ],
   },
   {

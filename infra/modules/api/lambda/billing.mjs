@@ -284,8 +284,10 @@ export async function checkout(event, ctx) {
 // the running count of founding purchases, kept as a real O(1) counter row so
 // the seat number is never fabricated. Returns seats-left (a real number) or
 // null when the row cannot be read (degraded DDB); callers treat null as
-// "unknown", never as zero.
-async function foundingSeatsLeft(ctx) {
+// "unknown", never as zero. Exported as the ONE shared reader so checkout, /me,
+// and both order responses read the seat count identically (a missing row means
+// zero founding purchases, so seats-left is the full FOUNDING_SEATS, never null).
+export async function foundingSeatsLeft(ctx) {
   const row = await ctx.ddb.get({ PK: "COUNTER", SK: "FOUNDING" });
   return foundingSeatsLeftFrom(row?.count || 0);
 }

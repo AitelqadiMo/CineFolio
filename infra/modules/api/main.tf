@@ -93,6 +93,7 @@ locals {
     "POST /sites/{id}/publish"      = true
     "POST /sites/{id}/rollback"     = true
     "POST /sites/{id}/duplicate"    = true
+    "POST /sites/{id}/showcase"     = true # owner (or admin) opts their live film in/out of the public showcase
     "POST /sites/{id}/domain"       = true
     "POST /sites/{id}/delete"       = true
     "DELETE /sites/{id}"            = true

@@ -538,6 +538,9 @@ const pub = (s, ctx) => ({
   trialEndsAt: s.trialEndsAt || null, // limited engagement clock; null = permanent
   releases: s.releases, liveRelease: s.liveRelease, stagedRelease: s.stagedRelease ?? null,
   audienceOf: s.audienceOf || null, pointerMode: s.pointerMode,
+  // public showcase consent, so the toggle reflects stored state across reloads
+  // rather than resetting to off. Strict true only: consent is never inferred.
+  showcase: s.showcase === true,
   customDomain: s.customDomain || null, domainStatus: s.domainStatus || null,
   createdAt: s.createdAt, publishedAt: s.publishedAt,
   previewUrl: previewUrl(ctx, s.slug),

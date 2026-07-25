@@ -3,6 +3,7 @@
 // callback: agent posts the director's-cut HTML (secret header) -> S3 + status flip
 // status/cut: client polling. Cut HTML lives in S3 (artifacts bucket), never DynamoDB.
 import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE, CUT_PRICE, NEW_FREE_CUTS, LEGACY_FREE_CUTS, entitlementOf } from "./lib.mjs";
+import { foundingSeatsLeft } from "./billing.mjs";
 import { sendOrderEmail } from "./email.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -116,6 +117,12 @@ export async function order(event, ctx) {
   const profile = await ctx.ddb.get(profileKey);
   const freeLimit = profile ? (profile.freeCutsLimit ?? LEGACY_FREE_CUTS) : NEW_FREE_CUTS;
   let profileNow = profile; // the post-spend row: every response carries its snapshot
+
+  // the real founding-seat count, read ONCE per request (one O(1) GetItem) and
+  // shared by both order responses. The 402 refusal is the moment of decision,
+  // so scarcity must ride it as honestly as the 200. Fail-soft: a counter hiccup
+  // degrades the seat count to null (unknown) rather than failing the purchase.
+  const seatsLeft = await foundingSeatsLeft(ctx).catch(() => null);
   let aiCuts = 0;
   let freeCut = true;
   try {
@@ -147,7 +154,7 @@ export async function order(event, ctx) {
       if (e2?.name === "ConditionalCheckFailedException") {
         // no credits anywhere: answer with the price, the way to pay it, AND
         // the authoritative snapshot so the console never guesses
-        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: CUT_PRICE, checkout: "/billing/checkout", entitlement: entitlementOf(profileNow || {}) });
+        return json(402, { ok: false, error: "free cuts used", freeCutsLeft: 0, price: CUT_PRICE, checkout: "/billing/checkout", entitlement: entitlementOf(profileNow || {}, seatsLeft) });
       }
       throw e2;
     }
@@ -195,7 +202,7 @@ export async function order(event, ctx) {
     await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
 
-  return ok({ ok: true, orderId, production, paid: !freeCut, price: freeCut ? 0 : CUT_PRICE, freeCutsLeft: Math.max(0, freeLimit - aiCuts), entitlement: entitlementOf(profileNow || {}), html: previewHTML(parsed) });
+  return ok({ ok: true, orderId, production, paid: !freeCut, price: freeCut ? 0 : CUT_PRICE, freeCutsLeft: Math.max(0, freeLimit - aiCuts), entitlement: entitlementOf(profileNow || {}, seatsLeft), html: previewHTML(parsed) });
 }
 
 async function setStatus(ctx, orderId, status, extra = {}) {

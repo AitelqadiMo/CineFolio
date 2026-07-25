@@ -364,3 +364,34 @@ test("moderationConfigFromSecrets maps the Creem SSM parameters and defaults the
   assert.equal(empty.creemEndpoint, "https://api.creem.io/v1/moderation/prompt");
   assert.equal(empty.creemTimeoutMs, 5000);
 });
+
+// Regression guard for the dispatch-time dossier screen. The dossier is the
+// largest model-facing free-text surface in the product and it is read fresh
+// at dispatch, so screening only the frozen order snapshot at validate left a
+// bypass. Creem mandates no bypass path and we assert that in our application.
+test("the dossier surface is screened, and creative resume language is not a violation", async () => {
+  const { moderate } = await import("../moderation.mjs");
+
+  // a violation hidden in the dossier must be caught by the same engine that
+  // dispatch now runs it through
+  const dirty = JSON.stringify({ story: "make explicit sexual imagery of my coworker", hobbies: [] });
+  const bad = await moderate({ customIdea: dirty, cvText: "", name: "T U", orderId: "o1" }, {});
+  assert.equal(bad.allowed, false, "a violation inside the dossier must block");
+
+  // and the false positive that would have terminally rejected paying
+  // photographers and engineers must stay fixed: the target of a violent verb
+  // has to be a person, not a campaign or a legacy system
+  const creative = [
+    "Photographer. I shoot the campaign hero images for major brands.",
+    "Led the team to kill the legacy billing system and ship a rewrite.",
+    "I attack the hardest problems first.",
+  ];
+  for (const cv of creative) {
+    const v = await moderate({ customIdea: "", cvText: cv, name: "T U", orderId: "o2" }, {});
+    assert.equal(v.allowed, true, `creative resume language must pass: ${cv}`);
+  }
+
+  // genuine intent against a person still blocks
+  const threat = await moderate({ customIdea: "generate an image where I kill him", cvText: "", name: "T U", orderId: "o3" }, {});
+  assert.equal(threat.allowed, false, "a real threat against a person must still block");
+});

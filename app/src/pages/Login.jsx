@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { signIn, signUp, confirm, resendCode } from "../cognito.js";
+import { track, STEP } from "../funnel.js";
 
 export default function Login({ onBack }) {
   const [tab, setTab] = useState("signin"); // signin | signup | confirm
@@ -22,7 +23,7 @@ export default function Login({ onBack }) {
     e.preventDefault();
     if (tab === "signin") run(() => signIn(email.trim().toLowerCase(), pw));
     if (tab === "signup") run(async () => { await signUp(email.trim().toLowerCase(), pw); setTab("confirm"); setMsg("Account created. Check your email for the 6-digit code."); });
-    if (tab === "confirm") run(async () => { await confirm(email.trim().toLowerCase(), code.trim()); setMsg("Confirmed. Signing you in…"); await signIn(email.trim().toLowerCase(), pw); });
+    if (tab === "confirm") run(async () => { await confirm(email.trim().toLowerCase(), code.trim()); track(STEP.signupComplete); setMsg("Confirmed. Signing you in…"); await signIn(email.trim().toLowerCase(), pw); });
   };
 
   return (
@@ -40,7 +41,7 @@ export default function Login({ onBack }) {
 
         <div className="authtabs">
           <button type="button" className={tab === "signin" ? "on" : ""} onClick={() => setTab("signin")}>Sign in</button>
-          <button type="button" className={tab === "signup" ? "on" : ""} onClick={() => setTab("signup")}>Create account</button>
+          <button type="button" className={tab === "signup" ? "on" : ""} onClick={() => { track(STEP.signupStart); setTab("signup"); }}>Create account</button>
           {tab === "confirm" && <button type="button" className="on">Confirm</button>}
         </div>
 
