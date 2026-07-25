@@ -28,7 +28,7 @@ export const api = {
   updateMe: (patch) => req("/me", { method: "PUT", body: patch, auth: true }),
 
   generate: (order) => req("/studio/generate", { method: "POST", body: order }),
-  order: (order) => req("/studio/order", { method: "POST", body: order, auth: true }), // 3 free AI cuts per account, then 402
+  order: (order) => req("/studio/order", { method: "POST", body: order, auth: true }), // free render credits per account, then 402 with the founding checkout
   orderStatus: (orderId) => req(`/studio/status?orderId=${encodeURIComponent(orderId)}`),
   orderCut: (orderId) => req(`/studio/cut?orderId=${encodeURIComponent(orderId)}`), // returns HTML string
   billingCheckout: (product) => req(`/billing/checkout${product ? `?product=${encodeURIComponent(product)}` : ""}`, { auth: true }), // personalized LS checkout URL; 503 until the store opens

@@ -8,13 +8,18 @@ export default function AssetChips({ intake }) {
   return (
     <div className="bkassets">
       {resume && (
-        <span className={`bkasset ${resume.status === "unread" ? "error" : ""}`}>
+        <span
+          className={`bkasset ${resume.status === "unread" ? "error" : ""}`}
+          title={resume.status === "unread"
+            ? "We couldn't read this file. Remove it and drop a text-based PDF or TXT, or just type into the note; a resume isn't required to start."
+            : undefined}
+        >
           <span className="glyph" aria-hidden="true">▤</span>
           <span className="name">{resume.name}</span>
-          <span className="tag" style={{ cursor: "default" }} aria-hidden="true">
-            {resume.status === "reading" ? "Reading…" : resume.status === "read" ? "Resume ✓" : "Unread"}
+          <span className="tag" style={{ cursor: "default", ...(resume.status === "unread" ? { color: "var(--bk-red)" } : {}) }} aria-hidden={resume.status === "unread" ? undefined : true}>
+            {resume.status === "reading" ? "Reading…" : resume.status === "read" ? "Resume ✓" : "Can't read"}
           </span>
-          <button className="rm" aria-label={`Remove ${resume.name}`} onClick={removeResume}>✕</button>
+          <button className="rm" aria-label={resume.status === "unread" ? `Remove ${resume.name} and try another file` : `Remove ${resume.name}`} onClick={removeResume}>✕</button>
         </span>
       )}
       {photo && (

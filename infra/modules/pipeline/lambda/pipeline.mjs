@@ -14,6 +14,10 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // the SHARED template library: terraform stitches infra/modules/api/lambda/email.mjs
 // into this bundle, so pipeline and api emails can never drift apart.
 import { premiereReadyEmail, revisionPremiereEmail, needsAttentionEmail } from "./email.mjs";
+// the content-moderation screen. Creem mandates prompt moderation for any
+// product that generates images or video, and this pipeline generates both, so
+// EVERY brief is screened here before it can reach the AI director.
+import { moderate, moderationConfigFromSecrets } from "./moderation.mjs";
 
 const region = process.env.AWS_REGION || "eu-central-1";
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), { marshallOptions: { removeUndefinedValues: true } });
@@ -79,6 +83,18 @@ class OrderInvalid extends Error {
   constructor(msg) { super(msg); this.name = "OrderInvalid"; }
 }
 
+// Page the operator via the existing alarm topic. Fail-soft on the PUBLISH
+// itself (a paging hiccup must not change an order's outcome), matching how
+// human_review pages. The CALLER decides the order's fate; this only notifies.
+async function pageOperator(subject, message) {
+  if (!TOPIC) return;
+  try {
+    await sns.send(new PublishCommand({ TopicArn: TOPIC, Subject: subject, Message: message }));
+  } catch (e) {
+    console.error(JSON.stringify({ level: "error", msg: "sns publish failed", err: e?.message }));
+  }
+}
+
 // fail-soft customer mail: a mail hiccup must never fail a pipeline state
 const APP_ORIGIN = (process.env.APP_ORIGIN || "").replace(/\/$/, "");
 async function mailCustomer(orderId, to, built) {
@@ -115,6 +131,54 @@ export const handler = async (event) => {
     const sec = await secrets();
     if (sec.PIPELINE_ENABLED === "false") throw new Error("circuit breaker open"); // retryable -> ends in human_review
     if (!sec.AGENT_WEBHOOK_URL || !sec.AGENT_WEBHOOK_SECRET || !sec.CF_CALLBACK_SECRET) throw new Error("pipeline secrets missing");
+
+    // CONTENT MODERATION, the compliance gate. Screen the customer's free-text
+    // inputs before anything is dispatched to the image/video director. The
+    // deterministic layer always runs (offline, no cost); the hosted hook layers
+    // on only when its SSM params are set. A hosted OUTAGE falls back to the
+    // deterministic verdict (fail-open, never break a paid order); a hosted
+    // POSITIVE violation rejects (fail-closed). See moderation.mjs for the why.
+    const verdict = await moderate(
+      // orderId rides along as the Creem external_id, so every screening call is
+      // attributable to the order it protected when a reviewer audits us.
+      { customIdea: order.brief?.customIdea, cvText: order.cvText, name: order.name, orderId },
+      moderationConfigFromSecrets(sec),
+    );
+    // Record the verdict on the order row ALWAYS, allowed or not. This is the
+    // audit trail a payment-provider reviewer asks for: proof that moderation
+    // ran on this order and what it concluded. Fail-soft on the WRITE of a
+    // clean verdict so a bookkeeping hiccup never blocks a legitimate build.
+    if (verdict.allowed) {
+      try {
+        await setStatus(orderId, order.status, { moderation: { ...verdict, at: new Date().toISOString() } });
+      } catch (e) {
+        console.error(JSON.stringify({ level: "warn", msg: "moderation audit write failed soft", orderId, err: e?.message }));
+      }
+    } else {
+      // DELIBERATE EXCEPTION to this codebase's fail-soft doctrine: a confirmed
+      // content violation MUST block. Move the order to a terminal rejected
+      // state with a clear failCause and the full verdict, page a human, then
+      // throw OrderInvalid so the state machine routes to InvalidNoop and the
+      // order NEVER reaches Dispatch. The status write is NOT swallowed here:
+      // if we cannot record the rejection we must not silently proceed, so the
+      // throw still fires and the order lands non-dispatched.
+      const failCause = `content moderation: ${verdict.reasons.join("; ")}`;
+      try {
+        await setStatus(orderId, "rejected", {
+          taskToken: null,
+          failCause: failCause.slice(0, 400),
+          moderation: { ...verdict, at: new Date().toISOString() },
+        });
+      } catch (e) {
+        console.error(JSON.stringify({ level: "error", msg: "rejected-status write failed", orderId, err: e?.message }));
+      }
+      await pageOperator(
+        `CineFolio order ${String(orderId).slice(0, 8)} REJECTED by content moderation`,
+        `Order ${orderId} was blocked before dispatch.\nSeverity: ${verdict.severity}\nReasons: ${verdict.reasons.join("; ")}\nSource: ${verdict.source}\nOpen the admin console -> Orders -> rejected to review or refund.`,
+      );
+      throw new OrderInvalid(failCause); // -> InvalidNoop (terminal, never dispatches)
+    }
+
     return { ok: true, email: order.email, name: order.name };
   }
 

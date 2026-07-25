@@ -67,10 +67,52 @@ resource "aws_sqs_queue" "orders" {
   tags = var.tags
 }
 
+# ---------- content-moderation configuration parameters ----------
+# Creem (payment provider) mandates a prompt-moderation surface for any product
+# that generates images or video; this pipeline generates both, so moderation is
+# a hard compliance requirement. The deterministic screen in moderation.mjs runs
+# with NO configuration at all — these parameters are ONLY for the optional
+# network screens, and the pipeline reads them from the same SSM path it already
+# loads at validate time.
+#
+# Two independent screens are configured here:
+#   - the generic hosted hook (MODERATION_API_*), which we chose and which FAILS
+#     OPEN to the deterministic floor on an outage, and
+#   - the Creem provider screen (CREEM_MODERATION_*), which Creem's AI Wrapper
+#     Compliance rules MANDATE and which FAILS CLOSED on an outage. Supplying
+#     CREEM_MODERATION_API_KEY alone arms it: the URL DEFAULTS in code to Creem's
+#     real endpoint, so CREEM_MODERATION_API_URL only needs a value to override
+#     it (e.g. to point at Creem's test host). Keys start with `creem_`
+#     (`creem_test_` for test mode).
+#
+# Same doctrine as the billing parameters: Terraform owns that the parameters
+# EXIST, the operator owns their VALUES (set out-of-band via
+# `aws ssm put-parameter --overwrite`, never committed). The placeholder "unset"
+# is treated as UNCONFIGURED/DORMANT by moderation.mjs, so each screen stays
+# dormant until a real key is supplied. A KEY IS NEVER HARDCODED HERE.
+resource "aws_ssm_parameter" "moderation" {
+  for_each = toset([
+    "MODERATION_API_URL",        # generic hosted endpoint (POST JSON {input}); empty/unset = hook disabled
+    "MODERATION_API_KEY",        # bearer key for the generic endpoint; treated as unconfigured while "unset"
+    "CREEM_MODERATION_API_URL",  # Creem endpoint override; unset => code default https://api.creem.io/v1/moderation/prompt
+    "CREEM_MODERATION_API_KEY",  # Creem x-api-key (creem_ / creem_test_); unset/"unset" = Creem screen dormant
+  ])
+  name  = "${local.ssm_prefix}/${each.key}"
+  type  = "SecureString"
+  value = "unset"
+  tags  = var.tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 # ---------- pipeline worker Lambda ----------
-# The bundle = pipeline.mjs + the SHARED email template library. email.mjs is
-# sourced from the api module at plan time, so there is exactly ONE copy of
-# every customer email in the repo and the two lambdas can never drift apart.
+# The bundle = pipeline.mjs + the content-moderation screen + the SHARED email
+# template library. email.mjs is sourced from the api module at plan time, so
+# there is exactly ONE copy of every customer email in the repo and the two
+# lambdas can never drift apart. moderation.mjs is pipeline-local: it is the
+# content-screening gate the pipeline runs before every dispatch.
 data "archive_file" "worker" {
   type        = "zip"
   output_path = "${path.module}/.build/pipeline.zip"
@@ -78,6 +120,10 @@ data "archive_file" "worker" {
   source {
     content  = file("${path.module}/lambda/pipeline.mjs")
     filename = "pipeline.mjs"
+  }
+  source {
+    content  = file("${path.module}/lambda/moderation.mjs")
+    filename = "moderation.mjs"
   }
   source {
     content  = file("${path.module}/../api/lambda/email.mjs")
