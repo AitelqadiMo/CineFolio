@@ -241,7 +241,31 @@ export const handler = async (event) => {
     const verdict = await moderate(
       // orderId rides along as the Creem external_id, so every screening call is
       // attributable to the order it protected when a reviewer audits us.
-      { customIdea: order.brief?.customIdea, cvText: order.cvText, name: order.name, orderId },
+      // EVERY user-authored string that rides on the dispatch payload is in this
+      // screen: the brief, the resume, the name, the revision notes when this is
+      // a revision run, and the smaller strings (email, role, skills, template
+      // and palette ids, asset names, urls, links). A field the model sees that
+      // the screen does not is a bypass, which is exactly what Creem forbids;
+      // revisionNotes was that bypass until this list matched the payload.
+      {
+        customIdea: order.brief?.customIdea,
+        cvText: order.cvText,
+        name: order.name,
+        revisionNotes: order.revisionNotes,
+        extra: [
+          order.email,
+          order.role,
+          Array.isArray(order.skills) ? order.skills.join(" ") : order.skills,
+          order.brief?.template,
+          order.brief?.palette,
+          order.assets?.photo,
+          order.assets?.links,
+          ...(Array.isArray(order.assets?.covers)
+            ? order.assets.covers.flatMap((c) => [c?.name, c?.url])
+            : []),
+        ],
+        orderId,
+      },
       moderationConfigFromSecrets(sec),
     );
     // Record the verdict on the order row ALWAYS, allowed or not. This is the
@@ -360,7 +384,12 @@ export const handler = async (event) => {
     // the dossier is screened here at the point of dispatch. Same doctrine as
     // validate: a confirmed violation blocks before the model ever sees it.
     if (dossier && typeof dossier === "object") {
-      const dossierText = JSON.stringify(dossier).slice(0, 20000);
+      // The FULL dossier is screened: no slice. The profile write path accepts
+      // up to 200KB of JSON and a cap here was a bypass window (clean text up
+      // front, anything at all behind the cap reached the model unscreened).
+      // moderate() chunks long text through the network layers, so every
+      // character gets a verdict; see chunkText in moderation.mjs.
+      const dossierText = JSON.stringify(dossier);
       const dv = await moderate(
         { customIdea: dossierText, cvText: "", name: order.name, orderId },
         moderationConfigFromSecrets(sec),

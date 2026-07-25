@@ -206,7 +206,13 @@ resource "aws_lambda_function" "worker" {
   handler          = "pipeline.handler"
   filename         = data.archive_file.worker.output_path
   source_code_hash = data.archive_file.worker.output_base64sha256
-  timeout          = 30
+  # 60s, not 30: the moderation gate now screens the FULL brief and dossier in
+  # chunks through the network layers (see lambda/moderation.mjs). The worst
+  # legal case (a 200KB dossier, the putProfile cap) is ~26 chunks in 3 pooled
+  # waves of one 5s vendor timeout each, ~15s, plus presigns and the dispatch
+  # webhook. 30s left no headroom for that worst case; 60s does, and costs
+  # nothing when unused (billed by actual duration).
+  timeout          = 60
   memory_size      = 256
   # NOTE: no reserved_concurrent_executions — small/new accounts have a total
   # Lambda concurrency limit that a reservation would starve (must leave >= 10
