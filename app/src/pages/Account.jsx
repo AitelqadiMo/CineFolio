@@ -52,7 +52,38 @@ export default function Account() {
   }, []);
 
   const isClient = ledger.isClient(orders) || plan !== "free";
-  const planLabel = plan === "coach" ? "COACH" : plan === "director" ? "DIRECTOR" : "FREE TAKE";
+  const planLabel = plan === "director" ? "DIRECTOR" : "FREE TAKE";
+
+  // Founding-member pricing rides on the entitlement snapshot (server is the
+  // only source of truth). foundingSeatsLeft is the honest remaining count;
+  // foundingPrice is the current flagship price. When the server has not sent
+  // these yet, we degrade: founding framing, real price if given, and NEVER a
+  // fabricated counter. The number is shown only when the server hands us one.
+  const foundingSeatsLeft = typeof ent?.foundingSeatsLeft === "number" ? ent.foundingSeatsLeft : null;
+  const foundingOpen = foundingSeatsLeft === null || foundingSeatsLeft > 0; // assume the founding window until the server says it closed
+  const flagshipPrice = typeof ent?.foundingPrice === "number" ? ent.foundingPrice : (foundingOpen ? 49 : 99);
+  const seatWord = (n) => `${n} founding seat${n === 1 ? "" : "s"} left`;
+
+  // the premiere-slot wall: a free account screens one live film at a time. When
+  // every slot is full, upgrading is the one-click way to open more. This is a
+  // real moment of need, so the path to founding pricing surfaces right here.
+  const liveCount = (sites || []).filter((s) => s.status === "live").length;
+  const slotsFull = plan === "free" && ent != null && liveCount >= (ent.publishSlots || 1);
+
+  // one place the upgrade actually happens: open the personalized checkout,
+  // start watching for the credit, and fall back to honest copy if the register
+  // is not open yet. Reused by every "unlock" surface on the page.
+  const [checkingOut, setCheckingOut] = useState(false);
+  const goFounding = async () => {
+    setErr(""); setCheckingOut(true);
+    try {
+      const c = await api.billingCheckout();
+      watchForCredits();
+      window.open(c.url, "_blank", "noopener");
+    } catch {
+      setErr("The register opens soon. Your films keep premiering free in the meantime.");
+    } finally { setCheckingOut(false); }
+  };
 
   const save = async (e) => {
     e.preventDefault();
@@ -119,7 +150,7 @@ export default function Account() {
     <>
       <div className="pagehead" data-scene="SCENE 04 · THE CLIENT RECORD">
         <SplitTitle text="Your" serif="account" />
-        <p className="sub">Who the studio is producing for, what you own, and where your money went.</p>
+        <p className="sub">Your account, your production credits, what you own, and where your money went.</p>
       </div>
 
       {err && <div className="err" style={{ marginBottom: 16 }}>{err}</div>}
@@ -158,26 +189,34 @@ export default function Account() {
               <div className="scene-hd">STUDIO PASS</div>
               <div className="panel">
                 <div className="planline">
-                  <b>{plan === "coach" ? "The Coach's Slate" : plan === "director" ? "The Director's Cut" : "The Free Cuts"}</b>
+                  <b>{plan === "director" ? "The Director's Cut" : "The Free Cuts"}</b>
                   <span className={`badge ${plan !== "free" ? "live" : "draft"}`}>{planLabel}</span>
                 </div>
                 {ent ? (
                   <ul className="planlist">
-                    <li><b>{ent.freeCutsLeft}</b> free AI film{ent.freeCutsLeft === 1 ? "" : "s"} left · <b>{ent.paidCredits}</b> paid production credit{ent.paidCredits === 1 ? "" : "s"} banked</li>
+                    <li><b>{ent.freeCutsLeft}</b> free AI film{ent.freeCutsLeft === 1 ? "" : "s"} left · <b>{ent.paidCredits}</b> production credit{ent.paidCredits === 1 ? "" : "s"} banked</li>
                     <li><b>{(sites || []).filter((s) => s.status === "live").length}</b> of <b>{ent.publishSlots}</b> premiere slot{ent.publishSlots === 1 ? "" : "s"} screening live</li>
                     <li>The Set (manual templates) stays unlimited, always</li>
                     {plan === "free"
-                      ? <li>The Director&apos;s Cut ($99, one time) adds <b>three AI productions</b> and three premiere slots</li>
+                      ? <li>The Director&apos;s Cut is a <b>one-time unlock</b> (not a subscription): it banks <b>three production credits</b> you spend to run the AI studio, plus three premiere slots</li>
                       : <li>Revision messages ride every production · your films export any time, you own everything</li>}
                   </ul>
                 ) : <p className="dlgtext">Loading your pass…</p>}
                 {plan === "free" && (
-                  <button type="button" className="btn primary" style={{ marginTop: 12 }}
-                    onClick={() => api.billingCheckout()
-                      .then((c) => { watchForCredits(); window.open(c.url, "_blank", "noopener"); })
-                      .catch(() => setErr("The register opens soon — your films keep premiering free."))}>
-                    Unlock the Director&apos;s Cut — $99 · 3 productions
-                  </button>
+                  <>
+                    <button type="button" className="btn primary" style={{ marginTop: 12 }} disabled={checkingOut} onClick={goFounding}>
+                      {checkingOut ? <span className="spin" /> : null}
+                      {foundingOpen
+                        ? `Unlock the Director's Cut · $${flagshipPrice} founding price · 3 credits, one time`
+                        : `Unlock the Director's Cut · $${flagshipPrice} · 3 credits, one time`}
+                    </button>
+                    {foundingOpen && foundingSeatsLeft !== null && (
+                      <p className="mono finehint">Founding price for the first buyers · {seatWord(foundingSeatsLeft)} · then it returns to $99</p>
+                    )}
+                    {foundingOpen && foundingSeatsLeft === null && (
+                      <p className="mono finehint">Founding price for the first buyers · one time, not a subscription · then it returns to $99</p>
+                    )}
+                  </>
                 )}
               </div>
             </section>
@@ -192,29 +231,21 @@ export default function Account() {
                 </div>
                 <p className="dlgtext" style={{ margin: "4px 0 14px" }}>1 AI film · The Set unlimited · 1 premiere slot · AI premieres screen as 72-hour limited engagements.</p>
                 <div className="planline">
-                  <b>The Director&apos;s Cut · $99 one time</b>
+                  <b>{foundingOpen ? `The Director's Cut · $${flagshipPrice} founding · one time` : `The Director's Cut · $${flagshipPrice} one time`}</b>
                   {plan === "director" ? <span className="badge live">CURRENT</span> : (
-                    <button type="button" className="btn primary" style={{ padding: "7px 14px" }}
-                      onClick={() => api.billingCheckout()
-                        .then((c) => { watchForCredits(); window.open(c.url, "_blank", "noopener"); })
-                        .catch(() => setErr("The register opens soon."))}>
-                      Unlock
+                    <button type="button" className="btn primary" style={{ padding: "7px 14px" }} disabled={checkingOut} onClick={goFounding}>
+                      {checkingOut ? <span className="spin" /> : null}{foundingOpen ? `Unlock · $${flagshipPrice}` : "Unlock"}
                     </button>
                   )}
                 </div>
-                <p className="dlgtext" style={{ margin: "4px 0 14px" }}>3 AI productions · 3 premiere slots · <b>premieres stay live</b> · revision messages with every production · 12 months hosting · full export.</p>
-                <div className="planline">
-                  <b>The Coach&apos;s Slate · $295 · 7 productions</b>
-                  {plan === "coach" ? <span className="badge live">CURRENT</span> : (
-                    <button type="button" className="btn ghost" style={{ padding: "7px 14px" }}
-                      onClick={() => api.billingCheckout("coach")
-                        .then((c) => { watchForCredits(); window.open(c.url, "_blank", "noopener"); })
-                        .catch(() => setErr("The register opens soon."))}>
-                      Get the pack
-                    </button>
-                  )}
-                </div>
-                <p className="dlgtext" style={{ margin: "4px 0 14px" }}>$42 a film · 10 premiere slots · built for coaches and agencies producing client portfolios.</p>
+                <p className="dlgtext" style={{ margin: "4px 0 14px" }}>A one-time unlock, not a subscription. Banks <b>3 production credits</b> you spend to run the AI studio · 3 premiere slots · <b>premieres stay live</b> · revision messages with every production · 12 months hosting · full export.</p>
+                {plan !== "director" && foundingOpen && (
+                  <p className="dlgtext" style={{ margin: "0 0 14px" }}>
+                    {foundingSeatsLeft !== null
+                      ? <><b>Founding price.</b> The first 20 founding members pay ${flagshipPrice}. {seatWord(foundingSeatsLeft)}. After that it returns to $99.</>
+                      : <><b>Founding price.</b> The first 20 founding members pay ${flagshipPrice}, then it returns to $99.</>}
+                  </p>
+                )}
                 <p className="dlgtext" style={{ marginTop: 4 }}>
                   Purchases run through our merchant of record. <a href={LS_ORDERS_URL} target="_blank" rel="noopener noreferrer">Billing &amp; receipts ↗</a>
                 </p>
@@ -289,6 +320,24 @@ export default function Account() {
                     </div>
                   </div>
                 ))}
+                {slotsFull && (
+                  <div style={{ borderTop: "1px solid var(--line)", marginTop: 14, paddingTop: 16 }}>
+                    <div className="planline">
+                      <b>Premiere slot full</b>
+                      <span className="badge draft">{liveCount} OF {ent.publishSlots} LIVE</span>
+                    </div>
+                    <p className="dlgtext" style={{ margin: "4px 0 12px" }}>
+                      Your free plan screens {ent.publishSlots === 1 ? "one film" : `${ent.publishSlots} films`} live at a time. The Director&apos;s Cut is a <b>one-time unlock</b> (not a subscription): it opens <b>three premiere slots</b> and banks <b>three production credits</b> to run the AI studio{foundingOpen ? `, for $${flagshipPrice} while founding seats last` : ` for $${flagshipPrice}`}.
+                    </p>
+                    <button type="button" className="btn primary" disabled={checkingOut} onClick={goFounding}>
+                      {checkingOut ? <span className="spin" /> : null}
+                      {foundingOpen ? `Open more slots · $${flagshipPrice} founding · one time` : `Open more slots · $${flagshipPrice} · one time`}
+                    </button>
+                    {foundingOpen && foundingSeatsLeft !== null && (
+                      <p className="mono finehint">{seatWord(foundingSeatsLeft)} · then it returns to $99</p>
+                    )}
+                  </div>
+                )}
               </div>
             </section>
 
