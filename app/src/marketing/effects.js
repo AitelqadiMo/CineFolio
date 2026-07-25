@@ -326,6 +326,40 @@ export function initLanding(root, opts = {}) {
       });
   })();
 
+  /* ================= founding seats (PUBLIC /seats, no auth) =================
+     The Plans page's seats line goes LIVE here: GET /seats reads the same
+     founding counter checkout uses and returns { ok, seatsLeft, seatsTotal,
+     foundingPrice, price, cutPrice }. While seats remain we show the real
+     remaining count; once the cohort fills we step the price line and the buy
+     button to the standard price so the page can never quote a dead discount.
+     On ANY failure we change nothing: the static markup already carries the
+     honest founding framing, so the fallback is silence, not fabrication. */
+  (function () {
+    const note = $("#seatsNote");
+    if (!note) return; // section absent (older markup): nothing to do
+    fetch(`${API}/seats`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("bad status"))))
+      .then((d) => {
+        if (!d || d.ok !== true) return;
+        const left = Number(d.seatsLeft);
+        if (!Number.isFinite(left)) return; // counter unreadable server-side: keep the static line
+        const total = Number(d.seatsTotal) || 20;
+        const founding = Number(d.foundingPrice) || 49;
+        const standard = Number(d.cutPrice) || 99;
+        if (left > 0) {
+          note.textContent = `${left} OF ${total} FOUNDING SEATS LEFT AT $${founding} · PRICE STEPS TO $${standard} WHEN THEY FILL`;
+        } else {
+          note.textContent = `THE FOUNDING ${total} IS FULL · THE DIRECTOR'S CUT IS NOW $${standard}`;
+          const pack = note.closest(".pack");
+          const priceLine = pack && pack.querySelector(".price");
+          if (priceLine) priceLine.textContent = `$${standard} · one time · 3 render credits`;
+          const btn = $("#joinFromPack");
+          if (btn) btn.textContent = `Get 3 credits · $${standard}`;
+        }
+      })
+      .catch(() => { /* static markup stands on any failure */ });
+  })();
+
   /* ================= live studio clock ================= */
   (function () {
     function tick() {

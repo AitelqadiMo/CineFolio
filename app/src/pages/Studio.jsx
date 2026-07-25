@@ -705,7 +705,7 @@ export default function Studio() {
 
           <div className={`railpanel ${railTab === "design" ? "" : "hid"}`}>
           <div className="railsec act">
-            <div className="acthead"><span className="actno">V</span><div><b>The Look</b><span className="actsub">five worlds, fifteen film stocks, rendered live with your data</span></div></div>
+            <div className="acthead"><span className="actno">V</span><div><b>The Look</b><span className="actsub">fifteen families, forty-five film stocks, rendered live with your data</span></div></div>
             <div className="posterrow">
               {TEMPLATES.map((t, i) => (
                 <button key={t.id} className={`posterpick ${tpl === t.id ? "on" : ""}`} onClick={() => { setTpl(t.id); setPal(t.palettes[0].id); }} title={t.blurb}>
@@ -737,7 +737,7 @@ export default function Studio() {
             <div className="acthead"><span className="actno">VI</span><div><b>{editTarget ? "Premiere the next release" : "Premiere the free take"}</b><span className="actsub">{editTarget ? "this cut lands on your existing film" : "included: one click, live on our infrastructure"}</span></div></div>
             {editTarget ? (
               <div className="mono" style={{ margin: "2px 0 6px", fontSize: 9.5, color: "var(--gold)" }}>
-                NEW RELEASE ON {editTarget.slug.toUpperCase()}.CINEFOLIO.SITE ·{" "}
+                NEW RELEASE ON {editTarget.slug.toUpperCase()}.CINEFOLIO.DEV ·{" "}
                 <button type="button" onClick={() => setEditTarget(null)} style={{ background: "none", border: 0, color: "var(--red-lit)", cursor: "pointer", font: "inherit", letterSpacing: "inherit", textTransform: "inherit" }}>DETACH</button>
               </div>
             ) : (
@@ -760,7 +760,8 @@ export default function Studio() {
             {err && <div className="err">{err}</div>}
             {buy && (
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut · $99 · 3 productions</a>
+                {/* same server-truth price as Home: never hardcode $99 next to $49 copy */}
+                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut · ${ent?.foundingSeatsLeft > 0 ? (ent?.foundingPrice ?? 49) : (ent?.cutPrice ?? 99)} · 3 productions</a>
                 <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid, check my credits</button>
               </div>
             )}
@@ -783,7 +784,7 @@ export default function Studio() {
               <li>Art direction you steer, with cinematic motion rendered from your resume and photos</li>
               <li>Your likeness only from the photos you upload, never generated</li>
               <li>Download-resume built into the delivered portfolio</li>
-              <li>Lands as a new release, usually within the hour · three director's notes included</li>
+              <li>Lands as a new release, usually in about twenty minutes · three director's notes included</li>
             </ul>
             {/* WHY: the old price-comparison line likened us to an outside creative shop,
                 the exact framing a merchant of record reads as a prohibited service. Replaced
@@ -825,7 +826,7 @@ export default function Studio() {
 
       </div>
 
-      <Dialog open={lookOpen} title="Browse the looks" kicker="FIVE FAMILIES · FIFTEEN FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
+      <Dialog open={lookOpen} title="Browse the looks" kicker="FIFTEEN FAMILIES · FORTY-FIVE FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
         <div className="lookgrid">
           {TEMPLATES.map((t, i) => (
             <div key={t.id} className={`lookcard ${tpl === t.id ? "on" : ""}`}>
@@ -859,7 +860,7 @@ export default function Studio() {
         open={confirmCut}
         kicker={ent && ent.freeCutsLeft > 0 ? `FREE AI RENDER · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT` : "THE DIRECTOR'S CUT · $49 FOUNDING, ONE TIME"}
         title="Order your Director's Cut"
-        body={`You set the direction; the render pipeline builds ${profile.name || "your"}${profile.name ? "'s" : ""} cut: cinematic motion rendered from your resume${photo ? " and your photos" : ""}, a download-ready resume inside the portfolio, premiere within 24 hours as a new release, one director's note included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.${ent && ent.freeCutsLeft > 0 ? " This render is on us." : ""}`}
+        body={`You set the direction; the render pipeline builds ${profile.name || "your"}${profile.name ? "'s" : ""} cut: cinematic motion rendered from your resume${photo ? " and your photos" : ""}, a download-ready resume inside the portfolio, premiere usually in about twenty minutes as a new release, one director's note included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.${ent && ent.freeCutsLeft > 0 ? " This render is on us: the premiere screens live for 72 hours, then moves to your vault (nothing is deleted), and the Director's Cut keeps it live for good." : ""}`}
         confirmLabel="Place the order"
         onConfirm={() => { setConfirmCut(false); directorsCut(); }}
         onClose={() => setConfirmCut(false)}

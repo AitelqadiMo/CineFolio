@@ -762,3 +762,12 @@
 .fs-door i { font-style: normal; font-size: 13px; color: rgba(244, 239, 230, .7); line-height: 1.5; }
 .fs-doorcta { margin-top: auto; font-weight: 600; color: #D9A441; font-size: 14px; }
 @media (max-width: 640px) { .fs-doors { grid-template-columns: 1fr; } .fs-cardrow { flex-wrap: wrap; } .fs-count { font-size: 32px; } }
+
+/* The Set on mobile: the base rule above (.edshell .mobiletoggle{display:none}) has
+   higher specificity than styles.css's .mobiletoggle{display:flex} inside its own
+   mobile query, so the EDIT/PREVIEW toggle vanished at <=1020px while edit mode
+   hides the canvas: mobile users could edit but never SEE their site render. This
+   block restores the toggle on the primary 360-390px target. */
+@media (max-width: 1020px) {
+  .edshell .mobiletoggle { display: flex; }
+}

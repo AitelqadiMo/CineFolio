@@ -307,7 +307,7 @@ export default function Onboarding() {
         <button type="button" className={`fs-door star ${canDirect ? "" : "dim"}`} onClick={exitToDirector} disabled={!!busy}>
           <span className="fs-doork">DOOR TWO</span>
           <b>The AI Director</b>
-          <i>{freeLeft > 0 ? "Send your brief through the AI pipeline. Your first render is on us." : paid > 0 ? `Send your brief through the AI pipeline. ${paid} paid credit${paid === 1 ? "" : "s"} banked.` : "Your free render is spent. Unlock the Director's Cut from Home ($99 · 3 productions)."}</i>
+          <i>{freeLeft > 0 ? "Send your brief through the AI pipeline. Your first render is on us: it screens live for 72 hours, then waits in your vault (nothing is deleted). The Director's Cut keeps it live." : paid > 0 ? `Send your brief through the AI pipeline. ${paid} paid credit${paid === 1 ? "" : "s"} banked.` : "Your free render is spent. Unlock the Director's Cut from Home ($49 founding for the first 20, then $99 · 3 productions)."}</i>
           <span className="fs-doorcta">{busy === "director" ? "Rendering…" : canDirect ? "Send the brief →" : "See The Set instead"}</span>
         </button>
       </div>
