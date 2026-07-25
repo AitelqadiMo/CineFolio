@@ -25,7 +25,7 @@
 //                                mapping a purchase to minted production credits;
 //                                unmapped purchases mint DC_CREDITS (the flagship default)
 import { createHmac } from "node:crypto";
-import { ok, bad, json, claimsOf, now, safeEqual, CUT_PRICE, FOUNDING_PRICE, DC_CREDITS, foundingSeatsLeftFrom } from "./lib.mjs";
+import { ok, bad, json, claimsOf, now, safeEqual, CUT_PRICE, FOUNDING_PRICE, FOUNDING_SEATS, DC_CREDITS, foundingSeatsLeftFrom, publicCacheHeaders } from "./lib.mjs";
 import { sendEmail, paymentReceivedEmail } from "./email.mjs";
 
 // which provider is live. BILLING_PROVIDER is the explicit switch; when it is
@@ -290,6 +290,33 @@ export async function checkout(event, ctx) {
 export async function foundingSeatsLeft(ctx) {
   const row = await ctx.ddb.get({ PK: "COUNTER", SK: "FOUNDING" });
   return foundingSeatsLeftFrom(row?.count || 0);
+}
+
+// GET /seats (public, no auth): the landing's founding-counter read. The Plans
+// page carried a static "seats are limited to 20" line with an explicit
+// wire-me-before-launch comment; this endpoint completes that honesty loop so
+// the marketing page shows the REAL remaining count from the same shared
+// reader every authenticated surface uses. Read-only, cacheable for 60s at the
+// edge (same doctrine as GET /showcase: public truth, briefly coalesced).
+// Degraded DDB returns seatsLeft null, and the client keeps its static line:
+// unknown is displayed as the honest default, never as a fabricated number.
+export async function getSeats(event, ctx) {
+  let seatsLeft = null;
+  try {
+    seatsLeft = await foundingSeatsLeft(ctx);
+  } catch { /* unreadable counter: null = unknown, the client keeps its static copy */ }
+  // While seats remain (or the count is unknown) the founding price is the live
+  // price, matching how checkout and the vault email hold the window open on a
+  // degraded read rather than quoting the higher number.
+  const founding = seatsLeft === null || seatsLeft > 0;
+  return ok({
+    ok: true,
+    seatsLeft,
+    seatsTotal: FOUNDING_SEATS,
+    foundingPrice: FOUNDING_PRICE,
+    cutPrice: CUT_PRICE,
+    price: founding ? FOUNDING_PRICE : CUT_PRICE,
+  }, publicCacheHeaders(60));
 }
 
 // POST /billing/webhook; the active provider calls here. The raw body is signed;

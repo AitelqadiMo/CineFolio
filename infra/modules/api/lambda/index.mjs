@@ -14,6 +14,7 @@ import * as showcase from "./showcase.mjs";
 export const ROUTES = {
   "GET /health": async (_e, ctx) => json(200, { ok: true, service: "cinefolio-api", env: ctx.config.appEnv, ts: new Date().toISOString() }),
   "GET /showcase": showcase.getShowcase,
+  "GET /seats": billing.getSeats,
   "GET /me": misc.getMe,
   "PUT /me": misc.putMe,
   "POST /media": misc.mediaUpload,

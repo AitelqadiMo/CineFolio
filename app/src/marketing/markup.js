@@ -45,12 +45,16 @@ export const LANDING_HTML = `
       <div class="panel-intro">
         <div class="scene">THE TEMPLATES</div>
         <h2>Four lighting worlds, <span class="serif">one engine.</span></h2>
-        <p>Four looks the app can render, each in its own palette. Scroll on: your world is the empty frame at the end, waiting for you to fill it.</p>
+        <p>Four AI cuts on this reel, each in its own palette. The Set, the free manual engine, ships forty-five more looks across fifteen template families. Scroll on: your world is the empty frame at the end, waiting for you to fill it.</p>
       </div>
-      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212954_8600e4c3-1335-4834-92f3-59c79847edca.mp4"></video><div class="meta"><span class="chip">The Lavender Cut</span><span class="num">i</span></div></div>
-      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212957_b65bc691-59f0-4da6-be3a-0e33f63a2fd3.mp4"></video><div class="meta"><span class="chip">The Neon Cut</span><span class="num">ii</span></div></div>
-      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_213719_17a92337-a259-4517-b389-46e2e81637d9.mp4"></video><div class="meta"><span class="chip">The Daylight Cut</span><span class="num">iii</span></div></div>
-      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video><div class="meta"><span class="chip">The Ember Cut</span><span class="num">iv</span></div></div>
+      <!-- Every reel video carries a poster (a real first frame, self-hosted): iPhone
+           Low Power Mode blocks autoplay, and a posterless autoplay video renders as a
+           blank box there, the exact field bug class this product has hit before. The
+           poster also paints instantly while the ~10MB clips stream in. -->
+      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" poster="/reel/cut1.jpg" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212954_8600e4c3-1335-4834-92f3-59c79847edca.mp4"></video><div class="meta"><span class="chip">The Lavender Cut</span><span class="num">i</span></div></div>
+      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" poster="/reel/cut2.jpg" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_212957_b65bc691-59f0-4da6-be3a-0e33f63a2fd3.mp4"></video><div class="meta"><span class="chip">The Neon Cut</span><span class="num">ii</span></div></div>
+      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" poster="/reel/cut3.jpg" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_213719_17a92337-a259-4517-b389-46e2e81637d9.mp4"></video><div class="meta"><span class="chip">The Daylight Cut</span><span class="num">iii</span></div></div>
+      <div class="cutp"><video autoplay muted loop playsinline preload="metadata" poster="/reel/cut4.jpg" src="https://d8j0ntlcm91z4.cloudfront.net/user_3FP3DZH9AbtiM047fGK5IsVnlDy/hf_20260704_144445_9a107d74-7c29-43d9-99b0-5b9fbb397144.mp4"></video><div class="meta"><span class="chip">The Ember Cut</span><span class="num">iv</span></div></div>
       <div class="panel-cta">
         <div class="t">Your world<br>goes here.</div>
         <button class="btn gold magnetic" data-enter>Build your film</button>
@@ -91,7 +95,7 @@ export const LANDING_HTML = `
       <div class="receipts reveal">
         <div class="rc"><b>~20MIN</b><span>From your upload to a site the app has published. Same engine every run</span></div>
         <div class="rc"><b>120F</b><span>Frames in the scroll-scrub engine, quality-gated per clip</span></div>
-        <div class="rc"><b>4</b><span>Distinct lighting worlds on this page alone. Yours will be new</span></div>
+        <div class="rc"><b>45</b><span>Looks in The Set, the free manual engine: 15 template families, 3 palettes each</span></div>
         <div class="rc"><b>1</b><span>Live example already screening on a real custom domain</span></div>
       </div>
       <p class="opensrc reveal">OPEN SOURCE · CODE AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE EXAMPLE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · THIS SITE IS ITSELF THE DEMO: WEBGL SILK, VELOCITY MARQUEE, PINNED GALLERY, CUSTOM CURSOR</p>
@@ -103,7 +107,10 @@ export const LANDING_HTML = `
     <div class="scene reveal">The platform underneath</div>
     <h2 class="reveal">Built like infrastructure,<br><span class="serif">felt like cinema.</span></h2>
     <div class="bento">
-      <div class="tile wide reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.35), rgba(10,21,48,.88)), url('https://pub.hyperagent.com/api/published/pbf01KWSRVRQD_0M8HZ70MCMA3Y4X7/50e7a154-67fa-478b-b4b7-74fe378b3dc4.png')">
+      <!-- tile art is SELF-HOSTED (app/public/img/): the old hot-linked third-party
+           URLs were ~5MB of PNG on a host outside this repo's control; these are the
+           same images compressed to ~80KB each and shipped with the bundle. -->
+      <div class="tile wide reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.35), rgba(10,21,48,.88)), url('/img/bento-edge.jpg')">
         <div class="tk">GLOBAL EDGE HOSTING</div>
         <div class="tt">Your film premieres on our own CDN</div>
         <div class="td">One atomic pointer flip publishes a release worldwide. Rolling back is the same flip, in reverse, in seconds.</div>
@@ -114,7 +121,7 @@ export const LANDING_HTML = `
         <div class="tbig" id="bentoCount">*.cinefolio.dev</div>
         <div class="td">Every film premieres on its own subdomain: yourname.cinefolio.dev. Yours is waiting.</div>
       </div>
-      <div class="tile reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.3), rgba(10,21,48,.9)), url('https://pub.hyperagent.com/api/published/pbf01KWSRW0ED_ZR9N5ZQNE3HG4577/dde0b377-b779-4c7b-a448-88f1e8d57626.png')">
+      <div class="tile reveal" style="background-image:linear-gradient(180deg, rgba(10,21,48,.3), rgba(10,21,48,.9)), url('/img/bento-engine.jpg')">
         <div class="tk">THE ENGINE</div>
         <div class="tt">Two render modes</div>
         <div class="td">Run the AI mode: the app renders a scroll-story with generated video from your uploads. Or use The Set: a deterministic engine that rebuilds as you type. You drive both, and both publish on the same rails.</div>
@@ -191,8 +198,12 @@ export const LANDING_HTML = `
             <li>12 months hosting included · Keep It Live renewal $39/yr after</li>
             <li>Your address, your source export: you own everything</li>
           </ul>
-          <!-- SEATS-LEFT PLACEHOLDER: replace with the live founding-member count from the API. Keep the claim honest: show real remaining seats out of 20, or remove the line once the cohort fills and the price steps to $99. -->
-          <div class="smallnote" style="margin:2px 0 14px;opacity:.85">FOUNDING SEATS ARE LIMITED TO 20 · PRICE STEPS TO $99 WHEN THEY FILL</div>
+          <!-- Seats line is LIVE: effects.js fetches the public GET /seats endpoint (the
+               same founding counter checkout reads) and rewrites this note with the real
+               remaining count; when the cohort fills it also steps the price line and the
+               button to $99 so the page can never quote a dead discount. On any fetch
+               failure the static text below stands, which is honest either way. -->
+          <div class="smallnote" id="seatsNote" style="margin:2px 0 14px;opacity:.85">FOUNDING SEATS ARE LIMITED TO 20 · PRICE STEPS TO $99 WHEN THEY FILL</div>
           <div class="foot"><button class="btn primary magnetic" id="joinFromPack">Get 3 credits · $49</button></div>
         </div>
       </div>
@@ -270,6 +281,6 @@ export const LANDING_HTML = `
   <div class="big">CineFolio<i>•</i>Studios</div>
   <div class="statusline">STUDIO CLOCK <b id="bpTime">--:--</b> CET · STATUS <b id="bpStatus">OPEN</b> · EST. BUDAPEST</div>
   MADE WITH AI CAMERAS AND TASTE · SOURCE ON <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE RELEASE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · © 2026
-  <div class="statusline" style="margin-top:8px"><a href="/terms.html">TERMS</a> · <a href="/privacy.html">PRIVACY</a> · <a href="/refunds.html">REFUNDS</a> · SUPPORT <a href="mailto:info@cinefolio.dev">INFO@CINEFOLIO.DEV</a></div>
+  <div class="statusline" style="margin-top:8px"><a href="/terms.html">TERMS</a> · <a href="/privacy.html">PRIVACY</a> · <a href="/refunds.html">REFUNDS</a> · <a href="/acceptable-use.html">ACCEPTABLE USE</a> · SUPPORT <a href="mailto:info@cinefolio.dev">INFO@CINEFOLIO.DEV</a></div>
 </footer>
 `;

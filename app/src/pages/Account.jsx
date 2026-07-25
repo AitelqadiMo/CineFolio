@@ -273,7 +273,10 @@ export default function Account() {
                       {o.status === "ready" && (
                         <>
                           <a className="btn ghost ordbtn" href={`${CONFIG.apiBase}/studio/cut/${encodeURIComponent(o.orderId)}/index.html`} target="_blank" rel="noopener noreferrer" title="Preview the delivered cut; relative assets resolve on the path-style address">Watch the cut</a>
-                          <button type="button" className="btn primary ordbtn" onClick={() => { try { sessionStorage.setItem("cf.premiereCut", o.orderId); } catch { /* noop */ } nav("dashboard"); }}>Premiere</button>
+                          {/* films is the surface that actually premieres a ready cut (its
+                              delivery banner); the old dashboard route mapped to Home, which
+                              never read the handoff key, so this button was a dead end. */}
+                          <button type="button" className="btn primary ordbtn" onClick={() => nav("films")}>Premiere</button>
                         </>
                       )}
                       {o.status === "ready" && !o.revisionRequested && (

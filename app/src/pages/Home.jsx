@@ -166,7 +166,10 @@ export default function Home() {
           {(intake.error || err) && <div className="bkerr" role="alert">{intake.error || err}</div>}
           {buy && (
             <div className="bkbuy">
-              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut · $99 · 3 productions</a>
+              {/* price comes from the entitlement snapshot (server truth), never a hardcoded
+                  number: this button used to say $99 while every other surface said $49
+                  founding, a contradiction at the exact moment of purchase. */}
+              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut · ${ent?.foundingSeatsLeft > 0 ? (ent?.foundingPrice ?? 49) : (ent?.cutPrice ?? 99)} · 3 productions</a>
               <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid, check my credits</button>
             </div>
           )}
