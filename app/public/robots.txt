@@ -9,7 +9,7 @@ Allow: /terms.html
 Allow: /privacy.html
 Allow: /refunds.html
 Allow: /acceptable-use.html
-Allow: /og-image.png
+Allow: /og-image.svg
 
 # App console (auth-only, nothing useful to index)
 Disallow: /login
