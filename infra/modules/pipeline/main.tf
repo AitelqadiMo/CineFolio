@@ -67,10 +67,40 @@ resource "aws_sqs_queue" "orders" {
   tags = var.tags
 }
 
+# ---------- content-moderation configuration parameters ----------
+# Creem (payment provider) mandates a prompt-moderation surface for any product
+# that generates images or video; this pipeline generates both, so moderation is
+# a hard compliance requirement. The deterministic screen in moderation.mjs runs
+# with NO configuration at all — these parameters are ONLY for the optional
+# hosted-moderation hook, and the pipeline reads them from the same SSM path it
+# already loads at validate time.
+#
+# Same doctrine as the billing parameters: Terraform owns that the parameters
+# EXIST, the operator owns their VALUES (set out-of-band via
+# `aws ssm put-parameter --overwrite`, never committed). The placeholder "unset"
+# is treated as UNCONFIGURED by moderation.mjs, so the hosted hook stays dormant
+# until a real endpoint and key are supplied. A KEY IS NEVER HARDCODED HERE.
+resource "aws_ssm_parameter" "moderation" {
+  for_each = toset([
+    "MODERATION_API_URL", # hosted moderation endpoint (POST JSON {input}); empty/unset = hook disabled
+    "MODERATION_API_KEY", # bearer key for the hosted endpoint; treated as unconfigured while "unset"
+  ])
+  name  = "${local.ssm_prefix}/${each.key}"
+  type  = "SecureString"
+  value = "unset"
+  tags  = var.tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 # ---------- pipeline worker Lambda ----------
-# The bundle = pipeline.mjs + the SHARED email template library. email.mjs is
-# sourced from the api module at plan time, so there is exactly ONE copy of
-# every customer email in the repo and the two lambdas can never drift apart.
+# The bundle = pipeline.mjs + the content-moderation screen + the SHARED email
+# template library. email.mjs is sourced from the api module at plan time, so
+# there is exactly ONE copy of every customer email in the repo and the two
+# lambdas can never drift apart. moderation.mjs is pipeline-local: it is the
+# content-screening gate the pipeline runs before every dispatch.
 data "archive_file" "worker" {
   type        = "zip"
   output_path = "${path.module}/.build/pipeline.zip"
@@ -78,6 +108,10 @@ data "archive_file" "worker" {
   source {
     content  = file("${path.module}/lambda/pipeline.mjs")
     filename = "pipeline.mjs"
+  }
+  source {
+    content  = file("${path.module}/lambda/moderation.mjs")
+    filename = "moderation.mjs"
   }
   source {
     content  = file("${path.module}/../api/lambda/email.mjs")
