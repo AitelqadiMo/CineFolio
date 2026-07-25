@@ -1,6 +1,6 @@
 // The editorial family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref } from "../shared.js";
+import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, hasMetrics } from "../shared.js";
 
 export function editorial(p, pal, sec, ctx = {}) {
   const [paper, ink, accent, soft] = pal.vars;
@@ -71,7 +71,11 @@ footer .big{font-family:'Instrument Serif',serif;font-style:italic;font-size:cla
 .lang2{display:flex;flex-wrap:wrap;gap:8px 24px}
 .lang2 span{font-size:.98rem;border-bottom:1.5px solid ${accent}66;padding-bottom:2px}
 @media(max-width:640px){.xp,.pr{grid-template-columns:1fr}}
-</style></head><body><div class="wrap">
+${hasMetrics(p.projects) ? `.csmet2{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0 30px;margin-top:20px}
+.csmet2 div{border-top:1.5px solid ${ink};padding:14px 0;display:flex;flex-direction:column;gap:3px}
+.csmet2 div span:first-child{font-family:'Instrument Serif',serif;font-size:2rem;color:${accent}}
+.csmet2 div span:last-child{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.22em;text-transform:uppercase;color:${soft}}
+\n` : ""}</style></head><body><div class="wrap">
 <header><div class="mono">PORTFOLIO · VOL. I · ${new Date().getFullYear()}</div>
 <div class="masth" style="margin-top:22px"><h1>${esc(p.name.split(" ")[0])} <i>${esc(p.name.split(" ").slice(1).join(" "))}</i></h1><img class="ph" src="${photo}" alt="${esc(p.name)}"></div>
 <div class="headrow"><div style="font-weight:600">${esc(p.headline)}</div><div class="mono links">${linkRow(p, ink)}</div></div></header>
@@ -82,7 +86,7 @@ ${sec.skills && p.skills.length ? `<section><div class="sechead"><span class="no
 ${sec.projects && p.projects.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Selected work</h2></div>
 ${p.projects.filter(isCaseStudy).map((pr) => { const href = caseHref(pr); return href
   ? `<div class="cs2"><h3><a href="${href}">${esc(pr.name)}</a></h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}<a class="more" href="${href}">Read the case study →</a></div>`
-  : `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}</div>`; }).join("")}
+  : `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}${metricsBlocks(pr, "csmet2")}</div>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="pr"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</section>` : ""}
 ${sec.services && (p.services || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Services</h2></div><div class="svc2">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</section>` : ""}
 ${sec.testimonials && (p.testimonials || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Kind words</h2></div>${p.testimonials.map((t) => `<div class="tst2"><p>“${esc(t.quote)}”</p><span>· ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
@@ -119,11 +123,15 @@ h1{font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,7
 .blk p{font-size:1.1rem;max-width:66ch;color:${ink}ee}
 .next{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:6vh 0}
 .next a{color:${accent};text-decoration:none;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.16em;border-bottom:1px solid ${accent}}
-</style></head><body><div class="wrap">
+${Array.isArray(pr.metrics) && pr.metrics.length ? `.csmet2{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:0 30px;margin-top:22px}
+.csmet2 div{border-top:1.5px solid ${ink};padding:14px 0;display:flex;flex-direction:column;gap:3px}
+.csmet2 div span:first-child{font-family:'Instrument Serif',serif;font-size:2rem;color:${accent}}
+.csmet2 div span:last-child{font-family:'IBM Plex Mono',monospace;font-size:8.5px;letter-spacing:.22em;text-transform:uppercase;color:${soft}}
+\n` : ""}</style></head><body><div class="wrap">
 <a class="back" href="../index.html">← Back to the film</a>
 <header><div class="mono">Case Study</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</header>
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
-${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}${metricsBlocks(pr, "csmet2")}
 ${nav ? `<div class="next"><a href="../index.html">← All work</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
 </div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }

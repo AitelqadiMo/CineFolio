@@ -1,6 +1,6 @@
 // The bento family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, cap, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, noHref } from "../shared.js";
+import { esc, indexHead, caseHead, cap, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, noHref, metricsBlocks, METRICS_CAP, hasMetrics } from "../shared.js";
 
 export function bento(p, pal, sec, ctx = {}) {
   const [canvas, tile, accent, ink, muted] = pal.vars;
@@ -73,7 +73,9 @@ ${sec.projects && csProjects.map((pr) => { const href = caseHref(pr); const inne
   const cls = "t span3 proj lift" + (pr.cover ? " cover" : "");
   const style = pr.cover ? ` style="background-color:${accent}"` : "";
   const bgdiv = pr.cover ? `<div style="position:absolute;inset:0;background-image:url('${pr.cover}');background-size:cover;background-position:center;z-index:0"></div>` : "";
-  return href ? `<a class="${cls}" href="${href}"${style}>${bgdiv}${inner}</a>` : `<div class="${cls}"${style}>${bgdiv}${inner}</div>`; }).join("") || ""}
+  // metrics tiles: each metric becomes its own "stat" tile alongside the project tile in the grid
+  const metTiles = (Array.isArray(pr.metrics) ? pr.metrics.slice(0, METRICS_CAP) : []).map((m) => { const glyph = { up: "↑", down: "↓" }[m.direction] || ""; return `<div class="t span2 lift"><div class="cap">Outcome</div><div class="stat" style="margin-top:8px"><div class="n" style="font-size:2rem">${esc(m.value)}${glyph ? `<span aria-hidden="true" style="font-size:1.2rem">${glyph}</span>` : ""}</div><div class="l cap" style="margin-top:5px">${esc(m.label || "")}</div></div></div>`; }).join("");
+  return (href ? `<a class="${cls}" href="${href}"${style}>${bgdiv}${inner}</a>` : `<div class="${cls}"${style}>${bgdiv}${inner}</div>`) + metTiles; }).join("") || ""}
 ${sec.projects && plainProjects.map((pr) => `<div class="t span2 lift"><div class="cap">Project</div><div class="tile-h" style="margin-top:8px">${esc(pr.name)}</div><p class="mini">${esc(pr.summary || pr.desc)}</p></div>`).join("") || ""}
 ${sec.experience && exp.length ? `<div class="t span6"><div class="tile-h">Experience</div>${exp.map((x) => `<div class="xp">${x.period ? `<div class="per">${esc(x.period)}</div>` : ""}<h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul style="list-style:disc">${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}</div>` : ""}
 ${linkTiles.map(([label, url]) => `<a class="t span2 link lift" href="${esc(url)}"${/^mailto/.test(url) ? "" : ` target="_blank" rel="noopener noreferrer"`}><div class="cap">Link</div><div class="tile-h" style="margin-top:6px">${esc(label)}</div><div class="go">Open</div></a>`).join("")}
@@ -116,7 +118,11 @@ h1{font-size:clamp(2rem,6vw,3.6rem);font-weight:700;letter-spacing:-.02em;line-h
 .blk p{font-size:1.08rem;color:${ink}}
 .next{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:26px}
 .pill{padding:12px 20px;border-radius:99px;background:${tile};color:${accent};text-decoration:none;font-size:12px;letter-spacing:.08em;box-shadow:0 6px 18px rgba(0,0,0,.06)}
-</style></head><body>
+${Array.isArray(pr.metrics) && pr.metrics.length ? `.metgrid{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}
+.metgrid div{flex:1;min-width:100px;background:${accent}10;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:5px}
+.metgrid div span:first-child{font-family:'Space Grotesk',sans-serif;font-size:2rem;font-weight:700;color:${accent};line-height:1}
+.metgrid div span:last-child{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:${muted}}
+\n` : ""}</style></head><body>
 <div class="shell">
 <a class="back" href="../index.html">Back to the grid</a>
 <div class="card">
@@ -124,7 +130,7 @@ h1{font-size:clamp(2rem,6vw,3.6rem);font-weight:700;letter-spacing:-.02em;line-h
 <h1 style="margin-top:10px">${esc(pr.name)}</h1>
 ${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}
 ${["role", "timeline", "tools"].filter((k) => pr[k]).length ? `<div class="chiprow">${["role", "timeline", "tools"].filter((k) => pr[k]).map((k) => `<span><b>${k.toUpperCase()}</b>${esc(pr[k])}</span>`).join("")}</div>` : ""}
-${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
+${metricsBlocks(pr, "metgrid")}${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 </div>
 <div class="next"><a class="pill" href="../index.html">All projects</a>${nav && nav.next ? `<a class="pill" href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)}</a>` : ""}</div>

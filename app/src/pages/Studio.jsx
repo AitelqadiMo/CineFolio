@@ -588,6 +588,23 @@ export default function Studio() {
                     <textarea value={pr.problem || ""} onChange={(e) => proj(i, { problem: e.target.value })} placeholder="The problem: what was broken, risky, or missing before you started?" style={{ minHeight: 48 }} />
                     <textarea value={pr.process || ""} onChange={(e) => proj(i, { process: e.target.value })} placeholder="The process: how you approached it, what you tried, what you decided." style={{ minHeight: 48 }} />
                     <textarea value={pr.results || ""} onChange={(e) => proj(i, { results: e.target.value })} placeholder="The results: numbers first. Faster, cheaper, safer, adopted by…" style={{ minHeight: 48 }} />
+                    {/* outcome metrics: optional repeatable rows, same add/remove idiom as testimonials */}
+                    {(pr.metrics || []).length > 0 && (
+                      <div className="mono railh" style={{ marginTop: 10, fontSize: 9 }}>OUTCOME METRICS</div>
+                    )}
+                    {(pr.metrics || []).map((m, mi) => (
+                      <div key={mi} className="grid" style={{ gridTemplateColumns: "1fr 1.6fr 80px auto", gap: 6, marginBottom: 6 }}>
+                        <input value={m.value || ""} onChange={(e) => proj(i, { metrics: (pr.metrics || []).map((x, k) => k === mi ? { ...x, value: e.target.value } : x) })} placeholder="Value e.g. 25%" />
+                        <input value={m.label || ""} onChange={(e) => proj(i, { metrics: (pr.metrics || []).map((x, k) => k === mi ? { ...x, label: e.target.value } : x) })} placeholder="Label e.g. checkout conversion" />
+                        <select value={m.direction || "neutral"} onChange={(e) => proj(i, { metrics: (pr.metrics || []).map((x, k) => k === mi ? { ...x, direction: e.target.value } : x) })} style={{ fontSize: 11 }}>
+                          <option value="neutral">neutral</option>
+                          <option value="up">up ↑</option>
+                          <option value="down">down ↓</option>
+                        </select>
+                        <button className="btn ghost" style={{ padding: "6px 10px" }} onClick={() => proj(i, { metrics: (pr.metrics || []).filter((_, k) => k !== mi) })}>✕</button>
+                      </div>
+                    ))}
+                    <button className="btn ghost" style={{ fontSize: 9, padding: "7px 12px" }} onClick={() => proj(i, { metrics: [...(pr.metrics || []), { value: "", label: "", direction: "neutral" }] })}>+ outcome metric (optional)</button>
                   </div>
                 )}
               </div>

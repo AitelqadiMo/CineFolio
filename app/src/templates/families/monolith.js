@@ -1,6 +1,6 @@
 // The monolith family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref } from "../shared.js";
+import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, hasMetrics } from "../shared.js";
 
 export function monolith(p, pal, sec, ctx = {}) {
   const [bg, panel, accent, accent2, text] = pal.vars;
@@ -77,7 +77,11 @@ footer .links{margin-top:20px}
 .rr a{color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66}
 .lang{display:flex;flex-wrap:wrap;gap:10px}
 .lang span{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;padding:8px 14px;border:1px solid ${text}33;border-radius:99px}
-</style></head><body>
+${hasMetrics(p.projects) ? `.csmet{display:flex;gap:14px;flex-wrap:wrap;margin:20px 0 0}
+.csmet div{flex:1;min-width:100px;background:${bg};border:1px solid ${accent2}33;border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
+.csmet div span:first-child{font-family:'Bricolage Grotesque',sans-serif;font-size:1.9rem;font-weight:800;color:${accent2};line-height:1}
+.csmet div span:last-child{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:${text}88}
+\n` : ""}</style></head><body>
 <header><img class="ph up" src="${photo}" alt="${esc(p.name)}">
 <div class="mono up" style="animation-delay:.1s;margin-bottom:14px">FEATURE PRESENTATION</div>
 <h1 class="up" style="animation-delay:.18s">${esc(p.name.split(" ")[0])}<br><em>${esc(p.name.split(" ").slice(1).join(" ") || p.headline.split(" ")[0])}</em></h1>
@@ -90,7 +94,7 @@ ${sec.experience && exp.length ? `<section><h2>Selected scenes</h2>${exp.map((x)
 ${sec.projects && p.projects.length ? `<section><h2>Productions</h2>
 ${p.projects.filter(isCaseStudy).map((pr, i) => { const href = caseHref(pr); return href
   ? `<div class="cs" id="cs${i}"><div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}<a class="prc-more" style="display:inline-block;margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66" href="${href}">View the full case study →</a></div></div>`
-  : `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}</div></div>`; }).join("")}
+  : `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}${metricsBlocks(pr, "csmet")}</div></div>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).length ? `<div class="pr">${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="prc"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</div>` : ""}</section>` : ""}
 ${sec.services && (p.services || []).length ? `<section><h2>Services</h2><div class="svc">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</div></section>` : ""}
 ${sec.testimonials && (p.testimonials || []).length ? `<section><h2>Word on set</h2>${p.testimonials.map((t) => `<div class="tst"><p>“${esc(t.quote)}”</p><span>· ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
@@ -130,12 +134,16 @@ h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:clamp(
 .blk p{color:${text}dd;font-size:1.06rem;max-width:70ch}
 .next{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:7vh 0 3vh;border-top:1px solid ${text}1c}
 .next a{color:${accent2};text-decoration:none;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;border-bottom:1px solid ${accent2}66}
-</style></head><body>
+${Array.isArray(pr.metrics) && pr.metrics.length ? `.csmet{display:flex;gap:14px;flex-wrap:wrap;margin:26px 0 0}
+.csmet div{flex:1;min-width:110px;background:${bg};border:1px solid ${accent2}33;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:4px}
+.csmet div span:first-child{font-family:'Bricolage Grotesque',sans-serif;font-size:2rem;font-weight:800;color:${accent2};line-height:1}
+.csmet div span:last-child{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:${text}88}
+\n` : ""}</style></head><body>
 <div class="wrap">
 <a class="back" href="../index.html">← Back to the film</a>
 <div class="hero"><div class="mono" style="margin-bottom:14px">CASE STUDY</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</div>
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
-${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}${metricsBlocks(pr, "csmet")}
 ${nav ? `<div class="next"><a href="../index.html">← All productions</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
 </div>${credit(badge, { fg: text, accent: accent2 })}</body></html>`;
 }

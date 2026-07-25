@@ -227,6 +227,42 @@ export const csBlocks = (pr, cls) => ["problem", "process", "results"]
   .map((k) => `<div class="${cls}"><h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p></div>`)
   .join("");
 
+// metricsBlocks: render up to METRICS_CAP outcome metrics from a project, each as
+// a large value + label cell, returning empty string when the array is absent or
+// empty. Direction is explicit: the author knows whether "40% fewer support tickets"
+// is a win; an inference rule cannot. Arrow glyphs ("up" = up-arrow, "down" =
+// down-arrow, "neutral" or absent = no arrow) are rendered as aria-hidden spans so
+// screen readers see only the value and label text, not the glyph character.
+// Each template supplies a container CSS class; child element styling is delegated
+// to CSS via the container class selector so no palette colours are inlined here.
+// This means: add a CSS rule for `.yourClass div span:first-child` in your template.
+// The cap exists so one over-zealous project cannot stretch a layout that
+// a designer tuned for 4 cells maximum.
+export const METRICS_CAP = 4;
+export const DIRECTION_GLYPH = { up: "↑", down: "↓" };
+// metricsBlocks(pr, wrapperClass):
+//   pr            the project object (metrics may be absent: returns "" immediately)
+//   wrapperClass  outer container class (each template passes its own, see CSS above)
+// The common path (no metrics) must produce exactly "" with no trailing whitespace
+// or newline: that is the byte-identical guarantee for existing projects.
+// True when at least one project carries a metric, used to gate the metrics
+// stylesheet. Without this the rules ship to every portfolio, including the
+// overwhelming majority that have no metrics at all.
+export const hasMetrics = (projects) =>
+  (projects || []).some((pr) => Array.isArray(pr?.metrics) && pr.metrics.length > 0);
+
+export const metricsBlocks = (pr, wrapperClass) => {
+  const metrics = Array.isArray(pr.metrics) ? pr.metrics.slice(0, METRICS_CAP) : [];
+  // no metrics: exactly empty string, no container, no whitespace
+  if (!metrics.length) return "";
+  const cells = metrics.map((m) => {
+    const glyph = DIRECTION_GLYPH[m.direction] || "";
+    const glyphHtml = glyph ? `<span aria-hidden="true">${glyph}</span>` : "";
+    return `<div><span>${glyphHtml}${esc(m.value)}</span><span>${esc(m.label || "")}</span></div>`;
+  });
+  return `<div class="${wrapperClass}">${cells.join("")}</div>`;
+};
+
 // caseHref(pr): given a project, return the relative page path when a bundle is
 // being built, or "" for the single-page compile() (inline expanders stay).
 export const noHref = () => "";
