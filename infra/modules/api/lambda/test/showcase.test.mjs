@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeHandler } from "../index.mjs";
-import { isShowcased } from "../showcase.mjs";
+import { isShowcased, setShowcase } from "../showcase.mjs";
 
 // ---------- a minimal fake ctx: an in-memory table + the config previewUrl reads ----------
 function fakeCtx(seedSites = []) {
@@ -148,4 +148,151 @@ test("showcase: a genuinely empty table (no sites) still returns 200 with an emp
   assert.equal(code, 200);
   assert.deepEqual(body.films, []);
   assert.equal(body.count, 0);
+});
+
+// ---------- the WRITE path: POST /sites/{id}/showcase (owner consent) ----------
+// These guard the promise that consent comes from the OWNER clicking a control,
+// never an operator hand-editing the table: only the owner (or an admin) may
+// flip the flag, the value must be a real boolean, turning ON requires a live
+// film, turning OFF always works, and the public read reflects the change.
+
+// a write-capable fake ctx: get + update + the type-filtered scan the read uses.
+// The update interpreter handles exactly the one expression setShowcase issues.
+function writeCtx(seedSites = []) {
+  const store = new Map();
+  for (const s of seedSites) store.set(`${s.PK}|${s.SK}`, structuredClone(s));
+  const ddb = {
+    async get(Key) { return store.get(`${Key.PK}|${Key.SK}`) || null; },
+    async update({ Key, UpdateExpression, ExpressionAttributeValues = {}, ConditionExpression }) {
+      const k = `${Key.PK}|${Key.SK}`;
+      if (ConditionExpression === "attribute_exists(PK)" && !store.has(k)) {
+        throw Object.assign(new Error("missing"), { name: "ConditionalCheckFailedException" });
+      }
+      const item = store.get(k) || { ...Key };
+      for (const part of UpdateExpression.replace(/^SET\s+/, "").split(",").map((p) => p.trim())) {
+        const [lhs, rhs] = part.split("=").map((x) => x.trim());
+        item[lhs] = ExpressionAttributeValues[rhs];
+      }
+      store.set(k, item);
+      return item;
+    },
+    async scan({ ExpressionAttributeValues: v }) {
+      return { items: [...store.values()].filter((i) => i.type === v[":t"]), lastKey: null };
+    },
+    _store: store,
+  };
+  return { ddb, config: { appEnv: "test", sitesDomain: "cinefolio.dev", cdnDomain: "cdn.test" } };
+}
+
+// POST /sites/{id}/showcase event; sub is the caller, groups optional (admin)
+const setEvent = (siteId, sub, showcase, groups) => ({
+  requestContext: {
+    routeKey: "POST /sites/{id}/showcase",
+    http: { method: "POST", path: `/sites/${siteId}/showcase` },
+    authorizer: { jwt: { claims: { sub, email: `${sub}@x.io`, ...(groups ? { "cognito:groups": groups } : {}) } } },
+  },
+  pathParameters: { id: siteId },
+  body: JSON.stringify({ showcase }),
+});
+
+test("showcase write: the owner can turn consent ON and OFF", async () => {
+  // default OFF to start: the flag is absent on a freshly live film
+  const ctx = writeCtx([site({ siteId: "s1", slug: "hindi", owner: "owner-1", showcase: undefined })]);
+
+  // ON
+  let r = parse(await setShowcase(setEvent("s1", "owner-1", true), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.ok, true);
+  assert.equal(r.body.showcase, true);         // server confirms the persisted flag
+  assert.equal(r.body.slug, "hindi");
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, true); // and it is truly stored
+
+  // OFF
+  r = parse(await setShowcase(setEvent("s1", "owner-1", false), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.showcase, false);
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, false);
+});
+
+test("showcase write: a non-owner is refused with 403 and cannot flip the flag", async () => {
+  const ctx = writeCtx([site({ siteId: "s1", slug: "yass", owner: "owner-1", showcase: false })]);
+  const r = parse(await setShowcase(setEvent("s1", "someone-else", true), ctx));
+  assert.equal(r.code, 403);
+  assert.equal(r.body.ok, false);
+  // the stored flag is untouched: a stranger never changed another owner's site
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, false);
+});
+
+test("showcase write: an admin may set the flag on someone else's film", async () => {
+  const ctx = writeCtx([site({ siteId: "s1", slug: "saad-bougha", owner: "owner-1", showcase: false })]);
+  const r = parse(await setShowcase(setEvent("s1", "admin-sub", true, ["admin"]), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.showcase, true);
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, true);
+});
+
+test("showcase write: a NON-LIVE film cannot be showcased (409), consistent with the read rule", async () => {
+  // draft, taken_down, and trial_ended all fail the read predicate, so turning
+  // ON is rejected rather than storing a true flag the gallery would ignore.
+  for (const status of ["draft", "taken_down", "trial_ended"]) {
+    const ctx = writeCtx([site({ siteId: "s1", slug: "not-live", owner: "owner-1", status, showcase: undefined })]);
+    const r = parse(await setShowcase(setEvent("s1", "owner-1", true), ctx));
+    assert.equal(r.code, 409, `${status} must be rejected`);
+    assert.equal(r.body.ok, false);
+    assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, undefined, `${status} must not gain consent`);
+  }
+});
+
+test("showcase write: turning OFF works in any status (consent is always reversible)", async () => {
+  // a film that went dark after opting in can always withdraw consent
+  const ctx = writeCtx([site({ siteId: "s1", slug: "was-live", owner: "owner-1", status: "taken_down", showcase: true })]);
+  const r = parse(await setShowcase(setEvent("s1", "owner-1", false), ctx));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.showcase, false);
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, false);
+});
+
+test("showcase write: the body must be a real boolean; a truthy string is a 400", async () => {
+  const ctx = writeCtx([site({ siteId: "s1", slug: "hindi", owner: "owner-1", showcase: undefined })]);
+  const ev = setEvent("s1", "owner-1", true);
+  ev.body = JSON.stringify({ showcase: "true" }); // truthy-ish, not consent
+  const r = parse(await setShowcase(ev, ctx));
+  assert.equal(r.code, 400);
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, undefined);
+});
+
+test("showcase write: setting the flag on an unknown site is a 404", async () => {
+  const ctx = writeCtx([]);
+  const r = parse(await setShowcase(setEvent("ghost", "owner-1", true), ctx));
+  assert.equal(r.code, 404);
+});
+
+test("showcase write: the public read reflects the change end to end", async () => {
+  // one shared ctx: opt in through the write handler, then read the public wall
+  // through the real router and confirm the film appears; opt out and it is gone.
+  const ctx = writeCtx([
+    site({ siteId: "s1", slug: "abdelhamid-chouraichi", title: "Abdelhamid Chouraichi", owner: "owner-1", showcase: undefined }),
+  ]);
+  const read = makeHandler(async () => ctx);
+
+  // before consent: absent from the wall (default OFF)
+  let wall = parse(await read(publicEvent()));
+  assert.equal(wall.body.films.find((f) => f.slug === "abdelhamid-chouraichi"), undefined);
+
+  // owner opts in
+  const on = parse(await setShowcase(setEvent("s1", "owner-1", true), ctx));
+  assert.equal(on.body.showcase, true);
+
+  // now it is on the public wall, with only the public card fields
+  wall = parse(await read(publicEvent()));
+  const card = wall.body.films.find((f) => f.slug === "abdelhamid-chouraichi");
+  assert.ok(card, "opted-in live film appears on the public wall");
+  assert.equal(card.title, "Abdelhamid Chouraichi");
+  assert.equal(card.url, "https://abdelhamid-chouraichi.cinefolio.dev/");
+  assert.deepEqual(Object.keys(card).sort(), ["slug", "title", "url"]);
+
+  // owner opts out -> gone on the very next read
+  parse(await setShowcase(setEvent("s1", "owner-1", false), ctx));
+  wall = parse(await read(publicEvent()));
+  assert.equal(wall.body.films.find((f) => f.slug === "abdelhamid-chouraichi"), undefined);
 });

@@ -616,7 +616,7 @@ test("studio/order: one free cut for new accounts, legacy accounts keep their th
   assert.equal(first.code, 200);
   assert.equal(first.body.freeCutsLeft, 0);
   assert.equal(first.body.price, 0);
-  assert.deepEqual(first.body.entitlement, { plan: "free", aiCuts: 1, freeCutsLeft: 0, freeCutsLimit: 1, paidCredits: 0, publishSlots: 1, foundingSeatsLeft: null, foundingPrice: 49 }, "the 200 carries the authoritative snapshot, now including the founding window");
+  assert.deepEqual(first.body.entitlement, { plan: "free", aiCuts: 1, freeCutsLeft: 0, freeCutsLimit: 1, paidCredits: 0, publishSlots: 1, foundingSeatsLeft: 20, foundingPrice: 49 }, "the 200 carries the authoritative snapshot, now including the founding window");
   const second = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
   assert.equal(second.code, 402);
   assert.equal(second.body.price, 99);

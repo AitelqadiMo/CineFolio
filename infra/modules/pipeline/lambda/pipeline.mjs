@@ -220,6 +220,28 @@ export const handler = async (event) => {
     // and the callback's manifest union keeps it. This is the margin protector:
     // a revision should cost editing, not a second film shoot.
     const dossier = await getDossier(order);
+    // The dossier is read FRESH here and handed to the model as the approved
+    // screenplay, so screening only the frozen order snapshot at validate left
+    // the largest model-facing free-text surface in the product unscreened.
+    // Creem mandates that every prompt reaching an image or video model is
+    // screened with no bypass path, and we assert that in our application, so
+    // the dossier is screened here at the point of dispatch. Same doctrine as
+    // validate: a confirmed violation blocks before the model ever sees it.
+    if (dossier && typeof dossier === "object") {
+      const dossierText = JSON.stringify(dossier).slice(0, 20000);
+      const dv = await moderate(
+        { customIdea: dossierText, cvText: "", name: order.name, orderId },
+        moderationConfigFromSecrets(sec),
+      );
+      if (!dv.allowed) {
+        const cause = `content moderation (dossier): ${(dv.reasons || []).join(", ") || "policy"}`;
+        try {
+          await setStatus(orderId, "rejected", { taskToken: null, failCause: cause, moderation: { ...dv, surface: "dossier", at: new Date().toISOString() } });
+        } catch { /* the audit write must never mask the block */ }
+        await pageOperator("CineFolio: dossier blocked by moderation", `Order ${orderId} was rejected before dispatch. Reasons: ${(dv.reasons || []).join(", ") || "policy"}`).catch(() => {});
+        throw new OrderInvalid(cause);
+      }
+    }
     const isRevision = Boolean(order.revisionNotes);
     let existingCut = null;
     if (isRevision && Array.isArray(order.cutFiles) && order.cutFiles.length && ARTIFACTS) {

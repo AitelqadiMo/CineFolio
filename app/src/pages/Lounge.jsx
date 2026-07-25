@@ -1,8 +1,8 @@
-// The Premiere Lounge: where a client waits while the director films. The
-// order fires from the composer, this room shows an honest production
-// timeline on the left and a cinematic skeleton on the canvas until the cut
-// arrives; the moment it does, it plays in the preview and the Publish
-// button premieres it. No refresh, no hunting through pages.
+// The Premiere Lounge: where you watch your own render run. The order fires
+// from the composer, this room shows an honest production timeline on the
+// left and a cinematic skeleton on the canvas until the render lands; the
+// moment it does, it plays in the preview and the Publish button premieres
+// it. No refresh, no hunting through pages.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { CONFIG } from "../config.js";
@@ -10,6 +10,7 @@ import { useAuth } from "../App.jsx";
 import { friendly, confetti, PromptDialog, slugProblem } from "../ui.jsx";
 import { ledger } from "../orders.js";
 import { usePopover } from "../media.js";
+import { track, STEP } from "../funnel.js";
 
 const POLL_MS = 7000;
 
@@ -66,6 +67,7 @@ export default function Lounge({ orderId }) {
     try {
       const site = await api.createSite({ slug, title: order?.name || slug, orderId });
       const r = await api.publish(site.site.siteId, { orderId });
+      track(STEP.filmPublished); // funnel: a film went live
       ledger.acknowledge(orderId);
       confetti();
       nav(`film/${r.siteId || site.site.siteId}`);
@@ -95,7 +97,7 @@ export default function Lounge({ orderId }) {
         </div>
         <span className="bkchip plain gold">◈ AI DIRECTOR</span>
         <div className="grow" />
-        <span className="bkchip plain">{ready ? "DELIVERED" : failed ? "NEEDS A HUMAN" : `FILMING · ${mm}:${ss}`}</span>
+        <span className="bkchip plain">{ready ? "DELIVERED" : failed ? "NEEDS A HUMAN" : `RENDERING · ${mm}:${ss}`}</span>
         <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={!ready || busy} onClick={() => setNaming(true)}>
           {busy ? "Premiering…" : "Publish"}
         </button>
@@ -106,13 +108,13 @@ export default function Lounge({ orderId }) {
           <div className="edfeed" aria-live="polite">
             <div className="fentry">
               <div className="fwhen"><span className={`dot ${ready ? "green" : failed ? "red" : ""}`} />ORDER {String(orderId).slice(0, 8).toUpperCase()}</div>
-              <b>{ready ? "Your film is in." : failed ? "A studio human took over." : "The director is filming your portfolio."}</b>
+              <b>{ready ? "Your film is in." : failed ? "The render paged a studio human." : "Your render is running."}</b>
               <p>
                 {ready
                   ? "Watch it on the right. When it feels like you, hit Publish and pick your address; it premieres in seconds."
                   : failed
                     ? `The pipeline hit a snag and paged the studio. Your cut will land here and by email.${failCause ? ` (${failCause})` : ""}`
-                    : "A bespoke scroll-story is being filmed from your resume and photos: generated scenes, at least one film sequence, your story told act by act. Typical delivery is under 20 minutes. You can leave; it will be waiting in All films."}
+                    : "The pipeline is rendering a scroll-story from your resume and photos: generated scenes, at least one film sequence, your story told act by act. Typical delivery is under 20 minutes. You can leave; it will be waiting in All films."}
               </p>
             </div>
             {!ready && !failed && (
@@ -140,7 +142,7 @@ export default function Lounge({ orderId }) {
             {ready ? (
               <iframe title="Your delivered portfolio" src={`${CONFIG.apiBase}/studio/cut/${encodeURIComponent(orderId)}/index.html`} />
             ) : (
-              <div className="loungeskel" aria-label="Your portfolio is being filmed">
+              <div className="loungeskel" aria-label="Your portfolio is rendering">
                 <div className="ls-bar"><span className="ls-dot" /><span className="ls-dot" /><span className="ls-dot" /><i className="ls-line w30" /></div>
                 <div className="ls-hero">
                   <i className="ls-line w18 ls-kicker" />
@@ -159,7 +161,7 @@ export default function Lounge({ orderId }) {
 
       <PromptDialog
         open={naming} kicker="THE PREMIERE" title="Pick your address"
-        body="This becomes the film's home — lowercase letters, numbers and hyphens. Examples: ada-lovelace, ada-lovelace-dev, ada-eng. You can change cuts later; the address stays."
+        body="This becomes the film's home: lowercase letters, numbers and hyphens. Examples: ada-lovelace, ada-lovelace-dev, ada-eng. You can change cuts later; the address stays."
         placeholder={suggestedSlug} initial={suggestedSlug}
         validate={slugProblem} preview={(v) => `https://${v}.cinefolio.dev`}
         submitLabel="Premiere it" busy={busy}

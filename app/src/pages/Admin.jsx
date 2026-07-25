@@ -1,8 +1,9 @@
-// Admin v3: the production floor becomes an operations console. Six desks on
-// real data: Overview (platform stats + audience), Films (every site on the
-// platform, with moderation), Orders (the pipeline kanban), People, Inbox,
-// and Controls (the pipeline kill switch). Admin group enforced server-side
-// on every route; this page is just the window.
+// Admin v3: the production floor becomes an operations console. Desks on real
+// data: Overview (platform stats + audience), Revenue (the 1000 USD chase),
+// Films (every site on the platform, with moderation), Orders (the pipeline
+// kanban), People, Inbox, Funnel (where signups drop off), and Controls (the
+// pipeline kill switch). Admin group enforced server-side on every route; this
+// page is just the window.
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { SplitTitle, Skeleton, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
@@ -14,8 +15,31 @@ const TABS = [
   { k: "orders", label: "Orders" },
   { k: "people", label: "People" },
   { k: "inbox", label: "Inbox" },
+  { k: "funnel", label: "Funnel" },
   { k: "controls", label: "Controls" },
 ];
+
+// The funnel vocabulary in stage order, mirroring FUNNEL_STEPS on the server, so
+// this desk can render a plain-English label and a one-line meaning for each of
+// the nine steps the report walks. The order here IS the drop-off order.
+const FUNNEL_LABELS = {
+  landing_view: { label: "Landing viewed", note: "The marketing landing rendered for a visitor." },
+  signup_start: { label: "Sign-up started", note: "Someone opened create-account and touched a field." },
+  signup_complete: { label: "Account confirmed", note: "The Cognito confirmation succeeded." },
+  profile_uploaded: { label: "Portfolio saved", note: "A dossier was saved to the studio." },
+  film_generated: { label: "AI cut returned", note: "An AI cut came back from the director." },
+  film_published: { label: "Film published", note: "A film went live for an audience." },
+  pricing_view: { label: "Pricing seen", note: "The register or pricing surface was viewed." },
+  checkout_click: { label: "Checkout clicked", note: "The buyer clicked through to Lemon Squeezy." },
+  purchase: { label: "Purchase cleared", note: "A paid credit landed, webhook-confirmed." },
+};
+
+// A conversion rate is a 0..1 fraction OR null. Null means the source stage had
+// zero traffic, so there was nothing to convert FROM: that is genuinely unknown
+// and reads as "no data", NEVER as 0%. A real 0 (traffic in, none through) is a
+// true, alarming zero and reads as "0%". Confusing the two would send the owner
+// optimizing a stage nobody has reached yet, so the two are kept distinct here.
+const pctText = (rate) => (rate === null || rate === undefined ? "no data" : `${Math.round(rate * 1000) / 10}%`);
 
 // Money reads as whole dollars with grouping: 493 -> "$493", 1000 -> "$1,000".
 // One formatter so the bar, the headline, and the ledger never disagree.
@@ -84,6 +108,7 @@ export default function Admin() {
       }
       if (which === "people") put("people", await api.adminUsers());
       if (which === "inbox") put("inbox", await api.adminContacts());
+      if (which === "funnel") put("funnel", await api.adminFunnel());
       if (which === "controls") put("controls", await api.adminPipeline());
     } catch (e) { setErr(friendly(e.message)); }
   };
@@ -122,7 +147,24 @@ export default function Admin() {
   const board = data.orders;
   const people = data.people;
   const inbox = data.inbox;
+  const funnel = data.funnel;
   const breaker = data.controls;
+
+  // the funnel has ANY traffic only if some step recorded a count in 30 days.
+  // With none, the desk shows its honest empty state instead of a row of zeros.
+  const funnelHasData = !!funnel && funnel.steps.some((s) => s.total > 0);
+  // the worst REAL drop-off: the lowest conversion among stages that actually
+  // had traffic to convert (rate !== null). A null rate is unknown, not a drop,
+  // so it can never be flagged as the worst step. This is the one row the owner
+  // should act on tomorrow, so we find it once and flag exactly it.
+  const worstConv = funnelHasData
+    ? funnel.conversions
+        .filter((c) => c.rate !== null && c.rate !== undefined)
+        .sort((a, b) => a.rate - b.rate)[0] || null
+    : null;
+  // map worst drop to the "to" step it lands on, so the funnel row for that step
+  // wears the flag (that is the stage losing people relative to the one above).
+  const worstToStep = worstConv ? worstConv.to : null;
   const attention = ov ? (ov.orders.human_review || 0) + (ov.orders.dispatch_failed || 0) : 0;
   // an unclaimed purchase is money taken with nothing delivered: surface the
   // count on the tab from whichever payload we already loaded (revenue desk or
@@ -435,6 +477,125 @@ export default function Admin() {
             </div>
           ))}
         </div>
+      ))}
+
+      {/* ================= FUNNEL ================= */}
+      {/* One question, answered at a glance: where are we losing people. Nine
+          stages top to bottom, each with its 30-day total and the conversion
+          from the stage above. The worst REAL drop is flagged so the owner
+          knows the single stage to fix tomorrow. A null rate reads "no data",
+          never 0%, because an empty top-of-funnel is not a catastrophic drop. */}
+      {tab === "funnel" && (!funnel ? (
+        <>
+          <Skeleton h={112} style={{ marginBottom: 22 }} />
+          <Skeleton h={132} style={{ marginBottom: 22 }} />
+          <Skeleton h={132} style={{ marginBottom: 22 }} />
+          <Skeleton h={200} />
+        </>
+      ) : !funnelHasData ? (
+        // honest empty state: no invented numbers, just what the funnel is and
+        // how it fills. Nothing has moved through the product in this window yet.
+        <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "26px 28px" }}>
+          <div style={{ ...mono9, marginBottom: 10 }}>Conversion funnel · last 30 days</div>
+          <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 20, color: "var(--navy)", textTransform: "uppercase", letterSpacing: ".01em", display: "block", marginBottom: 8 }}>
+            No funnel data yet
+          </b>
+          <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--dim)", maxWidth: "62ch", margin: 0 }}>
+            The funnel fills as visitors move through the product: a landing view, a sign-up started, an account confirmed, a portfolio saved, an AI cut, a published film, a pricing view, a checkout click, and finally a purchase. Nobody has crossed any of these steps in the last 30 days, so there is nothing to chart. The moment real traffic lands, each stage and the drop-off between stages appears here, no placeholder numbers.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* the answer, up top: the single worst real drop-off, named, so the
+              owner reads the action before the chart. Purely from real rates. */}
+          {worstConv && (
+            <div style={{ border: "1.5px solid var(--red-lit)", background: "rgba(200, 16, 46, .07)", borderRadius: 14, padding: "16px 18px", marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <i aria-hidden="true" className="recdot" style={{ marginTop: 6 }} />
+              <div>
+                <div style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 17, color: "var(--red-lit)", textTransform: "uppercase", letterSpacing: ".01em" }}>
+                  Biggest drop-off · {FUNNEL_LABELS[worstConv.from]?.label || worstConv.from} → {FUNNEL_LABELS[worstConv.to]?.label || worstConv.to}
+                </div>
+                <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--navy)", margin: "6px 0 0" }}>
+                  Only {pctText(worstConv.rate)} of the {worstConv.fromCount.toLocaleString("en-US")} who reached {FUNNEL_LABELS[worstConv.from]?.label?.toLowerCase() || worstConv.from} carried on to {FUNNEL_LABELS[worstConv.to]?.label?.toLowerCase() || worstConv.to} ({worstConv.toCount.toLocaleString("en-US")}). This is the leakiest stage in the funnel and the one to fix first.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* the vertical funnel: nine stages top to bottom. Each row is the
+              stage label + meaning, its 30-day total, a width-proportional bar,
+              and the conversion FROM the stage above (the top stage has none).
+              The worst real drop wears a red flag; a null rate reads "no data". */}
+          {(() => {
+            // bar width is a stage's total relative to the widest stage (the top
+            // of funnel), guarded so an all-nonzero-but-tiny funnel still draws.
+            const maxTotal = Math.max(1, ...funnel.steps.map((s) => s.total));
+            // conversion INTO each step, keyed by the "to" step, so a row can
+            // show the rate from the stage directly above it. Index 0 has none.
+            const convTo = Object.fromEntries(funnel.conversions.map((c) => [c.to, c]));
+            return (
+              <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", overflow: "hidden", marginBottom: 22 }}>
+                <div style={{ ...mono9, padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
+                  <span>Conversion funnel · last 30 days</span><span>where people drop</span>
+                </div>
+                {funnel.steps.map((s, i) => {
+                  const meta = FUNNEL_LABELS[s.step] || { label: s.step, note: "" };
+                  const conv = convTo[s.step]; // the step above -> this step
+                  const isWorst = s.step === worstToStep;
+                  const width = Math.max(2, Math.round((s.total / maxTotal) * 100));
+                  return (
+                    <div key={s.step} style={{ padding: "13px 18px", borderTop: i === 0 ? 0 : "1px solid var(--line)", background: isWorst ? "rgba(200, 16, 46, .05)" : undefined }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", alignItems: "baseline", marginBottom: 8 }}>
+                        <span style={{ ...mono9, color: "var(--gold)", width: 22 }}>{String(i + 1).padStart(2, "0")}</span>
+                        <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                          <span style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 15, color: "var(--navy)" }}>{meta.label}</span>
+                          {isWorst && <span style={{ ...mono9, color: "var(--red-lit)", marginLeft: 10 }}><i aria-hidden="true" className="recdot" style={{ margin: "0 5px 0 0" }} />biggest drop</span>}
+                          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{meta.note}</div>
+                        </div>
+                        {/* conversion FROM the stage above: the top stage has no
+                            prior stage, so it reads "top of funnel", never a rate.
+                            A null rate reads "no data" (unknown), never "0%". */}
+                        {i === 0
+                          ? <span style={{ ...mono9 }}>top of funnel</span>
+                          : conv?.rate === null || conv?.rate === undefined
+                            ? <span style={{ ...mono9 }} title="The stage above had no traffic, so there is nothing to convert from. This is unknown, not a real 0%.">no data from prior step</span>
+                            : <span style={{ ...mono9, color: isWorst ? "var(--red-lit)" : "var(--navy)" }}>{pctText(conv.rate)} from prior step</span>}
+                        <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 16, color: "var(--navy)", minWidth: 54, textAlign: "right" }}>{s.total.toLocaleString("en-US")}</b>
+                      </div>
+                      {/* width-proportional bar: the stage's 30-day total against
+                          the widest stage. Real zero draws the faint track only. */}
+                      <div style={{ height: 12, borderRadius: 99, background: "var(--line)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${width}%`, background: s.total === 0 ? "var(--line)" : isWorst ? "var(--red-2)" : "var(--gold-g)", borderRadius: 99, transition: "width .5s cubic-bezier(.22,1,.36,1)" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* daily trend for the headline stages, reusing the dependency-free
+              bars: the top of funnel (visitors), the account milestone, and the
+              money step, so the owner sees WHEN as well as WHERE. */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 22, alignItems: "start" }}>
+            {[
+              { step: "landing_view", color: "var(--navy)", unit: "view" },
+              { step: "signup_complete", color: "var(--gold-g)", unit: "sign-up" },
+              { step: "purchase", color: "var(--green)", unit: "purchase" },
+            ].map(({ step, color, unit }) => {
+              const s = funnel.steps.find((x) => x.step === step);
+              const meta = FUNNEL_LABELS[step];
+              return (
+                <div key={step} style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+                  <div style={{ ...mono9, display: "flex", justifyContent: "space-between" }}>
+                    <span>{meta.label} · last 30 days</span><b style={{ color: "var(--navy)" }}>{(s?.total || 0).toLocaleString("en-US")}</b>
+                  </div>
+                  <TrafficBars daily={s?.daily || []} color={color} unit={unit} />
+                </div>
+              );
+            })}
+          </div>
+        </>
       ))}
 
       {/* ================= CONTROLS ================= */}

@@ -1,5 +1,6 @@
 // misc.mjs — profile, waitlist, contact, hits, admin. All handlers take (event, ctx).
 import { ok, bad, json, claimsOf, isAdmin, bodyOf, isEmail, clampStr, now, today, uuid, qs, NEW_FREE_CUTS, entitlementOf } from "./lib.mjs";
+import { foundingSeatsLeft } from "./billing.mjs";
 import { expireTrialIfDue } from "./sites.mjs";
 
 // GET /me — lazy-upsert the profile on first authenticated call (no Cognito trigger needed)
@@ -17,7 +18,12 @@ export async function getMe(event, ctx) {
       await ctx.ddb.put(item, "attribute_not_exists(PK)");
     } catch { item = await ctx.ddb.get({ PK, SK: "PROFILE" }); } // lost the race, read winner
   }
-  return ok({ ok: true, user: { sub: claims.sub, admin: isAdmin(claims), ...pub(item) } });
+  // the real founding-seat count rides the entitlement so the console can show
+  // honest scarcity where a user decides to pay. One O(1) GetItem per request,
+  // and fail-soft: a counter hiccup degrades the seat count to null (unknown)
+  // rather than breaking sign-in, since /me is the gate to the whole console.
+  const seatsLeft = await foundingSeatsLeft(ctx).catch(() => null);
+  return ok({ ok: true, user: { sub: claims.sub, admin: isAdmin(claims), ...pub(item, seatsLeft) } });
 }
 
 // PUT /me { name?, company?, links? }
@@ -42,10 +48,14 @@ export async function putMe(event, ctx) {
 }
 
 // identity fields + the shared entitlement snapshot (lib.mjs entitlementOf):
-// plan, cut counters, paid credits, premiere slots — one shape everywhere
-const pub = (i) => ({
+// plan, cut counters, paid credits, premiere slots — one shape everywhere.
+// foundingSeatsLeft is a GLOBAL fact the pure snapshot cannot read on its own,
+// so a caller that has read the real counter passes it through here; a caller
+// that has not (PUT /me) passes nothing and the snapshot holds the founding
+// price open rather than fabricating a seat number.
+const pub = (i, foundingSeatsLeft = null) => ({
   email: i.email, name: i.name, company: i.company, links: i.links, createdAt: i.createdAt,
-  ...entitlementOf(i),
+  ...entitlementOf(i, foundingSeatsLeft),
 });
 
 // POST /waitlist { email } — idempotent (conditional put) + O(1) counter

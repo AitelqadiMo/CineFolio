@@ -9,6 +9,7 @@ import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
 import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
 import { ledger } from "../orders.js";
+import { track, STEP } from "../funnel.js";
 import AssetChips from "../shell/Intake.jsx";
 
 const DEMO = parseProfile("", { name: "Jordan Vega", headline: "Product Designer, systems and story" });
@@ -21,6 +22,7 @@ export default function Home() {
   const [sites, setSites] = useState(null);
   const stylePop = usePopover();
   const fileRef = useRef(null);
+  const prevPaid = useRef(null); // funnel purchase watcher: last seen paidCredits
   const intake = useIntakeAssets();
   const { over, dropProps } = useDropzone(intake.addFiles);
 
@@ -82,6 +84,7 @@ export default function Home() {
         covers: intake.covers.filter((c) => !String(c.url).startsWith("data:")).map((c) => ({ name: c.name, url: c.url })),
         links: null,
       });
+      track(STEP.filmGenerated); // funnel: an AI cut order came back
       setEnt(r.entitlement); // the server's snapshot, never a client-side guess
       ledger.record({ orderId: r.orderId, name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name })); } catch { /* noop */ }
@@ -91,6 +94,7 @@ export default function Home() {
         if (e.body?.entitlement) setEnt(e.body.entitlement); // the 402 carries the truth too
         setLane("set");
         setErr("Your free AI films are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
+        track(STEP.checkoutClick); // funnel: buyer sent to Lemon Squeezy checkout
         api.billingCheckout().then((c) => setBuy(c.url))
           .catch(() => setErr("Your free AI films are spent. The Set is open for manual filming; the paid register opens soon."));
       }
@@ -103,6 +107,9 @@ export default function Home() {
   // register closes itself and the AI lane re-opens, on every surface at once
   useEffect(() => {
     if (buy && (ent?.paidCredits || 0) > 0) { setBuy(null); setErr(""); setLane("ai"); }
+    // funnel purchase: fire once when a paid credit actually lands (webhook has no browser session)
+    const paid = ent?.paidCredits ?? null;
+    if (paid !== null) { if (prevPaid.current !== null && paid > prevPaid.current) track(STEP.purchase); prevPaid.current = paid; }
   }, [buy, ent]);
 
   const roll = () => { if (lane === "ai") rollToDirector(); else rollToSet(); };

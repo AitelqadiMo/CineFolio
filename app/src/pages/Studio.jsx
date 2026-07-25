@@ -13,6 +13,7 @@ import { ledger } from "../orders.js";
 import { parseProfile, compile, compileBundle, TEMPLATES, DEFAULT_SECTIONS } from "../templates/engine.js";
 import { readResume, compressAndUpload, takeBrief, usePopover } from "../media.js";
 import { toast } from "../shell/Toast.jsx";
+import { track, STEP } from "../funnel.js";
 
 const POLL_MS = 8000, POLL_MAX = 220;
 
@@ -56,6 +57,7 @@ export default function Studio() {
   }, []);
   const premiereRef = useRef(null);
   const polls = useRef(0);
+  const prevPaid = useRef(null); // funnel purchase watcher: last seen paidCredits
 
   // stale look ids from an old draft can no longer blank the screen: unknown
   // template falls to the house default, unknown stock falls to the family's first
@@ -125,6 +127,9 @@ export default function Studio() {
   // credits landing (checkout watcher or manual recheck) close the register
   useEffect(() => {
     if (buy && (ent?.paidCredits || 0) > 0) { setBuy(null); setErr(""); }
+    // funnel purchase: fire once when a paid credit actually lands (webhook has no browser session)
+    const paid = ent?.paidCredits ?? null;
+    if (paid !== null) { if (prevPaid.current !== null && paid > prevPaid.current) track(STEP.purchase); prevPaid.current = paid; }
   }, [buy, ent]);
 
   // the dossier (My Profile) is the casting source of truth: prefill once, never clobber
@@ -274,7 +279,12 @@ export default function Studio() {
     catch { return { id: t.id, html: "" }; }
   }), [fullProfile, tpl, pal, sections, lookOpen]);
 
-  const ready = cvText.trim().length > 60 || q.name;
+  // Premiere unblocks on the fastest honest signal: a real name (trimmed, so a
+  // stray space never premieres an empty-slug placeholder) OR enough resume text
+  // to derive one. We deliberately do NOT premiere on nothing: a name-less,
+  // text-less site would ship as "Your Name" on a blank slug, and a live bad
+  // portfolio is worse than one that waits for a single field.
+  const ready = q.name.trim().length > 0 || cvText.trim().length > 60;
 
   // ---------- media: shared studio machinery (media.js) ----------
   const uploadImage = (file) => compressAndUpload(file);
@@ -300,7 +310,7 @@ export default function Studio() {
     if (url) setPhoto(url);
   };
 
-  // ---------- the locker: every asset the client handed the studio ----------
+  // ---------- the locker: every asset the user loaded onto the set ----------
   const lockerAdd = async (e) => {
     const files = [...(e.target.files || [])];
     e.target.value = "";
@@ -356,6 +366,7 @@ export default function Studio() {
       // a premiere ships the whole web app: index plus case-study pages
       const bundle = compileBundle(tpl, pal, fullProfile, { sections });
       const r = await api.publish(site.site.siteId, { files: bundle.files, ...(stageMode ? { stage: true } : {}) });
+      track(STEP.filmPublished); // funnel: a film went live
       setPub({ slug: site.site.slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });
       if (!stageMode) setTimeout(() => confetti(premiereRef.current || undefined), 60);
     } catch (e2) { setErr(friendly(e2.message)); setPub({ ...pub, busy: false }); }
@@ -369,11 +380,11 @@ export default function Studio() {
         ...locker.filter((a) => a.url && !String(a.url).startsWith("data:")).map((a) => ({ name: a.name || "asset", url: a.url })),
       ].slice(0, 8);
       // an image that never reached the studio cloud is a data: URL: warn out
-      // loud instead of silently filming without the client's own material
+      // loud instead of quietly rendering without the user's own material
       const droppedPhoto = photo && String(photo).startsWith("data:");
       const droppedCovers = [...projects.filter((p2) => String(p2.cover || "").startsWith("data:")), ...locker.filter((a) => String(a.url || "").startsWith("data:"))].length;
       if (droppedPhoto || droppedCovers) {
-        toast(`${droppedPhoto ? "Your headshot" : "Some images"} never reached the studio cloud (upload blocked), so the director can't use ${droppedPhoto && droppedCovers ? "them" : droppedPhoto ? "it" : "them"}. Re-add ${droppedPhoto ? "the photo" : "them"} in The Locker before ordering for a cut with your own pictures.`, { ttl: 9000 });
+        toast(`${droppedPhoto ? "Your headshot" : "Some images"} never reached the studio cloud (upload blocked), so the render can't include ${droppedPhoto && droppedCovers ? "them" : droppedPhoto ? "it" : "them"}. Re-add ${droppedPhoto ? "the photo" : "them"} in The Locker before ordering for a cut with your own pictures.`, { ttl: 9000 });
       }
       const r = await api.order({
         email: profile.email || q.email, name: profile.name, role: "engineer",
@@ -383,6 +394,7 @@ export default function Studio() {
         covers: coverUrls,
         links: q.website || null,
       });
+      track(STEP.filmGenerated); // funnel: an AI cut order came back
       setOrder(r); setOrderStatus(r.production ? "queued" : "preview_only");
       setEnt(r.entitlement); // the server's snapshot, never a client-side guess
       ledger.record({ orderId: r.orderId, name: profile.name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
@@ -392,9 +404,10 @@ export default function Studio() {
     } catch (e2) {
       if (e2.status === 402) {
         if (e2.body?.entitlement) setEnt(e2.body.entitlement); // the 402 carries the truth too
-        setErr("Your free AI films are spent. The Director's Cut is $99 for three productions — the register is right below.");
+        setErr("Your free AI renders are spent. The Director's Cut is $49 founding for three productions; the register is right below.");
+        track(STEP.checkoutClick); // funnel: buyer sent to checkout
         api.billingCheckout().then((c) => setBuy(c.url))
-          .catch(() => setErr("Your free AI films are spent. The Director's Cut is $99 for three productions; the register opens soon."));
+          .catch(() => setErr("Your free AI renders are spent. The Director's Cut is $49 founding for three productions; the register opens soon."));
       } else if (e2.status === 401) {
         setErr("Sign in again to order an AI cut.");
       } else setErr(friendly(e2.message));
@@ -609,7 +622,7 @@ export default function Studio() {
 
           {/* ---------------- the locker: every asset on a light table ---------------- */}
           <div className="railsec act">
-            <div className="acthead"><span className="actno">IV</span><div><b>The Locker</b><span className="actsub">every asset you&apos;ve handed the studio</span></div></div>
+            <div className="acthead"><span className="actno">IV</span><div><b>The Locker</b><span className="actsub">every asset you&apos;ve loaded onto the set</span></div></div>
             <div className="locker">
               {photo && (
                 <div className="lockeritem" tabIndex={0}>
@@ -725,8 +738,8 @@ export default function Studio() {
             {err && <div className="err">{err}</div>}
             {buy && (
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut — $99 · 3 productions</a>
-                <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid — check my credits</button>
+                <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut · $99 · 3 productions</a>
+                <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid, check my credits</button>
               </div>
             )}
             {pub.done && (
@@ -745,12 +758,15 @@ export default function Studio() {
             <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">{ent && ent.freeCutsLeft > 0 ? `your render credits · ${ent.freeCutsLeft} of ${ent.freeCutsLimit} free left` : "one time, not a subscription · $49 founding"}</span></div></div>
             <ul className="paidlist">
               <li>Every account starts with a free AI render, on us</li>
-              <li>Bespoke art direction with cinematic motion, rendered from your resume and photos</li>
+              <li>Art direction you steer, with cinematic motion rendered from your resume and photos</li>
               <li>Your likeness only from the photos you upload, never generated</li>
               <li>Download-resume built into the delivered portfolio</li>
               <li>Lands as a new release, usually within the hour · three director's notes included</li>
             </ul>
-            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>AGENCY EQUIVALENT: $2,000+ AND WEEKS · CINEFOLIO: RENDER IT YOURSELF, $49 FOUNDING</div>
+            {/* WHY: the old price-comparison line likened us to an outside creative shop,
+                the exact framing a merchant of record reads as a prohibited service. Replaced
+                with an honest software statement: one brief in, an automated render out. */}
+            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>ONE BRIEF IN · A FULL RENDER OUT · MINUTES, NOT WEEKS</div>
             <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the render: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn primary" disabled={!ready || !!order} onClick={() => setConfirmCut(true)}>
@@ -766,7 +782,7 @@ export default function Studio() {
                  orderStatus === "ready" ? "🎬 Director's cut delivered. Check My Films." :
                  orderStatus === "timeout" ? "Still filming. The moment your cut lands it premieres in My Films and by email." :
                  orderStatus === "preview_only" ? "Your brief is saved. Production orders open in this environment soon; nothing is charged." :
-                 ["dispatch_failed", "human_review"].includes(orderStatus) ? "A studio human is finishing this cut by hand. It will arrive by email." :
+                 ["dispatch_failed", "human_review"].includes(orderStatus) ? "The render hit a snag and paged the studio to finish it. Your cut will arrive by email." :
                  `Order ${order.orderId.slice(0, 8)} is in the queue. Track it any time in Account · Orders.`}
               </div>
             )}
@@ -821,7 +837,7 @@ export default function Studio() {
         open={confirmCut}
         kicker={ent && ent.freeCutsLeft > 0 ? `FREE AI RENDER · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT` : "THE DIRECTOR'S CUT · $49 FOUNDING, ONE TIME"}
         title="Order your Director's Cut"
-        body={`The studio films a bespoke cut for ${profile.name || "you"}: cinematic motion built from your resume${photo ? " and your photos" : ""}, a download-ready resume inside the portfolio, premiere within 24 hours as a new release, one revision included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.${ent && ent.freeCutsLeft > 0 ? " This one is on the studio." : ""}`}
+        body={`You set the direction; the render pipeline builds ${profile.name || "your"}${profile.name ? "'s" : ""} cut: cinematic motion rendered from your resume${photo ? " and your photos" : ""}, a download-ready resume inside the portfolio, premiere within 24 hours as a new release, one director's note included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.${ent && ent.freeCutsLeft > 0 ? " This render is on us." : ""}`}
         confirmLabel="Place the order"
         onConfirm={() => { setConfirmCut(false); directorsCut(); }}
         onClose={() => setConfirmCut(false)}
