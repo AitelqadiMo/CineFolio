@@ -4,7 +4,10 @@
 #   public/reel/cut{1..4}.jpg   posters for the four reel videos (first frames)
 #   public/img/bento-{edge,engine}.jpg  compressed tile art (~80KB each; the
 #     old hot-linked originals were ~2.5MB PNGs on a third-party host)
-# Needs: curl, ffmpeg, python3 with Pillow. Run from app/: bash scripts/landing-assets.sh
+# Needs: curl and ffmpeg only. Run from anywhere: bash app/scripts/landing-assets.sh
+# (v2: the tile step used python3 + Pillow, and a machine without Pillow died
+# AFTER the posters were written, shipping a half-set. ffmpeg compresses jpegs
+# fine, so one dependency does both jobs and the script cannot half-succeed.)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p public/reel public/img
@@ -21,15 +24,8 @@ done
 echo "==> bento tiles"
 curl -sf -o /tmp/cf-bento1.png "https://pub.hyperagent.com/api/published/pbf01KWSRVRQD_0M8HZ70MCMA3Y4X7/50e7a154-67fa-478b-b4b7-74fe378b3dc4.png"
 curl -sf -o /tmp/cf-bento2.png "https://pub.hyperagent.com/api/published/pbf01KWSRW0ED_ZR9N5ZQNE3HG4577/dde0b377-b779-4c7b-a448-88f1e8d57626.png"
-python3 - <<'PY'
-from PIL import Image
-for src, dst in [("/tmp/cf-bento1.png", "public/img/bento-edge.jpg"), ("/tmp/cf-bento2.png", "public/img/bento-engine.jpg")]:
-    im = Image.open(src).convert("RGB")
-    w, h = im.size
-    if w > 1200:
-        im = im.resize((1200, int(h * 1200 / w)), Image.LANCZOS)
-    im.save(dst, "JPEG", quality=78, optimize=True, progressive=True)
-    print("wrote", dst)
-PY
+ffmpeg -y -loglevel error -i /tmp/cf-bento1.png -vf "scale='min(1200,iw)':-2" -q:v 5 public/img/bento-edge.jpg
+ffmpeg -y -loglevel error -i /tmp/cf-bento2.png -vf "scale='min(1200,iw)':-2" -q:v 5 public/img/bento-engine.jpg
+rm -f /tmp/cf-bento1.png /tmp/cf-bento2.png
 ls -la public/reel public/img
 echo "done: 6 assets in public/"
