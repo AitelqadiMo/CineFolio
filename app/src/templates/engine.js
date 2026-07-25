@@ -19,6 +19,7 @@ import { plan, planCase, planPalettes } from "./families/plan.js";
 import { byline, bylineCase, bylinePalettes } from "./families/byline.js";
 import { console_, consoleCase, consolePalettes } from "./families/console.js";
 import { ledger, ledgerCase, ledgerPalettes } from "./families/ledger.js";
+import { room, roomCase, roomPalettes } from "./families/room.js";
 
 export const TEMPLATES = [
   {
@@ -110,6 +111,11 @@ export const TEMPLATES = [
     id: "ledger", name: "The Ledger", blurb: "Annual report. Ruled figures, aligned columns, operational rigour.",
     compile: ledger, caseCompile: ledgerCase,
     palettes: ledgerPalettes,
+  },
+  {
+    id: "room", name: "The Room", blurb: "Shelter magazine. Full-scale rooms, chrome out of the way.",
+    compile: room, caseCompile: roomCase,
+    palettes: roomPalettes,
   },
 ];
 
