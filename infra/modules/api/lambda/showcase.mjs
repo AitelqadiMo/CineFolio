@@ -5,23 +5,48 @@
 // Consent is mandatory and the default is OFF. A film appears here only when its
 // owner opted in (showcase === true) AND it is actually live (status === "live").
 // The response carries a tiny, curated public shape: slug, title, the live url,
-// and a poster image if the record has one. Owner identity and every private
-// field (email, owner sub, orderId, domain intent, trial clocks) never leave
-// this handler. When nothing qualifies, the answer is an honest empty list, a
-// 200 with films: [], never an error, and never a fabricated entry.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, now } from "./lib.mjs";
+// a poster image if the record has one, and a coarse public role label (kind)
+// when a real one exists. Owner identity and every private field (email, owner
+// sub, orderId, domain intent, trial clocks) never leave this handler. When
+// nothing qualifies, the answer is an honest empty list, a 200 with films: [],
+// never an error, and never a fabricated entry.
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, now, clampStr, publicCacheHeaders } from "./lib.mjs";
+
 import { previewUrl } from "./sites.mjs";
 
-// paginated, type-filtered scan, the same read shape admin.mjs uses for the
-// Floor's site listing. At demand-test scale (hundreds of rows) a scan is the
-// right tradeoff; past ~10k items this caller moves to a type-overloaded GSI.
-async function scanSites(ctx, cap = 5000) {
+// how long a public showcase response may be cached at the edge and in the
+// browser. Short by design: the wall changes only when an owner flips consent or
+// a film goes live/dark, and a small window bounds how stale it can be while
+// still collapsing an anonymous burst to one origin read (see getShowcase).
+export const SHOWCASE_CACHE_SECONDS = 60;
+
+// SCAN_CEILING bounds the work one anonymous request can trigger. A DynamoDB
+// scan reads the table's items regardless of FilterExpression (the filter only
+// drops rows AFTER they are read), so the honest cost control is a hard page
+// cap: this caller reads at most SCAN_CEILING site rows per request and then
+// stops, even if more exist. At demand-test scale (hundreds of rows) that is the
+// whole table in one or two pages; the documented ceiling is the ~2k-row point
+// past which this route must move to a type-overloaded GSI (a keys-only query,
+// out of scope today). Until then the short edge cache above means the scan runs
+// at most once per SHOWCASE_CACHE_SECONDS across every viewer, not once per hit.
+export const SCAN_CEILING = 2000;
+
+// type-filtered scan for the public wall. Two cost/privacy tightenings over a
+// plain scan:
+//   1. ProjectionExpression returns ONLY the fields the predicate, the sort, and
+//      the public card need. Private columns (owner, email, orderId, domain
+//      intent, trial clocks, GSI keys) never leave DynamoDB, which shrinks the
+//      response and is defense in depth beneath card()'s allow-list.
+//   2. a hard SCAN_CEILING (above) caps how many rows one request can read.
+async function scanSites(ctx, cap = SCAN_CEILING) {
   const items = [];
   let lastKey;
   do {
     const r = await ctx.ddb.scan({
       FilterExpression: "#t = :t",
-      ExpressionAttributeNames: { "#t": "type" },
+      // only the fields we actually read downstream; nothing private is projected
+      ProjectionExpression: "#t, showcase, #s, slug, title, publishedAt, createdAt, poster, posterUrl, thumbnail",
+      ExpressionAttributeNames: { "#t": "type", "#s": "status" },
       ExpressionAttributeValues: { ":t": "site" },
       ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
     });
@@ -36,10 +61,41 @@ async function scanSites(ctx, cap = 5000) {
 // value are treated as NOT consented, so the default can never drift to opt-out.
 export const isShowcased = (s) => s?.showcase === true && s?.status === "live";
 
-// the public card: exactly what a stranger may see, nothing more. A poster is
-// surfaced only if the record actually carries one; there is no owner, no email,
-// no order id, no internal counter in this object.
-const card = (s, ctx) => {
+// the "kind of professional" a portfolio belongs to: a COARSE, public role
+// label (e.g. "Engineer", "Founder", "Designer", "Professional"), the same kind
+// of one-word descriptor a person already prints on their own public site. It is
+// NOT personal data: no name, no email, no order id, no free text a visitor
+// typed. We source it, in order, from:
+//   1. a public-facing label already on the site record, if the record carries
+//      one (role/headline/kind/craft), then
+//   2. the coarse role label on the ORDER this film was cut from, reading ONLY
+//      that one field and nothing else off the order (never the email, the name,
+//      or the order id, which stay private).
+// It returns null when there is no real value; the card then simply omits it.
+// This never invents a role: a stranger only ever sees a label a real record
+// already held.
+const ROLE_LABEL_MAX = 40;
+async function kindOf(s, ctx) {
+  const onSite = s.role || s.headline || s.kind || s.craft || null;
+  if (onSite) return clampStr(onSite, ROLE_LABEL_MAX) || null;
+  // fall back to the cut's order, projecting ONLY its coarse role label
+  if (s.orderId) {
+    try {
+      const order = await ctx.ddb.get({ PK: `ORDER#${s.orderId}`, SK: "META" });
+      const role = order?.role || null; // the roleLabel studio.mjs stored
+      if (role) return clampStr(role, ROLE_LABEL_MAX) || null;
+    } catch {
+      /* a missing or unreadable order simply means no label; never fatal */
+    }
+  }
+  return null;
+}
+
+// the public card: exactly what a stranger may see, nothing more. A poster and a
+// role label are each surfaced ONLY when a real value exists; there is no owner,
+// no email, no order id, no internal counter in this object. `kind` is resolved
+// by the caller (kindOf) so the shape stays pure and the read stays one place.
+const card = (s, ctx, kind = null) => {
   const out = {
     slug: s.slug,
     title: s.title || s.slug,
@@ -47,18 +103,27 @@ const card = (s, ctx) => {
   };
   const poster = s.poster || s.posterUrl || s.thumbnail || null;
   if (poster) out.poster = poster;
+  if (kind) out.kind = kind;
   return out;
 };
 
 // GET /showcase: PUBLIC, no auth. Returns the opted-in, live films as public
-// cards, newest premiere first. Empty is a valid, honest answer.
+// cards, newest premiere first. Empty is a valid, honest answer. Role labels are
+// resolved in parallel over the small showcased set (a handful of consented
+// films), and only ever add a coarse public descriptor, never any private field.
+// cards, newest premiere first. Empty is a valid, honest answer. The response
+// carries a short public cache header (SHOWCASE_CACHE_SECONDS) so CloudFront and
+// browsers can cache it: an anonymous burst then collapses to one origin read
+// per window instead of a table scan on every hit. Caching is safe here because
+// the payload is identical for every viewer and holds no per-user data.
 export async function getShowcase(_event, ctx) {
   const sites = await scanSites(ctx);
-  const films = sites
+  const shown = sites
     .filter(isShowcased)
-    .sort((a, b) => String(b.publishedAt || b.createdAt || "").localeCompare(String(a.publishedAt || a.createdAt || "")))
-    .map((s) => card(s, ctx));
-  return ok({ ok: true, count: films.length, films });
+    .sort((a, b) => String(b.publishedAt || b.createdAt || "").localeCompare(String(a.publishedAt || a.createdAt || "")));
+  const kinds = await Promise.all(shown.map((s) => kindOf(s, ctx)));
+  const films = shown.map((s, i) => card(s, ctx, kinds[i]));
+  return ok({ ok: true, count: films.length, films }, publicCacheHeaders(SHOWCASE_CACHE_SECONDS));
 }
 
 // ownership gate, mirrored from sites.mjs ownedSite() on purpose: the read path

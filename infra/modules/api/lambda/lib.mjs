@@ -6,8 +6,21 @@ export const json = (statusCode, body, extra = {}) => ({
   headers: { "content-type": "application/json", "cache-control": "no-store", ...extra },
   body: JSON.stringify(body),
 });
-export const ok = (body) => json(200, body);
+// ok() defaults to no-store like every other response. A route that is PUBLIC
+// and safe to cache at the edge (no auth, no per-user data) may pass extra
+// headers, e.g. ok(body, publicCacheHeaders(60)), which overrides the default
+// cache-control for that one response without touching the default for any other.
+export const ok = (body, extra = {}) => json(200, body, extra);
 export const bad = (msg, code = 400) => json(code, { ok: false, error: msg });
+
+// a short, shared public-cache header for edge-cacheable, unauthenticated
+// responses. max-age lets the browser hold it; s-maxage lets CloudFront hold and
+// coalesce it, so a burst of anonymous requests collapses to one origin read.
+// Keep the window short: the payload changes when an owner flips consent or a
+// film goes live/dark, and a short TTL bounds how stale the public wall can be.
+export const publicCacheHeaders = (seconds = 60) => ({
+  "cache-control": `public, max-age=${seconds}, s-maxage=${seconds}`,
+});
 
 export const uuid = () => randomUUID();
 export const now = () => new Date().toISOString();
@@ -41,11 +54,13 @@ export const LEGACY_FREE_CUTS = 3;  // earlier accounts keep the three they were
 export const TRIAL_HOURS = 72;
 
 // premiere slots: how many films a plan screens LIVE at once. Free accounts
-// track their free-film era (1 from pricing v3, 3 for legacy profiles), the
-// flagship unlocks three, the slate is built for client rosters.
+// track their free-film era (1 from pricing v3, 3 for legacy profiles) and the
+// flagship unlocks three. "coach" is a LEGACY plan (the retired Coach's Slate,
+// unsellable in pricing v4): its ten-slot grant is kept only so a grandfathered
+// coach never loses the slots they already hold. No new account can reach it.
 export const PUBLISH_SLOTS = { director: 3, coach: 10 };
 export function publishSlots(profile) {
-  if (profile?.plan === "coach") return PUBLISH_SLOTS.coach;
+  if (profile?.plan === "coach") return PUBLISH_SLOTS.coach; // legacy grandfather only
   if (profile?.plan === "director") return PUBLISH_SLOTS.director;
   return profile?.freeCutsLimit ?? LEGACY_FREE_CUTS;
 }

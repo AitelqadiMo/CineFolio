@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeHandler } from "../index.mjs";
-import { isShowcased, setShowcase } from "../showcase.mjs";
+import { isShowcased, setShowcase, SHOWCASE_CACHE_SECONDS } from "../showcase.mjs";
 
 // ---------- a minimal fake ctx: an in-memory table + the config previewUrl reads ----------
 function fakeCtx(seedSites = []) {
@@ -150,6 +150,50 @@ test("showcase: a genuinely empty table (no sites) still returns 200 with an emp
   assert.equal(body.count, 0);
 });
 
+// ---------- the EDGE CACHE: the public read opts into a short cache header ----------
+// The public wall is identical for every viewer and carries no per-user data, so
+// it is safe to cache at the edge. These guard that the ONE public route opts in
+// (so an anonymous burst collapses to one origin scan per window) while the cache
+// never becomes a way to leak private fields, and the WRITE path stays no-store.
+
+test("showcase: the public read is edge-cacheable with a short max-age, not no-store", async () => {
+  const ctx = fakeCtx([site()]);
+  const h = makeHandler(async () => ctx);
+  const r = await h(publicEvent());
+  assert.equal(r.statusCode, 200);
+  const cc = r.headers["cache-control"];
+  // no longer the default no-store: CloudFront and the browser may hold it
+  assert.notEqual(cc, "no-store", "the public wall must be cacheable, not no-store");
+  assert.match(cc, /(^|[,\s])public([,\s]|$)/, "must be publicly cacheable");
+  assert.match(cc, new RegExp(`max-age=${SHOWCASE_CACHE_SECONDS}\\b`), "browser cache TTL");
+  assert.match(cc, new RegExp(`s-maxage=${SHOWCASE_CACHE_SECONDS}\\b`), "CloudFront cache TTL");
+  // the window is short by design so the wall can never go badly stale
+  assert.ok(SHOWCASE_CACHE_SECONDS > 0 && SHOWCASE_CACHE_SECONDS <= 300, "a short, bounded TTL");
+});
+
+test("showcase: an empty public wall is still cacheable (a burst of empties is coalesced too)", async () => {
+  const ctx = fakeCtx([]);
+  const h = makeHandler(async () => ctx);
+  const r = await h(publicEvent());
+  assert.equal(r.statusCode, 200);
+  assert.match(r.headers["cache-control"], new RegExp(`max-age=${SHOWCASE_CACHE_SECONDS}\\b`));
+});
+
+test("showcase: caching never widens the payload, a cached response still exposes only slug/title/url", async () => {
+  // the cache header and the privacy shape are independent guarantees; prove the
+  // response that carries the cache header still holds nothing private.
+  const ctx = fakeCtx([site()]);
+  const h = makeHandler(async () => ctx);
+  const r = await h(publicEvent());
+  assert.match(r.headers["cache-control"], /public/);
+  const body = JSON.parse(r.body);
+  assert.deepEqual(Object.keys(body.films[0]).sort(), ["slug", "title", "url"]);
+  // the cacheable bytes must not contain any owner-identifying value
+  assert.equal(r.body.includes("saad@example.com"), false, "no owner email in the cacheable body");
+  assert.equal(r.body.includes("cognito-sub-abc"), false, "no owner sub in the cacheable body");
+  assert.equal(r.body.includes("ord-778899"), false, "no order id in the cacheable body");
+});
+
 // ---------- the WRITE path: POST /sites/{id}/showcase (owner consent) ----------
 // These guard the promise that consent comes from the OWNER clicking a control,
 // never an operator hand-editing the table: only the owner (or an admin) may
@@ -212,6 +256,15 @@ test("showcase write: the owner can turn consent ON and OFF", async () => {
   assert.equal(r.code, 200);
   assert.equal(r.body.showcase, false);
   assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, false);
+});
+
+test("showcase write: the consent WRITE response stays no-store (the cache opt-in is read-only)", async () => {
+  // the public read is edge-cacheable, but the per-owner mutating response must
+  // never be cached; the cache header must not have leaked onto this route.
+  const ctx = writeCtx([site({ siteId: "s1", slug: "hindi", owner: "owner-1", showcase: undefined })]);
+  const raw = await setShowcase(setEvent("s1", "owner-1", true), ctx);
+  assert.equal(raw.statusCode, 200);
+  assert.equal(raw.headers["cache-control"], "no-store", "a mutating owner response is never cached");
 });
 
 test("showcase write: a non-owner is refused with 403 and cannot flip the flag", async () => {

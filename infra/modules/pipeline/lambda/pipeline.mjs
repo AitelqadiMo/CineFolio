@@ -16,7 +16,9 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { premiereReadyEmail, revisionPremiereEmail, needsAttentionEmail } from "./email.mjs";
 // the content-moderation screen. Creem mandates prompt moderation for any
 // product that generates images or video, and this pipeline generates both, so
-// EVERY brief is screened here before it can reach the AI director.
+// EVERY brief is screened here before it can reach the AI director. The verdict
+// carries verdict.transient so we can tell a real content violation (terminal)
+// apart from a moderation-vendor outage (retryable); see the throw sites below.
 import { moderate, moderationConfigFromSecrets } from "./moderation.mjs";
 
 const region = process.env.AWS_REGION || "eu-central-1";
@@ -79,8 +81,24 @@ async function setStatus(orderId, status, extra = {}) {
   }));
 }
 
+// A CONFIRMED content verdict: the brief is rejected on its merits. Routed by
+// the state machine's Validate Catch to InvalidNoop (a terminal Succeed): a
+// retry would screen the same text and reach the same answer, so it is final.
 class OrderInvalid extends Error {
   constructor(msg) { super(msg); this.name = "OrderInvalid"; }
+}
+
+// A TRANSIENT moderation-vendor failure (Creem timeout / 5xx, fail-closed): we
+// have NO verdict on the brief, only an unreachable screen. This is deliberately
+// NOT OrderInvalid: an outage must never terminally reject an honest paid order
+// and brand the customer a policy violator. The name is matched by the Validate
+// task's Retry in main.tf so Step Functions retries with backoff; if it still
+// fails, the Validate Catch (States.ALL) parks the order in human_review, which
+// an operator CAN recover, instead of InvalidNoop, which they cannot. The
+// security property is intact: we throw BEFORE returning, so an unscreened prompt
+// never reaches dispatch. Stalling is acceptable; shipping unscreened is not.
+class ModerationUnavailable extends Error {
+  constructor(msg) { super(msg); this.name = "ModerationUnavailable"; }
 }
 
 // Page the operator via the existing alarm topic. Fail-soft on the PUBLISH
@@ -92,6 +110,88 @@ async function pageOperator(subject, message) {
     await sns.send(new PublishCommand({ TopicArn: TOPIC, Subject: subject, Message: message }));
   } catch (e) {
     console.error(JSON.stringify({ level: "error", msg: "sns publish failed", err: e?.message }));
+  }
+}
+
+// Restore the credit a terminal rejection would otherwise burn. studio.mjs
+// spends ONE credit at order time, BEFORE enqueue, with a conditional ADD on the
+// user profile: a free cut increments profile.aiCuts toward its cap, and a paid
+// cut decrements profile.paidCredits. When moderation then terminally rejects the
+// order, nothing used to give that credit back: the customer paid, got a
+// violation notice, and lost the credit with no self-service path. This mirrors
+// the spend in reverse so a rejected customer is made whole.
+//
+// It IS possible from this lambda: the pipeline role holds dynamodb:UpdateItem on
+// the whole table (see main.tf "Orders" statement), the same table the profile
+// row lives in, and the order row already carries the owner as GSI1PK=USER#<sub>
+// (getDossier reads it the same way) plus freeCut/paid telling us which counter
+// was spent. So we can restore it here rather than faking it or punting to admin.
+//
+// IDEMPOTENCY is the hard requirement: a Validate retry, a duplicate rejection,
+// or an at-least-once re-delivery must NEVER refund twice. We CLAIM the refund
+// with a conditional stamp on the ORDER row (creditRestoredAt, written only when
+// it is absent); winning the claim is what gates the money, so at most one caller
+// ever proceeds to touch the profile. A loser (already stamped) simply returns.
+// We stamp-then-credit on purpose: the claim is the at-most-once guarantee, and
+// a rare profile-write failure after a won claim is surfaced loudly (and the
+// operator is already paged on rejection) rather than risking a double refund.
+async function restoreCredit(order) {
+  const orderId = order?.orderId;
+  const sub = String(order?.GSI1PK || "").startsWith("USER#") ? order.GSI1PK.slice(5) : null;
+  // anon/preview orders never spent an account credit, and an order that recorded
+  // neither a free nor a paid spend has nothing to give back.
+  if (!orderId || !sub || sub === "anon") return { refunded: false, reason: "no account owner" };
+  if (!order.freeCut && !order.paid) return { refunded: false, reason: "no credit was spent" };
+
+  // Claim: stamp the order at most once. attribute_not_exists(creditRestoredAt)
+  // means only the FIRST caller wins; a retry/duplicate loses and refunds nothing.
+  try {
+    await doc.send(new UpdateCommand({
+      TableName: TABLE,
+      Key: { PK: `ORDER#${orderId}`, SK: "META" },
+      UpdateExpression: "SET creditRestoredAt = :t",
+      ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(creditRestoredAt)",
+      ExpressionAttributeValues: { ":t": new Date().toISOString() },
+    }));
+  } catch (e) {
+    if (e?.name === "ConditionalCheckFailedException") {
+      // already refunded (or claimed) once: this is the idempotent no-op path.
+      return { refunded: false, reason: "already restored" };
+    }
+    throw e; // a real DynamoDB fault: let it surface, we have not touched money yet
+  }
+
+  // Claim won: apply the reverse of the spend on the profile. Mirror studio.mjs
+  // exactly. The floor conditions keep the counters honest if state ever drifts:
+  // aiCuts is only decremented while it is > 0, so it never goes negative.
+  const profileKey = { PK: `USER#${sub}`, SK: "PROFILE" };
+  try {
+    if (order.freeCut) {
+      await doc.send(new UpdateCommand({
+        TableName: TABLE,
+        Key: profileKey,
+        UpdateExpression: "SET updatedAt = :u ADD aiCuts :neg",
+        ConditionExpression: "attribute_exists(aiCuts) AND aiCuts > :zero",
+        ExpressionAttributeValues: { ":neg": -1, ":zero": 0, ":u": new Date().toISOString() },
+      }));
+    } else {
+      // paid credit: hand it straight back so the customer can re-run their order.
+      await doc.send(new UpdateCommand({
+        TableName: TABLE,
+        Key: profileKey,
+        UpdateExpression: "SET updatedAt = :u ADD paidCredits :one",
+        ConditionExpression: "attribute_exists(PK)",
+        ExpressionAttributeValues: { ":one": 1, ":u": new Date().toISOString() },
+      }));
+    }
+    return { refunded: true, kind: order.freeCut ? "free" : "paid" };
+  } catch (e) {
+    // The claim is stamped but the profile write failed. We do NOT unstamp: that
+    // would reopen the double-refund window, and at-most-once wins over
+    // at-least-once here. Surface it loudly; the rejection already paged a human,
+    // who has the order id and can complete the refund by hand.
+    console.error(JSON.stringify({ level: "error", msg: "credit restore claimed but profile write failed", orderId, sub, err: e?.message }));
+    return { refunded: false, reason: "profile write failed after claim" };
   }
 }
 
@@ -154,6 +254,31 @@ export const handler = async (event) => {
       } catch (e) {
         console.error(JSON.stringify({ level: "warn", msg: "moderation audit write failed soft", orderId, err: e?.message }));
       }
+    } else if (verdict.transient) {
+      // TRANSIENT vendor outage, NOT a verdict. Creem failed closed (timeout or
+      // 5xx) with no confirmed violation, so we know NOTHING about this brief; a
+      // brief the deterministic floor and hosted layer both cleared is blocked
+      // ONLY because a compliance screen was unreachable this attempt. This must
+      // NOT become a terminal reject: doing so permanently kills honest in-flight
+      // paid orders during a brief outage and brands the customer a violator. The
+      // doctrine is STALL, not reject. We leave the order in its current
+      // dispatchable status (no terminal write), record the stall for the audit
+      // trail (fail-soft), page for visibility, then throw ModerationUnavailable
+      // so the Validate Retry backs off and re-screens; if it still fails the
+      // Catch parks it in human_review, which an operator can recover. The
+      // security floor is untouched: we throw BEFORE returning, so dispatch is
+      // NEVER reached and no unscreened prompt goes to the model.
+      const stallCause = `moderation unavailable: ${verdict.reasons.join("; ")}`;
+      try {
+        await setStatus(orderId, order.status, { moderation: { ...verdict, at: new Date().toISOString() } });
+      } catch (e) {
+        console.error(JSON.stringify({ level: "warn", msg: "moderation stall audit write failed soft", orderId, err: e?.message }));
+      }
+      await pageOperator(
+        `CineFolio order ${String(orderId).slice(0, 8)} STALLED: moderation vendor unavailable`,
+        `Order ${orderId} could not be screened because a moderation vendor was unreachable (fail-closed).\nReasons: ${verdict.reasons.join("; ")}\nCreem: ${verdict.creem || "n/a"}\nThe pipeline is retrying with backoff; if it exhausts retries the order lands in human_review (recoverable), NOT a terminal reject.`,
+      );
+      throw new ModerationUnavailable(stallCause); // retryable -> backoff, then human_review
     } else {
       // DELIBERATE EXCEPTION to this codebase's fail-soft doctrine: a confirmed
       // content violation MUST block. Move the order to a terminal rejected
@@ -172,9 +297,16 @@ export const handler = async (event) => {
       } catch (e) {
         console.error(JSON.stringify({ level: "error", msg: "rejected-status write failed", orderId, err: e?.message }));
       }
+      // A terminal reject burned the customer's credit at order time; give it
+      // back (idempotently) so a rejected customer is made whole. This is safe to
+      // run after the status write and is a no-op on a retry (see restoreCredit).
+      const refund = await restoreCredit(order).catch((e) => {
+        console.error(JSON.stringify({ level: "error", msg: "credit restore failed", orderId, err: e?.message }));
+        return { refunded: false, reason: "error" };
+      });
       await pageOperator(
         `CineFolio order ${String(orderId).slice(0, 8)} REJECTED by content moderation`,
-        `Order ${orderId} was blocked before dispatch.\nSeverity: ${verdict.severity}\nReasons: ${verdict.reasons.join("; ")}\nSource: ${verdict.source}\nOpen the admin console -> Orders -> rejected to review or refund.`,
+        `Order ${orderId} was blocked before dispatch.\nSeverity: ${verdict.severity}\nReasons: ${verdict.reasons.join("; ")}\nSource: ${verdict.source}\nCredit restored: ${refund.refunded ? refund.kind : `no (${refund.reason})`}\nOpen the admin console -> Orders -> rejected to review.`,
       );
       throw new OrderInvalid(failCause); // -> InvalidNoop (terminal, never dispatches)
     }
@@ -233,12 +365,36 @@ export const handler = async (event) => {
         { customIdea: dossierText, cvText: "", name: order.name, orderId },
         moderationConfigFromSecrets(sec),
       );
+      if (!dv.allowed && dv.transient) {
+        // TRANSIENT vendor outage on the dossier screen, NOT a verdict. Same
+        // distinction as validate: Creem was unreachable (timeout / 5xx) with no
+        // confirmed violation, so we must STALL, not terminally reject. Leave the
+        // order status alone (do NOT flip to rejected), record the stall for the
+        // audit trail (fail-soft), page for visibility, and throw
+        // ModerationUnavailable. At Dispatch this surfaces as States.TaskFailed,
+        // which the Dispatch Retry already backs off on; if it exhausts, the
+        // Dispatch Catch parks the order in human_review (recoverable). We throw
+        // BEFORE the webhook fires, so the unscreened dossier never reaches the
+        // model: the security floor is intact, we only stall.
+        const stallCause = `moderation unavailable (dossier): ${(dv.reasons || []).join(", ") || "vendor outage"}`;
+        try {
+          await setStatus(orderId, order.status, { moderation: { ...dv, surface: "dossier", at: new Date().toISOString() } });
+        } catch { /* the audit write must never mask the stall */ }
+        await pageOperator("CineFolio: dossier screen STALLED (moderation vendor unavailable)", `Order ${orderId} could not be screened (fail-closed); the pipeline is retrying, then human_review if it exhausts. Reasons: ${(dv.reasons || []).join(", ") || "vendor outage"}`).catch(() => {});
+        throw new ModerationUnavailable(stallCause);
+      }
       if (!dv.allowed) {
         const cause = `content moderation (dossier): ${(dv.reasons || []).join(", ") || "policy"}`;
         try {
           await setStatus(orderId, "rejected", { taskToken: null, failCause: cause, moderation: { ...dv, surface: "dossier", at: new Date().toISOString() } });
         } catch { /* the audit write must never mask the block */ }
-        await pageOperator("CineFolio: dossier blocked by moderation", `Order ${orderId} was rejected before dispatch. Reasons: ${(dv.reasons || []).join(", ") || "policy"}`).catch(() => {});
+        // Terminal dossier rejection also burned a credit at order time; restore
+        // it idempotently, exactly like the validate-surface rejection does.
+        const refund = await restoreCredit(order).catch((e) => {
+          console.error(JSON.stringify({ level: "error", msg: "credit restore failed (dossier)", orderId, err: e?.message }));
+          return { refunded: false, reason: "error" };
+        });
+        await pageOperator("CineFolio: dossier blocked by moderation", `Order ${orderId} was rejected before dispatch. Reasons: ${(dv.reasons || []).join(", ") || "policy"}\nCredit restored: ${refund.refunded ? refund.kind : `no (${refund.reason})`}`).catch(() => {});
         throw new OrderInvalid(cause);
       }
     }

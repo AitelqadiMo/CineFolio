@@ -46,6 +46,14 @@
 // When Creem screened the prompt we also stamp the raw Creem decision onto the
 // verdict (verdict.creem = "allow"|"flag"|"deny"|"blocked"|"error") so we can
 // prove PER ORDER, in an audit, that Creem screening actually ran.
+//
+// The verdict also carries verdict.transient, and it is load-bearing: it is true
+// ONLY when the brief is blocked SOLELY because Creem was unavailable (a timeout
+// or 5xx, i.e. fail-closed) with no confirmed violation on record. It separates
+// a transient vendor outage from a real content verdict WITHOUT relaxing the
+// block (allowed stays false either way). The pipeline reads it to decide whether
+// a block is a terminal reject (a real violation) or a retryable stall (an
+// outage). See isTransientFailure() below for the exact rule and the WHY.
 
 // Severity ranking so we can keep the highest signal when several categories
 // trip at once. "clear" is the baseline for an allowed brief.
@@ -397,6 +405,42 @@ export async function creemVerdict(fields, config = {}, deps = {}) {
   }
 }
 
+// TRANSIENT-vs-VERDICT: the distinction the whole recovery path turns on.
+//
+// A blocking verdict can mean two DIFFERENT things, and collapsing them is the
+// bug this predicate exists to prevent (the next reader WILL re-collapse them
+// otherwise). Both make `allowed` false, because in BOTH cases an unscreened or
+// disallowed prompt must never reach the model; the security floor is identical.
+// But WHY the block happened decides how the pipeline should recover:
+//
+//   - A VERDICT is a real, confirmed content decision: the deterministic floor
+//     hit a category, the hosted layer returned a positive "flagged", or Creem
+//     returned "flag"/"deny". This is the customer's brief being rejected on its
+//     merits. It is TERMINAL: retrying screens the same text and reaches the same
+//     answer, so the order is rejected for good.
+//
+//   - A TRANSIENT FAILURE is Creem failing CLOSED because it could not render a
+//     clean verdict at all: a timeout / transport error (creem === "error") or a
+//     non-2xx / 5xx (creem === "blocked"). Nothing is known about the brief; a
+//     vendor was simply unreachable for this attempt. This is NOT the customer's
+//     fault and must be RETRIED with backoff, then parked in human_review (which
+//     an operator can recover), never terminally rejected.
+//
+// Creem is the ONLY layer that can produce a transient block: the deterministic
+// floor is offline/pure (verdict only) and the hosted hook FAILS OPEN (an outage
+// returns null, never a block). So a block is transient IFF Creem failed closed
+// on an unavailability AND nothing else independently confirmed a violation. The
+// second clause matters: if the floor/hosted/Creem-decision ALSO blocked, there
+// is a real verdict on record and it stays terminal even while Creem was down.
+export function isTransientFailure(base, hosted, creem) {
+  const deterministicBlocked = !base.allowed;
+  const hostedBlocked = Boolean(hosted && !hosted.allowed);
+  const creemUnavailable = Boolean(creem && (creem.creem === "error" || creem.creem === "blocked"));
+  const creemVerdictBlock = Boolean(creem && !creem.allowed && (creem.creem === "flag" || creem.creem === "deny"));
+  // transient only when Creem was unavailable AND no layer confirmed a violation
+  return creemUnavailable && !deterministicBlocked && !hostedBlocked && !creemVerdictBlock;
+}
+
 // Fold one provider verdict into the running merged verdict under the same
 // "stricter wins" rule the module has always used: if EITHER side blocks, the
 // brief is blocked, and we keep the union of reasons and the worse severity so
@@ -447,6 +491,15 @@ export async function moderate(fields, config = {}, deps = {}) {
   // so an auditor can confirm per order that the prompt was screened by Creem
   // before generation, and see exactly what Creem said.
   if (creem && creem.creem) verdict = { ...verdict, creem: creem.creem };
+
+  // Stamp WHY a block happened so the pipeline can route recovery correctly.
+  // `transient` is true ONLY when the sole reason the brief is blocked is Creem
+  // being unavailable (fail-closed), with no confirmed violation from any layer.
+  // A clean/allowed verdict is never transient. This flag is what lets validate
+  // throw a retryable error (stall + retry + human_review) for an outage while
+  // still throwing a terminal reject for a genuine content verdict. It never
+  // changes `allowed`: an unscreened prompt is blocked either way (fail closed).
+  verdict = { ...verdict, transient: !verdict.allowed && isTransientFailure(base, hosted, creem) };
   return verdict;
 }
 
