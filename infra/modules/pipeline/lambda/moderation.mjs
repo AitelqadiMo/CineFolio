@@ -54,6 +54,16 @@
 // block (allowed stays false either way). The pipeline reads it to decide whether
 // a block is a terminal reject (a real violation) or a retryable stall (an
 // outage). See isTransientFailure() below for the exact rule and the WHY.
+//
+// FULL-TEXT SCREENING, the no-bypass rule made literal: every layer screens ONE
+// canonical text (briefText below), and the network layers screen ALL of it in
+// chunks. The old shape capped each network request at 8000 chars and screened
+// only the first request's worth, so the tail of a long resume, and everything
+// past the dossier's old 20000-char slice, reached the model without ever
+// reaching Creem. That is the exact bypass Creem's compliance rules exist to
+// forbid. Now the text is split into overlapping chunks and EVERY chunk is
+// screened; a single flagged chunk blocks the brief, and the overlap means a
+// banned phrase straddling a chunk boundary still lands whole inside one chunk.
 
 // Severity ranking so we can keep the highest signal when several categories
 // trip at once. "clear" is the baseline for an allowed brief.
@@ -201,13 +211,75 @@ function screenText(text) {
   return hits;
 }
 
+// The one canonical definition of WHAT text is screened. Every layer, the
+// deterministic floor, the hosted hook, and Creem, screens exactly this text,
+// so a field added here is screened by all three at once and a field missing
+// here is screened by none: keep this list in lockstep with the model payload
+// assembled in pipeline.mjs. revisionNotes is the customer's free-text message
+// to the director on a revision run, and `extra` carries the payload's smaller
+// user-authored strings (email, role, skills, template and palette ids, asset
+// names, urls, links). Empty parts are dropped so the joined blob carries no
+// stray blank lines.
+export function briefText(fields) {
+  const parts = [
+    fields?.customIdea,
+    fields?.cvText,
+    fields?.name,
+    fields?.revisionNotes,
+    ...(Array.isArray(fields?.extra) ? fields.extra : []),
+  ];
+  return parts
+    .map((v) => String(v ?? ""))
+    .filter((s) => s !== "")
+    .join("\n");
+}
+
+// How long text reaches the network layers: in overlapping chunks, every one of
+// them screened. CHUNK_SIZE matches the per-request payload cap the vendors
+// tolerate; CHUNK_OVERLAP exists so a phrase that straddles a chunk boundary
+// still lands whole inside one chunk, otherwise a banned phrase split at the
+// cut would be invisible to every chunk. Exported for the tests that pin the
+// boundary behaviour.
+export const CHUNK_SIZE = 8000;
+export const CHUNK_OVERLAP = 250;
+export function chunkText(text, size = CHUNK_SIZE, overlap = CHUNK_OVERLAP) {
+  const s = String(text ?? "");
+  if (s.length <= size) return [s];
+  const step = Math.max(1, size - overlap);
+  const chunks = [];
+  for (let start = 0; start < s.length; start += step) {
+    chunks.push(s.slice(start, start + size));
+    if (start + size >= s.length) break;
+  }
+  return chunks;
+}
+
+// A small concurrency pool for the per-chunk requests: enough parallelism to
+// keep a many-chunk screen inside the lambda budget (ceil(chunks / POOL) waves
+// of one vendor timeout each; the 200KB putProfile cap is ~26 chunks, 3 waves,
+// ~15s worst case), without firing dozens of simultaneous requests at a vendor
+// for one order.
+const POOL = 10;
+async function pooled(items, fn, limit = POOL) {
+  const out = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 // The always-on floor. Pure, synchronous, offline, no cost. Given the brief's
 // free-text fields, return a structured verdict. This is what the hosted layer
-// falls back TO on any error, so it must stand entirely on its own.
+// falls back TO on any error, so it must stand entirely on its own. It screens
+// the full canonical text with no cap: regexes over even a 200KB dossier are
+// milliseconds, so the floor never needs chunking.
 export function deterministicVerdict(fields) {
-  const blob = [fields?.customIdea, fields?.cvText, fields?.name]
-    .map((v) => String(v ?? ""))
-    .join("\n");
+  const blob = briefText(fields);
   const hitIds = screenText(blob);
 
   const reasons = [];
@@ -251,43 +323,63 @@ export async function hostedVerdict(fields, config, deps = {}) {
 
   const fetchFn = deps.fetch || globalThis.fetch;
   const timeoutMs = Number(config?.timeoutMs) || 4000;
-  const input = [fields?.customIdea, fields?.cvText, fields?.name]
-    .map((v) => String(v ?? ""))
-    .join("\n")
-    .slice(0, 8000); // cap payload; the free-text fields are already clamped upstream
 
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  try {
-    const r = await fetchFn(endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({ input }),
-      ...(controller ? { signal: controller.signal } : {}),
-    });
-    if (!r || !r.ok) return null; // fail OPEN: no usable hosted opinion
-    const data = await r.json();
-    const flagged = Boolean(data?.flagged ?? data?.blocked ?? data?.violation);
-    if (!flagged) {
-      return { allowed: true, reasons: [], severity: "clear", source: "hosted" };
+  // one POST per chunk so the WHOLE text gets a hosted opinion, not just the
+  // first request's worth. The per-chunk failure doctrine is unchanged: any
+  // transport error, non-2xx, timeout, or unparseable body means we have no
+  // hosted opinion FOR THAT CHUNK and it fails OPEN to the deterministic floor.
+  const screenChunk = async (input) => {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const r = await fetchFn(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ input }),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (!r || !r.ok) return null; // fail OPEN: no usable hosted opinion
+      const data = await r.json();
+      const flagged = Boolean(data?.flagged ?? data?.blocked ?? data?.violation);
+      if (!flagged) {
+        return { allowed: true, reasons: [], severity: "clear", source: "hosted" };
+      }
+      // fail CLOSED on a positive violation: this is the deliberate exception.
+      const reasons = Array.isArray(data?.categories) && data.categories.length
+        ? data.categories.map((c) => `hosted: ${String(c)}`)
+        : ["hosted moderation flagged this brief"];
+      const severity = SEVERITY_RANK[data?.severity] !== undefined ? data.severity : "high";
+      return { allowed: false, reasons, severity, source: "hosted" };
+    } catch (e) {
+      // timeout / network / bad JSON: fail OPEN. Log so an outage is visible in
+      // CloudWatch, but never let it break the money flow.
+      console.error(JSON.stringify({ level: "warn", msg: "hosted moderation failed open", err: e?.message }));
+      return null;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    // fail CLOSED on a positive violation: this is the deliberate exception.
-    const reasons = Array.isArray(data?.categories) && data.categories.length
-      ? data.categories.map((c) => `hosted: ${String(c)}`)
-      : ["hosted moderation flagged this brief"];
-    const severity = SEVERITY_RANK[data?.severity] !== undefined ? data.severity : "high";
+  };
+
+  const results = await pooled(chunkText(briefText(fields)), screenChunk);
+
+  // Merge across chunks: ANY flagged chunk blocks (union of reasons, worst
+  // severity), because a violation anywhere in the text is a violation. With no
+  // flags, one clean opinion is enough for an allow. All-null means every chunk
+  // failed open or the vendor was down for all of them: no hosted opinion at
+  // all, return null and the caller keeps the deterministic verdict.
+  const blocks = results.filter((v) => v && !v.allowed);
+  if (blocks.length) {
+    const reasons = [...new Set(blocks.flatMap((v) => v.reasons))];
+    const severity = blocks.reduce((acc, v) => worseSeverity(acc, v.severity), "clear");
     return { allowed: false, reasons, severity, source: "hosted" };
-  } catch (e) {
-    // timeout / network / bad JSON: fail OPEN. Log so an outage is visible in
-    // CloudWatch, but never let it break the money flow.
-    console.error(JSON.stringify({ level: "warn", msg: "hosted moderation failed open", err: e?.message }));
-    return null;
-  } finally {
-    if (timer) clearTimeout(timer);
   }
+  if (results.some((v) => v && v.allowed)) {
+    return { allowed: true, reasons: [], severity: "clear", source: "hosted" };
+  }
+  return null;
 }
 
 // The Creem provider screen. Creem is our payment provider, and their AI Wrapper
@@ -330,79 +422,108 @@ export async function creemVerdict(fields, config = {}, deps = {}) {
   const fetchFn = deps.fetch || globalThis.fetch;
   // Creem recommends roughly a 5 second timeout with a clean retryable error.
   const timeoutMs = Number(config?.creemTimeoutMs) || 5000;
-  const prompt = [fields?.customIdea, fields?.cvText, fields?.name]
-    .map((v) => String(v ?? ""))
-    .join("\n")
-    .slice(0, 8000); // cap payload; the free-text fields are already clamped upstream
 
-  // A stable external_id ties this screening call to our order record so a Creem
-  // audit can line up "we screened prompt X" with "we generated order X". The
-  // orderId is ideal. We only send the field when we actually have an id, so we
-  // never invent a meaningless one; the screen still works without it.
+  // A stable external_id ties every screening call to our order record so a
+  // Creem audit can line up "we screened prompt X" with "we generated order X".
+  // Every chunk of one order carries the SAME external_id: chunks are parts of
+  // one prompt, not separate prompts, and the audit unit is the order.
   const externalId = fields?.orderId ?? config?.orderId ?? null;
 
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-  try {
-    const r = await fetchFn(endpoint, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        // Creem authenticates with x-api-key, NOT a Bearer header; this is the
-        // key difference from our generic hook's Authorization scheme.
-        "x-api-key": key,
-      },
-      body: JSON.stringify({
-        prompt,
-        ...(externalId != null && externalId !== "" ? { external_id: String(externalId) } : {}),
-      }),
-      ...(controller ? { signal: controller.signal } : {}),
-    });
-    // FAIL CLOSED on any non-2xx (5xx included): a compliance screen that could
-    // not render a clean verdict must BLOCK, never wave the prompt through.
-    if (!r || !r.ok) {
+  // one POST per chunk, fail-closed per chunk, so no part of the text can reach
+  // the model without a Creem opinion on record.
+  const screenChunk = async (prompt) => {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const r = await fetchFn(endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          // Creem authenticates with x-api-key, NOT a Bearer header; this is the
+          // key difference from our generic hook's Authorization scheme.
+          "x-api-key": key,
+        },
+        body: JSON.stringify({
+          prompt,
+          ...(externalId != null && externalId !== "" ? { external_id: String(externalId) } : {}),
+        }),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      // FAIL CLOSED on any non-2xx (5xx included): a compliance screen that could
+      // not render a clean verdict must BLOCK, never wave the prompt through.
+      if (!r || !r.ok) {
+        return {
+          allowed: false,
+          reasons: [`creem moderation unavailable (status ${r?.status ?? "none"}); blocked fail-closed`],
+          severity: "high",
+          source: "creem",
+          creem: "blocked",
+        };
+      }
+      const data = await r.json();
+      // Read ONLY `decision`; ignore any other (experimental) fields rather than
+      // failing on them. Normalize so unexpected casing/whitespace cannot sneak an
+      // unrecognized value past as "allow".
+      const decision = String(data?.decision ?? "").trim().toLowerCase();
+      if (decision === "allow") {
+        return { allowed: true, reasons: [], severity: "clear", source: "creem", creem: "allow" };
+      }
+      // flag AND deny both BLOCK, treated identically per Creem's rules. Any other
+      // value (unknown/missing decision) also blocks: fail closed, never assume ok.
+      const known = decision === "flag" || decision === "deny";
       return {
         allowed: false,
-        reasons: [`creem moderation unavailable (status ${r?.status ?? "none"}); blocked fail-closed`],
+        reasons: [known ? `creem moderation ${decision}` : "creem moderation returned an unrecognized decision"],
         severity: "high",
         source: "creem",
-        creem: "blocked",
+        creem: known ? decision : "blocked",
       };
+    } catch (e) {
+      // Timeout (AbortController) / network / bad JSON: FAIL CLOSED. This is the
+      // deliberate opposite of hostedVerdict's catch, which returns null. Log so an
+      // outage is visible in CloudWatch, and surface a retryable-shaped reason, but
+      // BLOCK the order: an unscreened prompt must not reach the model under Creem.
+      console.error(JSON.stringify({ level: "error", msg: "creem moderation failed closed", err: e?.message }));
+      return {
+        allowed: false,
+        reasons: [`creem moderation error (${e?.message || "timeout"}); blocked fail-closed`],
+        severity: "high",
+        source: "creem",
+        creem: "error",
+      };
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-    const data = await r.json();
-    // Read ONLY `decision`; ignore any other (experimental) fields rather than
-    // failing on them. Normalize so unexpected casing/whitespace cannot sneak an
-    // unrecognized value past as "allow".
-    const decision = String(data?.decision ?? "").trim().toLowerCase();
-    if (decision === "allow") {
-      return { allowed: true, reasons: [], severity: "clear", source: "creem", creem: "allow" };
-    }
-    // flag AND deny both BLOCK, treated identically per Creem's rules. Any other
-    // value (unknown/missing decision) also blocks: fail closed, never assume ok.
-    const known = decision === "flag" || decision === "deny";
+  };
+
+  const results = await pooled(chunkText(briefText(fields)), screenChunk);
+
+  // Merge across chunks, and the ORDER of precedence is load-bearing:
+  //   1. Any flag/deny chunk: a CONFIRMED verdict wins over everything,
+  //      including another chunk's outage, so the block stays TERMINAL
+  //      (isTransientFailure reads the stamp, and flag/deny is never transient).
+  //      "deny" outranks "flag" in the stamp when both appear.
+  //   2. Else any unavailable chunk (blocked/error): the screen could not render
+  //      a clean verdict for the whole text, so FAIL CLOSED, stamped unavailable
+  //      so the pipeline stalls and retries instead of terminally rejecting.
+  //   3. Else every chunk said allow: allow.
+  const verdicts = results.filter((v) => v && (v.creem === "flag" || v.creem === "deny"));
+  if (verdicts.length) {
+    const reasons = [...new Set(verdicts.flatMap((v) => v.reasons))];
     return {
       allowed: false,
-      reasons: [known ? `creem moderation ${decision}` : "creem moderation returned an unrecognized decision"],
+      reasons,
       severity: "high",
       source: "creem",
-      creem: known ? decision : "blocked",
+      creem: verdicts.some((v) => v.creem === "deny") ? "deny" : "flag",
     };
-  } catch (e) {
-    // Timeout (AbortController) / network / bad JSON: FAIL CLOSED. This is the
-    // deliberate opposite of hostedVerdict's catch, which returns null. Log so an
-    // outage is visible in CloudWatch, and surface a retryable-shaped reason, but
-    // BLOCK the order: an unscreened prompt must not reach the model under Creem.
-    console.error(JSON.stringify({ level: "error", msg: "creem moderation failed closed", err: e?.message }));
-    return {
-      allowed: false,
-      reasons: [`creem moderation error (${e?.message || "timeout"}); blocked fail-closed`],
-      severity: "high",
-      source: "creem",
-      creem: "error",
-    };
-  } finally {
-    if (timer) clearTimeout(timer);
   }
+  const outages = results.filter((v) => v && (v.creem === "blocked" || v.creem === "error"));
+  if (outages.length) {
+    const reasons = [...new Set(outages.flatMap((v) => v.reasons))];
+    return { allowed: false, reasons, severity: "high", source: "creem", creem: outages[0].creem };
+  }
+  return { allowed: true, reasons: [], severity: "clear", source: "creem", creem: "allow" };
 }
 
 // TRANSIENT-vs-VERDICT: the distinction the whole recovery path turns on.
