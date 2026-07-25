@@ -126,7 +126,7 @@ export default function Home() {
   return (
     <div>
       <div className="bkhero">
-        <h1 className="bkgreet">What story are we filming today, <em>{who}</em>?</h1>
+        <h1 className="bkgreet">What story are you telling today, <em>{who}</em>?</h1>
 
         <div className={`bkcomposer ${over ? "over" : ""}`} {...dropProps}>
           <input

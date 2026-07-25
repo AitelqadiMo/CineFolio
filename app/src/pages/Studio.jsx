@@ -742,22 +742,22 @@ export default function Studio() {
           </div>
 
           <div className="railsec act paidcard">
-            <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">{ent && ent.freeCutsLeft > 0 ? `filmed by our AI studio · ${ent.freeCutsLeft} of ${ent.freeCutsLimit} free cuts left` : "the studio films it for you · $149, one time"}</span></div></div>
+            <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">{ent && ent.freeCutsLeft > 0 ? `your render credits · ${ent.freeCutsLeft} of ${ent.freeCutsLimit} free left` : "one time, not a subscription · $49 founding"}</span></div></div>
             <ul className="paidlist">
-              <li>Every account holds three free AI cuts, on the studio</li>
-              <li>Bespoke art direction with cinematic motion, built from your resume and photos</li>
-              <li>Your likeness only from the photos you hand us, never generated</li>
+              <li>Every account starts with a free AI render, on us</li>
+              <li>Bespoke art direction with cinematic motion, rendered from your resume and photos</li>
+              <li>Your likeness only from the photos you upload, never generated</li>
               <li>Download-resume built into the delivered portfolio</li>
-              <li>Premieres within 24 hours as a new release · one revision included</li>
+              <li>Lands as a new release, usually within the hour · three director's notes included</li>
             </ul>
-            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>AGENCY EQUIVALENT: $2,000+ AND WEEKS · THE STUDIO: 3 FREE, THEN $149, WITHIN 24 HOURS</div>
-            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the studio: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
+            <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>AGENCY EQUIVALENT: $2,000+ AND WEEKS · CINEFOLIO: RENDER IT YOURSELF, $49 FOUNDING</div>
+            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the render: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn primary" disabled={!ready || !!order} onClick={() => setConfirmCut(true)}>
                 {order ? "DIRECTOR'S CUT ORDERED ✓"
                   : ent === null ? "ORDER THE DIRECTOR'S CUT"
-                  : ent.freeCutsLeft > 0 ? `USE A FREE AI CUT · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT`
-                  : "ORDER THE DIRECTOR'S CUT · $149"}
+                  : ent.freeCutsLeft > 0 ? `USE A FREE AI RENDER · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT`
+                  : "UNLOCK THE DIRECTOR'S CUT · $49 FOUNDING"}
               </button>
             </div>
             {order && (
@@ -819,7 +819,7 @@ export default function Studio() {
 
       <ConfirmDialog
         open={confirmCut}
-        kicker={ent && ent.freeCutsLeft > 0 ? `FREE AI CUT · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT` : "THE DIRECTOR'S CUT · $149 ONE TIME"}
+        kicker={ent && ent.freeCutsLeft > 0 ? `FREE AI RENDER · ${ent.freeCutsLeft} OF ${ent.freeCutsLimit} LEFT` : "THE DIRECTOR'S CUT · $49 FOUNDING, ONE TIME"}
         title="Order your Director's Cut"
         body={`The studio films a bespoke cut for ${profile.name || "you"}: cinematic motion built from your resume${photo ? " and your photos" : ""}, a download-ready resume inside the portfolio, premiere within 24 hours as a new release, one revision included. Delivery lands in My Films and at ${profile.email || q.email || "your email"}.${ent && ent.freeCutsLeft > 0 ? " This one is on the studio." : ""}`}
         confirmLabel="Place the order"
