@@ -9,12 +9,17 @@ import { SplitTitle, Skeleton, friendly, ConfirmDialog, Dialog } from "../ui.jsx
 
 const TABS = [
   { k: "overview", label: "Overview" },
+  { k: "revenue", label: "Revenue" },
   { k: "films", label: "Films" },
   { k: "orders", label: "Orders" },
   { k: "people", label: "People" },
   { k: "inbox", label: "Inbox" },
   { k: "controls", label: "Controls" },
 ];
+
+// Money reads as whole dollars with grouping: 493 -> "$493", 1000 -> "$1,000".
+// One formatter so the bar, the headline, and the ledger never disagree.
+const usd = (n) => `$${Math.round(Number(n) || 0).toLocaleString("en-US")}`;
 
 const COLS = [
   { k: "queued", label: "Queued" },
@@ -38,13 +43,17 @@ function StatusDot({ status }) {
   );
 }
 
-// 30-day bars, no dependencies: the data is the decoration.
-function TrafficBars({ daily, color = "var(--navy)", unit = "view" }) {
+// 30-day bars, no dependencies: the data is the decoration. `fmt`, when given,
+// owns the whole tooltip value (e.g. money as "$99"); without it the bar keeps
+// its original count-noun label ("2 views"), so every existing caller is
+// unchanged.
+function TrafficBars({ daily, color = "var(--navy)", unit = "view", fmt }) {
   const max = Math.max(1, ...daily.map((d) => d.count));
+  const label = (d) => (fmt ? `${d.date} · ${fmt(d.count)}` : `${d.date} · ${d.count} ${unit}${d.count === 1 ? "" : "s"}`);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 84, padding: "10px 2px 0" }}>
       {daily.map((d) => (
-        <div key={d.date} title={`${d.date} · ${d.count} ${unit}${d.count === 1 ? "" : "s"}`}
+        <div key={d.date} title={label(d)}
           style={{ flex: 1, minWidth: 4, height: `${Math.max(3, Math.round((d.count / max) * 100))}%`,
             background: d.count ? color : "var(--line)", borderRadius: "2px 2px 0 0" }} />
       ))}
@@ -67,6 +76,7 @@ export default function Admin() {
     setErr("");
     try {
       if (which === "overview") put("overview", await api.adminStats());
+      if (which === "revenue") put("revenue", await api.adminStats());
       if (which === "films") put("films", await api.adminSites());
       if (which === "orders") {
         const results = await Promise.all(COLS.map((c) => api.adminOrders(c.k).then((r) => [c.k, r.orders]).catch(() => [c.k, []])));
@@ -107,12 +117,17 @@ export default function Admin() {
   };
 
   const ov = data.overview;
+  const rev = data.revenue?.revenue;
   const films = data.films;
   const board = data.orders;
   const people = data.people;
   const inbox = data.inbox;
   const breaker = data.controls;
   const attention = ov ? (ov.orders.human_review || 0) + (ov.orders.dispatch_failed || 0) : 0;
+  // an unclaimed purchase is money taken with nothing delivered: surface the
+  // count on the tab from whichever payload we already loaded (revenue desk or
+  // the overview card, since both carry the same revenue block).
+  const unclaimed = (data.revenue?.revenue || ov?.revenue)?.unclaimed || 0;
 
   return (
     <>
@@ -129,6 +144,7 @@ export default function Admin() {
               padding: "10px 14px", borderBottom: tab === t.k ? "2px solid var(--gold-g)" : "2px solid transparent", marginBottom: -1 }}>
             {t.label}
             {t.k === "orders" && attention > 0 && <b style={{ color: "var(--red-lit)", marginLeft: 6 }}>{attention}</b>}
+            {t.k === "revenue" && unclaimed > 0 && <b style={{ color: "var(--red-lit)", marginLeft: 6 }}>{unclaimed}</b>}
           </button>
         ))}
         <button onClick={() => load(tab, true)} title="Refresh this desk"
@@ -151,6 +167,13 @@ export default function Admin() {
             <div className="metric"><b>{ov.orders.queued + ov.orders.filming}</b><span>Orders in motion</span></div>
             <div className="metric"><b style={{ color: attention ? "var(--red-lit)" : undefined }}>{attention}</b><span>Need attention</span></div>
             <div className="metric"><b>{ov.users.cutsSpent}</b><span>AI cuts spent</span></div>
+          </div>
+          {/* revenue on the overview: the chase is the headline number, and an
+              unclaimed purchase turns the customers metric into a red alarm. */}
+          <div className="metrics">
+            <div className="metric"><b>{usd(ov.revenue?.totalUsd || 0)}<i style={{ fontStyle: "normal", color: "var(--faint)", fontSize: "48%" }}> / {usd(ov.revenue?.goal?.targetUsd || 1000)}</i></b><span>Revenue · toward goal</span></div>
+            <div className="metric"><b>{usd(ov.revenue?.revenue30 || 0)}</b><span>Revenue · 30 days</span></div>
+            <div className="metric"><b style={{ color: unclaimed ? "var(--red-lit)" : undefined }}>{ov.revenue?.payingCustomers || 0}{unclaimed > 0 && <i style={{ fontStyle: "normal", fontSize: "48%", color: "var(--red-lit)" }}> · {unclaimed} unclaimed</i>}</b><span>Paying customers</span></div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 22, alignItems: "start" }}>
@@ -209,6 +232,106 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+          </div>
+        </>
+      ))}
+
+      {/* ================= REVENUE ================= */}
+      {/* The chase: 1000 USD in 30 days. Lead with an honest progress bar, then
+          the headline money, the daily bars, and every real purchase. Zero
+          revenue reads as a true zero, never a blank or an invented number. */}
+      {tab === "revenue" && (!rev ? (
+        <>
+          <Skeleton h={112} style={{ marginBottom: 22 }} />
+          <div className="metrics" style={{ marginBottom: 22 }}><Skeleton h={92} /><Skeleton h={92} /><Skeleton h={92} /></div>
+          <Skeleton h={132} style={{ marginBottom: 22 }} />
+          <Skeleton h={220} />
+        </>
+      ) : (
+        <>
+          {/* unclaimed = money taken, credits never delivered: a customer-facing
+              emergency, so it shouts above everything else on the desk. */}
+          {rev.unclaimed > 0 && (
+            <div style={{ border: "1.5px solid var(--red-lit)", background: "rgba(200, 16, 46, .07)", borderRadius: 14, padding: "16px 18px", marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <i aria-hidden="true" className="recdot" style={{ marginTop: 6 }} />
+              <div>
+                <div style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 17, color: "var(--red-lit)", textTransform: "uppercase", letterSpacing: ".01em" }}>
+                  {rev.unclaimed} unclaimed purchase{rev.unclaimed === 1 ? "" : "s"}
+                </div>
+                <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--navy)", margin: "6px 0 0" }}>
+                  Someone paid and their credits never landed on an account. Find them in the ledger below, match the email to a studio account, and grant the credits by hand. Never leave a paying customer empty-handed.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* progress toward the goal: the bar is honest. A true zero reads as
+              an empty track with the real numbers spelled out beneath it. */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "18px 20px", marginBottom: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div style={mono9}>The chase · 1000 USD in 30 days</div>
+              <div style={{ ...mono9, color: "var(--navy)" }}>{rev.goal.pct}% there</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
+              <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: "clamp(1.8rem, 5vw, 2.8rem)", lineHeight: 1, color: "var(--navy)" }}>{usd(rev.goal.amountUsd)}</b>
+              <span style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: "1.1rem", color: "var(--faint)" }}>/ {usd(rev.goal.targetUsd)}</span>
+            </div>
+            <div style={{ height: 14, borderRadius: 99, background: "var(--line)", overflow: "hidden", position: "relative" }}>
+              <div style={{ height: "100%", width: `${rev.goal.pct}%`, background: rev.goal.pct >= 100 ? "var(--green)" : "var(--gold-g)", borderRadius: 99, transition: "width .5s cubic-bezier(.22,1,.36,1)" }} />
+            </div>
+            <div style={{ ...mono9, marginTop: 10 }}>
+              {rev.goal.amountUsd === 0
+                ? "No revenue yet. The register is armed and every real sale lands here the moment it clears."
+                : rev.goal.pct >= 100
+                  ? "Goal cleared. The chase is won. Every dollar past this is upside."
+                  : `${usd(Math.max(0, rev.goal.targetUsd - rev.goal.amountUsd))} to go`}
+            </div>
+          </div>
+
+          {/* headline money: total (real only), 30-day, paying customers */}
+          <div className="metrics" style={{ marginBottom: 22 }}>
+            <div className="metric"><b>{usd(rev.totalUsd)}</b><span>Total revenue · real money</span></div>
+            <div className="metric"><b>{usd(rev.revenue30)}</b><span>Revenue · last 30 days</span></div>
+            <div className="metric"><b>{rev.payingCustomers}</b><span>Paying customers</span></div>
+          </div>
+
+          {/* the test-mode line: a provider's validation charge is visible and
+              obviously not real money, so nobody mistakes a test for a sale. */}
+          <div style={{ ...mono9, marginBottom: 22, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: rev.testCount ? "var(--gold-g)" : "var(--line)" }} />
+            {rev.testCount > 0
+              ? `${rev.testCount} test-mode purchase${rev.testCount === 1 ? "" : "s"} on the books · provider validation, not real money, excluded from every total above`
+              : "No test-mode purchases · nothing to exclude from the totals"}
+          </div>
+
+          {/* 30-day revenue bars: same dependency-free component as the audience
+              chart, with money in the tooltip instead of a count. */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px", marginBottom: 22 }}>
+            <div style={mono9}>Revenue · last 30 days</div>
+            <TrafficBars daily={rev.daily} color="var(--green)" fmt={usd} />
+          </div>
+
+          {/* the ledger: every recent real purchase, unclaimed ones flagged loud */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", overflow: "hidden" }}>
+            <div style={{ ...mono9, padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
+              <span>Recent purchases</span><b style={{ color: "var(--navy)" }}>{rev.payingCustomers}</b>
+            </div>
+            {rev.recent.length === 0 && <div style={{ ...mono9, padding: 22 }}>No sales yet. When the first one clears, it lands here.</div>}
+            {rev.recent.map((p, i) => (
+              <div key={p.id || i} style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "baseline", padding: "13px 18px", borderTop: "1px solid var(--line)", background: p.claimed ? undefined : "rgba(200, 16, 46, .05)" }}>
+                <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                  <span style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 15, color: "var(--navy)" }}>{p.product || "Purchase"}</span>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.email || "no email on record"}{p.id ? ` · ${p.id}` : ""}
+                  </div>
+                </div>
+                <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 16, color: "var(--green-lit)" }}>{usd(p.amountUsd)}</b>
+                {p.claimed
+                  ? <span style={{ ...mono9, color: "var(--green-lit)" }}><i aria-hidden="true" style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--green)", marginRight: 6 }} />claimed</span>
+                  : <span style={{ ...mono9, color: "var(--red-lit)" }}><i aria-hidden="true" className="recdot" style={{ margin: "0 6px 0 0" }} />unclaimed</span>}
+                <span style={mono9}>{when(p.at)}</span>
+              </div>
+            ))}
           </div>
         </>
       ))}

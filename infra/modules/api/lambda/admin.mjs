@@ -31,17 +31,36 @@ async function scanAll(ctx, type, cap = 5000) {
 
 const byNewest = (a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
 
+// The chase: 1000 USD in 30 days. The goal is a constant so the bar and the
+// backend agree on one number, never two.
+export const REVENUE_GOAL_USD = 1000;
+
+// Read a purchase row's provider order id without assuming the key shape. The
+// original register wrote PK "LSORDER#<id>" with field lsOrderId; the
+// multi-provider register writes PK "PURCHASE#<provider>#<id>" with the same
+// type "purchase". We take the explicit field first, then fall back to the last
+// "#" segment of the PK, so both shapes surface a stable id to the operator.
+function purchaseOrderId(p) {
+  if (p.lsOrderId) return String(p.lsOrderId);
+  if (p.orderId) return String(p.orderId);
+  const pk = String(p.PK || "");
+  const tail = pk.slice(pk.lastIndexOf("#") + 1);
+  return tail || null;
+}
+
 // GET /admin/stats — the platform on one card: people, films, orders,
-// audience. Traffic reads the daily hit counters (GSI1 "HIT") for 30 days.
+// audience, and revenue. Traffic reads the daily hit counters (GSI1 "HIT") for
+// 30 days; revenue reads the "purchase" rows the billing webhook writes.
 export async function stats(event, ctx) {
   const denied = deny(event);
   if (denied) return denied;
-  const [users, sites, waitRow, contacts, hits, ...orderCols] = await Promise.all([
+  const [users, sites, waitRow, contacts, hits, purchases, ...orderCols] = await Promise.all([
     scanAll(ctx, "user"),
     scanAll(ctx, "site"),
     ctx.ddb.get({ PK: "COUNTER", SK: "WAITLIST" }),
     ctx.ddb.query({ IndexName: "GSI1", KeyConditionExpression: "GSI1PK = :p", ExpressionAttributeValues: { ":p": "CONTACT" } }),
     ctx.ddb.query({ IndexName: "GSI1", KeyConditionExpression: "GSI1PK = :p", ExpressionAttributeValues: { ":p": "HIT" } }),
+    scanAll(ctx, "purchase"),
     ...ORDER_STATUSES.map((s) =>
       ctx.ddb.query({ IndexName: "GSI2", KeyConditionExpression: "GSI2PK = :p", ExpressionAttributeValues: { ":p": `STATUS#${s}` } })),
   ]);
@@ -69,6 +88,38 @@ export async function stats(event, ctx) {
   const newest = [...users].sort(byNewest);
   const freshFilms = [...sites].sort(byNewest);
 
+  // ---- revenue: the chase toward 1000 USD ----
+  // Real money and test-mode validation purchases live in the same table with
+  // the same type "purchase"; a provider's validation charge carries
+  // testMode: true. We split them so the goal, the totals, and the daily
+  // series only ever count real money, and the operator still sees that a test
+  // purchase landed (obviously not real money).
+  const realSales = purchases.filter((p) => !p.testMode);
+  const testSales = purchases.filter((p) => p.testMode);
+  const usdOf = (p) => (typeof p.totalUsd === "number" ? p.totalUsd : 0);
+  const totalUsd = realSales.reduce((a, p) => a + usdOf(p), 0);
+  const payingCustomers = realSales.length;
+  const in30 = realSales.filter((p) => String(p.createdAt || "").slice(0, 10) >= since);
+  const revenue30 = in30.reduce((a, p) => a + usdOf(p), 0);
+  // one bucket per day over the same 30-day window as every other curve, summed
+  // in USD (not a count) so the bar height is money, not order volume.
+  const revByDay = {};
+  for (const p of in30) {
+    const d = String(p.createdAt || "").slice(0, 10);
+    if (d) revByDay[d] = (revByDay[d] || 0) + usdOf(p);
+  }
+  const goalPct = REVENUE_GOAL_USD > 0
+    ? Math.min(100, Math.round((totalUsd / REVENUE_GOAL_USD) * 100))
+    : 0;
+  const recentPurchases = [...realSales].sort(byNewest).slice(0, 8).map((p) => ({
+    id: purchaseOrderId(p),
+    product: p.product || null,
+    amountUsd: usdOf(p),
+    email: p.email || null,
+    claimed: !!p.claimed,
+    at: p.createdAt || null,
+  }));
+
   return ok({
     ok: true,
     users: {
@@ -89,6 +140,24 @@ export async function stats(event, ctx) {
       daily: days.map((date) => ({ date, count: daily[date] || 0 })),
       top: Object.entries(pages).map(([page, count]) => ({ page, count }))
         .sort((a, b) => b.count - a.count).slice(0, 8),
+    },
+    revenue: {
+      totalUsd,                 // real money only, test-mode excluded
+      payingCustomers,          // count of real (non-test) purchases
+      revenue30,                // real money in the last 30 days
+      // money per day for the bar chart; count carries USD so TrafficBars,
+      // which reads .count, draws revenue directly with no reshaping.
+      daily: days.map((date) => ({ date, count: revByDay[date] || 0 })),
+      goal: {
+        targetUsd: REVENUE_GOAL_USD,
+        amountUsd: totalUsd,
+        pct: goalPct,
+      },
+      recent: recentPurchases,
+      // every real purchase whose credits never landed, not just the recent
+      // slice: someone paid and got nothing, so the operator must see all of them.
+      unclaimed: realSales.filter((p) => !p.claimed).length,
+      testCount: testSales.length, // provider validation purchases, not real money
     },
     signups: { daily: seriesOf(users, (u) => u.createdAt) },
     premieres: { daily: seriesOf(sites.filter((s) => s.publishedAt), (s) => s.publishedAt) },
