@@ -8,8 +8,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
-import { SplitTitle, Skeleton, friendly } from "../ui.jsx";
+import { SplitTitle, Skeleton, friendly, confetti } from "../ui.jsx";
 import { parseResumeToProfile, EMPTY_PROFILE, mergeProfile } from "../templates/profileParse.js";
+import { printResume, RESUME_LAYOUTS } from "../templates/resume.js";
 import { track, STEP } from "../funnel.js";
 
 const LS_KEY = "cf.portfolioProfile";
@@ -48,6 +49,13 @@ export default function Profile() {
   const [fillNote, setFillNote] = useState("");
   const [saveState, setSaveState] = useState(""); // "studio" | "local" | ""
   const [skillDraft, setSkillDraft] = useState("");
+  // ---------- resume export (the round trip: dossier -> typeset PDF) ----------
+  // Separate from pdfBusy (which is the INCOMING resume reader): this is the
+  // OUTGOING print flow, with its own layout choice and microstates.
+  const [resumeLayout, setResumeLayout] = useState(RESUME_LAYOUTS[0].id);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeNote, setResumeNote] = useState("");
+  const [resumeErr, setResumeErr] = useState("");
   const firstSave = useRef(true);
 
   // ---------- load: studio first, localStorage as the safety net ----------
@@ -186,6 +194,33 @@ export default function Profile() {
   };
   const rmSkill = (i) => set({ skills: profile.skills.filter((_, k) => k !== i) });
 
+  // ---------- export the dossier as a typeset resume PDF ----------
+  // The browser's own print-to-PDF renders the dedicated print view: selectable
+  // text, real links, no bundle cost. resume.js owns the typesetting; here we
+  // only guard the one hard requirement (a name to put on the sheet), drive the
+  // print, and report state honestly. A recruiter never sees a broken skeleton:
+  // resume.js skips every empty section.
+  const exportResume = async () => {
+    setResumeErr(""); setResumeNote("");
+    if (!profile.identity.name.trim()) {
+      setResumeErr("Add your name in Identity first, then export. The rest is optional.");
+      return;
+    }
+    setResumeBusy(true);
+    try {
+      // The dossier IS the print model: resume.js reads identity/story/experience/
+      // skills/certifications/education/languages/links exactly as stored here.
+      await printResume(profile, { layout: resumeLayout });
+      const label = (RESUME_LAYOUTS.find((l) => l.id === resumeLayout) || RESUME_LAYOUTS[0]).label;
+      setResumeNote(`Opened the print dialog for your ${label} resume. Choose "Save as PDF" for a clean, selectable file.`);
+      confetti(); // small applause: the round trip is a genuine delight moment
+    } catch (e) {
+      setResumeErr(friendly(e.message));
+    } finally {
+      setResumeBusy(false);
+    }
+  };
+
   if (!profile) {
     return (
       <>
@@ -219,6 +254,44 @@ export default function Profile() {
       {err && <div className="err" style={{ maxWidth: 720, marginBottom: 16 }}>{err}</div>}
 
       <div className="acctcol" style={{ maxWidth: 720 }}>
+
+        {/* ---------- export: the round trip, dossier -> typeset resume PDF ---------- */}
+        <section className="asec" aria-label="Export resume">
+          <div className="scene-hd">EXPORT RESUME</div>
+          <div className="panel">
+            <p className="dlgtext">The round trip: the Dossier you maintain here becomes a beautifully typeset resume, ready to attach to an application. It prints as a real PDF, selectable text and working links, straight from your browser. Nothing to install.</p>
+
+            <label className="mono" style={{ display: "block", marginTop: 14, marginBottom: 8 }}>Choose a layout</label>
+            <div className="chips" style={{ display: "flex", flexWrap: "wrap", gap: 8 }} role="radiogroup" aria-label="Resume layout">
+              {RESUME_LAYOUTS.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  className={`btn ${resumeLayout === l.id ? "primary" : "ghost"}`}
+                  style={{ padding: "8px 14px", fontSize: 12 }}
+                  aria-pressed={resumeLayout === l.id}
+                  onClick={() => setResumeLayout(l.id)}
+                  title={l.blurb}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+            <p className="dlgtext" style={{ marginTop: 8, fontSize: 12.5 }}>
+              {(RESUME_LAYOUTS.find((l) => l.id === resumeLayout) || RESUME_LAYOUTS[0]).blurb}
+            </p>
+
+            <div className="btnrow" style={{ marginTop: 14 }}>
+              <button type="button" className="btn primary" disabled={resumeBusy} onClick={exportResume}>
+                {resumeBusy ? <span className="spin" /> : null}
+                {resumeBusy ? "OPENING PRINT…" : "Download PDF resume"}
+              </button>
+            </div>
+
+            {resumeNote && <div className="okmsg" style={{ marginTop: 12 }}>{resumeNote}</div>}
+            {resumeErr && <div className="err" style={{ marginTop: 12 }}>{resumeErr}</div>}
+          </div>
+        </section>
 
         {/* ---------- smart-fill ---------- */}
         <section className="asec" aria-label="Resume smart fill">

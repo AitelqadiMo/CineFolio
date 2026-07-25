@@ -7,7 +7,38 @@
 // the Studio live preview). compileBundle() emits a multi-page site: an index
 // whose case-study cards link out, plus one standalone page per case study.
 
+import { buildShareHead, shareAssets, paletteColors } from "./head.js";
+
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// The share/SEO head an index (home) page carries. WHY a helper: every template
+// emits its own <head> in its own skin, so each calls this with its own palette
+// colours and its own share title/description built from the SAME real user data
+// that fills the visible page. Absolute origin comes from head.js's ORIGIN_TOKEN,
+// rewritten by the publisher at publish time (the one place that knows the real
+// address). og:title/description mirror the page's own <title>/description so the
+// card sells exactly what the page shows.
+const indexHead = (p, pal, colors) => buildShareHead(p, pal, {
+  path: "",
+  title: `${p.name} · ${p.headline}`,
+  description: p.summary || p.headline,
+  type: "profile",
+  colors,
+  person: true,
+});
+
+// The share/SEO head a standalone CASE STUDY page carries. WHY separate: a case
+// study must describe ITSELF, not the home page: its own name and its own
+// summary become the card, and og:type is "article". The canonical path is the
+// project's own page so a shared case study previews as that project.
+const caseHead = (p, pal, pr, colors, ctx = {}) => buildShareHead(p, pal, {
+  path: ctx.path || "",
+  title: `${pr.name} · ${p.name}`,
+  description: pr.summary || pr.desc || pr.name,
+  type: "article",
+  colors,
+  person: false,
+});
 
 export const SKILL_BANK = ["aws","azure","gcp","kubernetes","docker","terraform","terragrunt","ansible","jenkins","github actions","gitlab","ci/cd","python","javascript","typescript","react","node","java","go","rust","sql","figma","photoshop","illustrator","after effects","premiere","blender","ui","ux","product design","branding","marketing","seo","sales","copywriting","analytics","excel","notion","prometheus","grafana","linux","agile","scrum","machine learning","ai","data","mongodb","postgres","redis","graphql","next.js","vue","angular","swift","kotlin","flutter","devops","sre","security","photography","film","editing","helm","spark","tableau","salesforce"];
 
@@ -121,7 +152,31 @@ const linkRow = (p, color) => {
   if (p.email) L.push(`<a href="mailto:${esc(p.email)}">Email</a>`);
   return L.join(`<span style="opacity:.4;color:${color}"> / </span>`);
 };
-const CREDIT = `<div style="text-align:center;padding:26px;font-family:monospace;font-size:9px;letter-spacing:.25em;opacity:.55;text-transform:uppercase"><a href="https://cine-folio.vercel.app/?ref=film-badge" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">◈ Cut with CineFolio Studios · Get this look</a></div>`;
+// ---------- the end credit (the "Made with CineFolio" badge) ----------
+// A portfolio is a piece of craft, so its footer badge reads like an END CREDIT,
+// not an ad: a hairline rule, then one small, letter-spaced, monospaced line, the
+// way a film closes on a single card. It is ON by default and removable for free
+// in one click (see Films.jsx); when the owner turns it off, on() is false and
+// this emits nothing at all. Never a paywall, never a nag.
+//
+// It adapts to every film stock: each template passes its OWN resolved text and
+// accent colors (fg, accent), so the credit borrows the page's palette instead of
+// a fixed color that would clash on a light stock or a dark one. The link opens
+// cinefolio.dev with rel="noopener". The mark is muted (low opacity) so it sits
+// under the work, and the accent shows only on the small diamond and on hover.
+const creditBadge = (opts = {}) => {
+  const fg = opts.fg || "currentColor";
+  const accent = opts.accent || fg;
+  return `<footer data-cf-credit style="margin:0;padding:30px 24px;text-align:center;background:transparent">
+<div aria-hidden="true" style="width:38px;height:1px;margin:0 auto 16px;background:${accent};opacity:.5"></div>
+<a href="https://cinefolio.dev/?ref=made-with" target="_blank" rel="noopener" style="display:inline-block;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:9.5px;letter-spacing:.28em;text-transform:uppercase;color:${fg};opacity:.5;text-decoration:none">
+<span style="color:${accent};opacity:.85">&#9672;</span>&nbsp; Made with CineFolio</a>
+</footer>`;
+};
+// credit(on, opts): the badge when the owner leaves it on (the default), or an
+// empty string when they have turned it off. Every template calls this exactly
+// where its page ends, so a disabled badge leaves no trace in the markup.
+const credit = (on, opts) => (on === false ? "" : creditBadge(opts));
 
 // ---------- normalizers: richer optional fields, both new and legacy shapes ----------
 // experience may arrive as parsed {period,title,org,points}, structured
@@ -182,10 +237,12 @@ const noHref = () => "";
 function monolith(p, pal, sec, ctx = {}) {
   const [bg, panel, accent, accent2, text] = pal.vars;
   const caseHref = ctx.caseHref || noHref;
+  const badge = ctx.badge; // undefined -> on by default; false -> owner removed it
   const exp = normExperience(p);
   const photo = p.photo || initialsAvatar(p.name, panel, accent2);
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+${indexHead(p, pal, { bg, panel, accent, accent2, text })}
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Serif:ital@1&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -273,14 +330,16 @@ ${sec.education && (p.education || []).length ? `<section><h2>Training</h2><ul s
 ${sec.certifications !== false && hasCerts(p) ? `<section><h2>Certifications</h2><div class="rr">${p.certifications.map((c) => `<div><b>${esc(c.name)}</b><div class="m">${[c.issuer, c.year].filter(Boolean).map(esc).join(" · ")}</div>${c.url ? `<div style="margin-top:8px"><a href="${/^http/.test(c.url) ? esc(c.url) : "https://" + esc(c.url)}" target="_blank" rel="noopener noreferrer">Credential ↗</a></div>` : ""}</div>`).join("")}</div></section>` : ""}
 ${sec.languages !== false && hasLangObjs(p) ? `<section><h2>Languages</h2><div class="lang">${p.languages.map((l) => `<span>${esc(langLabel(l))}</span>`).join("")}</div></section>` : ""}
 ${sec.contact ? `<footer><div class="mono">CLOSING CREDITS</div><div class="big">Let's make something worth watching.</div><div class="links">${linkRow(p, text)}</div></footer>` : ""}
-${CREDIT}</body></html>`;
+${credit(badge, { fg: text, accent: accent2 })}</body></html>`;
 }
 
 // standalone case-study page in the Monolith skin
-function monolithCase(p, pal, pr, nav) {
+function monolithCase(p, pal, pr, nav, ctx = {}) {
+  const badge = ctx.badge;
   const [bg, panel, accent, accent2, text] = pal.vars;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+${caseHead(p, pal, pr, { bg, panel, accent, accent2, text }, ctx)}
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Serif:ital@1&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -310,7 +369,7 @@ h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:clamp(
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 ${nav ? `<div class="next"><a href="../index.html">← All productions</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
-</div>${CREDIT}</body></html>`;
+</div>${credit(badge, { fg: text, accent: accent2 })}</body></html>`;
 }
 
 /* ================================================================
@@ -319,12 +378,14 @@ ${nav ? `<div class="next"><a href="../index.html">← All productions</a>${nav.
 function editorial(p, pal, sec, ctx = {}) {
   const [paper, ink, accent, soft] = pal.vars;
   const caseHref = ctx.caseHref || noHref;
+  const badge = ctx.badge; // undefined -> on by default; false -> owner removed it
   const exp = normExperience(p);
   const photo = p.photo || initialsAvatar(p.name, ink, paper);
   const n = (i) => String(i + 1).padStart(2, "0");
   let ix = 0;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+${indexHead(p, pal, { bg: paper, panel: ink, accent, accent2: soft, text: ink })}
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -402,14 +463,16 @@ ${sec.education && (p.education || []).length ? `<section><div class="sechead"><
 ${sec.certifications !== false && hasCerts(p) ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Certifications</h2></div><div class="rr2">${p.certifications.map((c) => `<div><b>${esc(c.name)}</b><div class="m">${[c.issuer, c.year].filter(Boolean).map(esc).join(" · ")}</div>${c.url ? `<div style="margin-top:6px"><a href="${/^http/.test(c.url) ? esc(c.url) : "https://" + esc(c.url)}" target="_blank" rel="noopener noreferrer">Credential ↗</a></div>` : ""}</div>`).join("")}</div></section>` : ""}
 ${sec.languages !== false && hasLangObjs(p) ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Languages</h2></div><div class="lang2">${p.languages.map((l) => `<span>${esc(langLabel(l))}</span>`).join("")}</div></section>` : ""}
 ${sec.contact ? `<footer><div class="mono">CORRESPONDENCE</div><div class="big">Start the conversation.</div><div class="mono links" style="margin-top:16px">${linkRow(p, ink)}</div></footer>` : ""}
-</div>${CREDIT}</body></html>`;
+</div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }
 
 // standalone case-study page in the Editorial skin
-function editorialCase(p, pal, pr, nav) {
+function editorialCase(p, pal, pr, nav, ctx = {}) {
+  const badge = ctx.badge;
   const [paper, ink, accent, soft] = pal.vars;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+${caseHead(p, pal, pr, { bg: paper, panel: ink, accent, accent2: soft, text: ink }, ctx)}
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -435,7 +498,7 @@ h1{font-family:'Instrument Serif',serif;font-weight:400;font-size:clamp(2.4rem,7
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 ${nav ? `<div class="next"><a href="../index.html">← All work</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
-</div>${CREDIT}</body></html>`;
+</div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }
 
 /* ================================================================
@@ -444,10 +507,12 @@ ${nav ? `<div class="next"><a href="../index.html">← All work</a>${nav.next ? 
 function terminal(p, pal, sec, ctx = {}) {
   const [bg, green, amber, dim] = pal.vars;
   const caseHref = ctx.caseHref || noHref;
+  const badge = ctx.badge; // undefined -> on by default; false -> owner removed it
   const exp = normExperience(p);
   const bar = (i) => { const f = 9 - (i % 4); return "█".repeat(f) + "░".repeat(10 - f); };
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+${indexHead(p, pal, { bg, panel: bg, accent: green, accent2: amber, text: green })}
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -490,15 +555,17 @@ ${sec.certifications !== false && hasCerts(p) ? `<div><span class="ps">➜ ~</sp
 ${sec.languages !== false && hasLangObjs(p) ? `<div><span class="ps">➜ ~</span> <span class="cmd">locale -a</span></div><div class="out">${p.languages.map((l) => esc(langLabel(l))).join("<br>")}</div>` : ""}
 ${sec.contact ? `<div><span class="ps">➜ ~</span> <span class="cmd">contact --now</span> <span class="cur"></span></div>
 <div class="out">${p.email ? `mail: <a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : "reach out via the links above"}</div>` : ""}
-</main></div>${CREDIT}</body></html>`;
+</main></div>${credit(badge, { fg: green, accent: amber })}</body></html>`;
 }
 
 // standalone case-study page in the Terminal skin
-function terminalCase(p, pal, pr, nav) {
+function terminalCase(p, pal, pr, nav, ctx = {}) {
+  const badge = ctx.badge;
   const [bg, green, amber, dim] = pal.vars;
   const file = "projects/" + (nav ? nav.slug : slugify(pr.name)) + ".md";
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+${caseHead(p, pal, pr, { bg, panel: bg, accent: green, accent2: amber, text: green }, ctx)}
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -528,7 +595,7 @@ ${["role","timeline","tools"].filter((k)=>pr[k]).length ? `<div class="meta">${[
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "problem" : k === "process" ? "process" : "results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 <div class="next"><a href="../index.html">← Back to the film</a>${nav && nav.next ? `<a href="${esc(nav.next.slug)}.html">next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>
-</main></div>${CREDIT}</body></html>`;
+</main></div>${credit(badge, { fg: green, accent: amber })}</body></html>`;
 }
 
 /* ================================================================
@@ -537,11 +604,13 @@ ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class=
 function gallery(p, pal, sec, ctx = {}) {
   const [canvas, ink, accent, soft, rule] = pal.vars;
   const caseHref = ctx.caseHref || noHref;
+  const badge = ctx.badge; // undefined -> on by default; false -> owner removed it
   const exp = normExperience(p);
   const hasPhoto = !!p.photo;
   const photo = p.photo || initialsAvatar(p.name, ink, canvas);
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+${indexHead(p, pal, { bg: canvas, panel: ink, accent, accent2: soft, text: ink })}
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -627,14 +696,16 @@ ${sec.education && (p.education || []).length ? `<section class="wrap"><div clas
 ${sec.certifications !== false && hasCerts(p) ? `<section class="wrap"><div class="shead"><h2>Certifications</h2></div><div class="rr">${p.certifications.map((c) => `<div class="row"><b>${esc(c.name)}</b><div class="m">${[c.issuer, c.year].filter(Boolean).map(esc).join(" · ")}</div>${c.url ? `<div style="margin-top:8px"><a href="${/^http/.test(c.url) ? esc(c.url) : "https://" + esc(c.url)}" target="_blank" rel="noopener noreferrer">Credential</a></div>` : ""}</div>`).join("")}</div></section><div class="hair"></div>` : ""}
 ${sec.languages !== false && hasLangObjs(p) ? `<section class="wrap"><div class="shead"><h2>Languages</h2></div><div class="skl">${p.languages.map((l) => `<span>${esc(langLabel(l))}</span>`).join("")}</div></section><div class="hair"></div>` : ""}
 ${sec.contact ? `<footer class="wrap"><div class="cap">Get in touch</div><div class="big">Let's make something beautiful.</div><div class="links">${linkRow(p, ink)}</div></footer>` : ""}
-${CREDIT}</body></html>`;
+${credit(badge, { fg: ink, accent })}</body></html>`;
 }
 
 // standalone case-study page in the Gallery skin
-function galleryCase(p, pal, pr, nav) {
+function galleryCase(p, pal, pr, nav, ctx = {}) {
+  const badge = ctx.badge;
   const [canvas, ink, accent, soft, rule] = pal.vars;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+${caseHead(p, pal, pr, { bg: canvas, panel: ink, accent, accent2: soft, text: ink }, ctx)}
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Fraunces:opsz,wght@9..144,300;9..144,500&family=Inter:wght@400;500&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -664,7 +735,7 @@ ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 <div class="wrap">
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 ${nav ? `<div class="next"><a href="../index.html">All work</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)}</a>` : ""}</div>` : ""}
-</div>${CREDIT}</body></html>`;
+</div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }
 
 /* ================================================================
@@ -673,6 +744,7 @@ ${nav ? `<div class="next"><a href="../index.html">All work</a>${nav.next ? `<a 
 function bento(p, pal, sec, ctx = {}) {
   const [canvas, tile, accent, ink, muted] = pal.vars;
   const caseHref = ctx.caseHref || noHref;
+  const badge = ctx.badge; // undefined -> on by default; false -> owner removed it
   const exp = normExperience(p);
   const hasPhoto = !!p.photo;
   const photo = p.photo || initialsAvatar(p.name, accent, canvas);
@@ -686,6 +758,7 @@ function bento(p, pal, sec, ctx = {}) {
   if (p.email) linkTiles.push(["Email", "mailto:" + p.email]);
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(p.name)} · ${esc(p.headline)}</title><meta name="description" content="${esc(p.summary || p.headline)}">
+${indexHead(p, pal, { bg: canvas, panel: tile, accent, accent2: muted, text: ink })}
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -750,14 +823,16 @@ ${sec.education && (p.education || []).length ? `<div class="t span3"><div class
 ${sec.languages !== false && hasLangObjs(p) ? `<div class="t span3"><div class="tile-h">Languages</div><div class="chips">${p.languages.map((l) => `<span>${esc(langLabel(l))}</span>`).join("")}</div></div>` : ""}
 ${sec.contact ? `<div class="t span6" style="text-align:center;background:linear-gradient(140deg,${tile},${accent}22)"><div class="cap">Get in touch</div><div class="dsp" style="font-size:clamp(1.5rem,4vw,2.4rem);font-weight:700;margin:10px 0 4px">Let's build something.</div><div style="margin-top:8px">${linkRow(p, ink)}</div></div>` : ""}
 </div>
-<footer>${CREDIT}</footer></body></html>`;
+${credit(badge, { fg: ink, accent })}</body></html>`;
 }
 
 // standalone case-study page in the Bento skin
-function bentoCase(p, pal, pr, nav) {
+function bentoCase(p, pal, pr, nav, ctx = {}) {
+  const badge = ctx.badge;
   const [canvas, tile, accent, ink, muted] = pal.vars;
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(pr.name)} · ${esc(p.name)}</title><meta name="description" content="${esc(pr.summary || pr.desc || pr.name)}">
+${caseHead(p, pal, pr, { bg: canvas, panel: tile, accent, accent2: muted, text: ink }, ctx)}
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -792,7 +867,7 @@ ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 </div>
 <div class="next"><a class="pill" href="../index.html">All projects</a>${nav && nav.next ? `<a class="pill" href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)}</a>` : ""}</div>
-</div>${CREDIT}</body></html>`;
+</div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }
 
 // ---------- registry ----------
@@ -846,33 +921,60 @@ export const TEMPLATES = [
 
 export const DEFAULT_SECTIONS = { about: true, skills: true, experience: true, projects: true, education: true, services: false, testimonials: false, contact: true };
 
+// opts.badge: the "Made with CineFolio" end credit. ON by default; pass false to
+// omit it (the owner turned it off, for free, in Films.jsx). It is a per-render
+// choice so the very next publish reflects the current preference exactly.
 export function compile(templateId, paletteId, profile, opts = {}) {
   const t = TEMPLATES.find((x) => x.id === templateId) || TEMPLATES[0];
   const pal = t.palettes.find((x) => x.id === paletteId) || t.palettes[0];
   const sections = { ...DEFAULT_SECTIONS, ...(opts.sections || {}) };
-  return t.compile(profile, pal, sections);
+  // Single-page compile is the home page (Studio live preview / a direct save):
+  // no caseHref (inline expanders stay). It still carries the full share head so
+  // the moment it is published it has its card. The head's absolute URLs use
+  // ORIGIN_TOKEN, which the publisher rewrites; in the un-published live preview
+  // the token simply stays put, which is fine, because the preview is never crawled.
+  return t.compile(profile, pal, sections, { badge: opts.badge });
 }
 
 // ---------- multi-page bundle compiler ----------
 // files[0] is always index.html: the compile() output, except case-study cards
-// link out to projects/{slug}.html (relative). Then one standalone page per
-// case study (capped at 12), each in its template family's own skin.
+// link out to projects/{slug}.html (relative). Then one standalone page per case
+// study (capped at 12), each in its template family's own skin. Finally the
+// SHARE ASSETS ride in the same files[] list as base64 entries so the existing
+// client publish path forwards them unchanged and the publisher persists them.
 export function compileBundle(templateId, paletteId, profile, opts = {}) {
   const t = TEMPLATES.find((x) => x.id === templateId) || TEMPLATES[0];
   const pal = t.palettes.find((x) => x.id === paletteId) || t.palettes[0];
   const sections = { ...DEFAULT_SECTIONS, ...(opts.sections || {}) };
+  const badge = opts.badge; // undefined -> on by default; false -> owner removed it
 
   const cases = caseStudyList(profile.projects);
   const slugFor = new Map(cases.map(({ pr, slug }) => [pr, slug]));
   const caseHref = (pr) => { const s = slugFor.get(pr); return s ? "projects/" + s + ".html" : ""; };
 
   const files = [];
-  files.push({ path: "index.html", html: t.compile(profile, pal, sections, { caseHref }) });
+  // the index (home) page: its head describes the person; caseHref links cards out.
+  files.push({ path: "index.html", html: t.compile(profile, pal, sections, { caseHref, badge }) });
 
   cases.forEach(({ pr, slug }, i) => {
     const nav = { slug, prev: cases[i - 1] || null, next: cases[i + 1] || null };
-    files.push({ path: "projects/" + slug + ".html", html: t.caseCompile(profile, pal, pr, cases.length > 1 ? nav : { slug }) });
+    const path = "projects/" + slug + ".html";
+    // each case study page describes ITSELF: its own canonical path (ctx.path) so
+    // a shared case study previews as that project, not as the home page.
+    files.push({ path, html: t.caseCompile(profile, pal, pr, cases.length > 1 ? nav : { slug }, { path, badge }) });
   });
 
-  return { files };
+  // The share assets every page's head references, so those URLs actually 200:
+  // the branded favicon always, and the generated og:image card when the user
+  // uploaded no photo (a real photo is its own absolute CDN URL and needs no
+  // stored card). Colours come from the SAME palette mapping the heads used, so
+  // the stored card matches the visitor's skin exactly. They ride in files[] as
+  // { path, content(base64), type }, the shape the publish API already accepts
+  // for assets, so the current client forwards them with no change, and the
+  // publisher writes them into the release. `assets` is also returned separately
+  // for callers (and the verification script) that want them explicitly.
+  const assets = shareAssets(profile, paletteColors(t.id, pal));
+  for (const a of assets) files.push(a);
+
+  return { files, assets };
 }

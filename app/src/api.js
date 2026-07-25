@@ -42,6 +42,7 @@ export const api = {
   takedown: (id) => req(`/sites/${id}`, { method: "DELETE", auth: true }),
   deleteSite: (id) => req(`/sites/${id}/delete`, { method: "POST", auth: true }),
   setShowcase: (id, showcase) => req(`/sites/${id}/showcase`, { method: "POST", body: { showcase }, auth: true }), // owner opt-in/out of the public showcase; returns the persisted flag
+  setBadge: (id, badge) => req(`/sites/${id}/badge`, { method: "POST", body: { badge }, auth: true }), // owner turns the "Made with CineFolio" end credit on/off (on by default, free to remove); returns the persisted flag
 
   media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
   mediaDirect: (contentType, dataBase64) => req("/media/direct", { method: "POST", body: { contentType, dataBase64 }, auth: true }), // CORS-immune fallback

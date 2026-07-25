@@ -37,6 +37,13 @@ export default function Films() {
   const [showcaseOn, setShowcaseOn] = useState({}); // siteId -> boolean (confirmed)
   const [showcaseBusy, setShowcaseBusy] = useState(null); // siteId currently writing
   const [confirmShowcase, setConfirmShowcase] = useState(null); // site pending an ON confirm
+  // The "Made with CineFolio" end credit, tracked per film. Unlike the showcase
+  // flag this defaults ON, so we seed from the server's `badge` (true unless the
+  // owner stored false) and, like the showcase toggle, only ever hold a value the
+  // SERVER confirmed: every toggle reconciles to the persisted flag and rolls
+  // back visibly on failure. Turning it OFF is one click, free, and immediate.
+  const [badgeOn, setBadgeOn] = useState({}); // siteId -> boolean (confirmed)
+  const [badgeBusy, setBadgeBusy] = useState(null); // siteId currently writing
   const cheered = useRef(false);
   const kebabRef = useRef(null);
 
@@ -49,6 +56,14 @@ export default function Films() {
     setShowcaseOn((cur) => {
       const next = { ...cur };
       for (const s of r.sites || []) if (!(s.siteId in next)) next[s.siteId] = s.showcase === true;
+      return next;
+    });
+    // seed the end-credit flag from server truth, defaulting ON (the badge shows
+    // unless the owner explicitly stored false). A value confirmed this session
+    // is kept, so a reload-free reconcile never regresses.
+    setBadgeOn((cur) => {
+      const next = { ...cur };
+      for (const s of r.sites || []) if (!(s.siteId in next)) next[s.siteId] = s.badge !== false;
       return next;
     });
   }).catch((e) => setErr(friendly(e.message)));
@@ -135,6 +150,30 @@ export default function Films() {
     else setConfirmShowcase(site);
   };
 
+  // Set the "Made with CineFolio" end-credit flag. Optimistic, same shape as
+  // applyShowcase: flip now, reconcile to the server's persisted flag, roll back
+  // visibly on failure. There is NO confirmation dialog in either direction: the
+  // badge is on by default and removing it is a single click, free and immediate,
+  // exactly as promised. Turning it back on is just as frictionless.
+  const applyBadge = async (site, next) => {
+    const prev = badgeOn[site.siteId] !== false;
+    setErr(""); setBadgeBusy(site.siteId);
+    setBadgeOn((m) => ({ ...m, [site.siteId]: next })); // optimistic
+    try {
+      const r = await api.setBadge(site.siteId, next);
+      setBadgeOn((m) => ({ ...m, [site.siteId]: r.badge !== false })); // reconcile to server truth
+    } catch (e) {
+      setBadgeOn((m) => ({ ...m, [site.siteId]: prev })); // visible rollback
+      setErr(friendly(e.message));
+    } finally {
+      setBadgeBusy(null);
+    }
+  };
+  const toggleBadge = (site) => {
+    if (badgeBusy) return;
+    applyBadge(site, !(badgeOn[site.siteId] !== false));
+  };
+
   const copy = (what, text) => { navigator.clipboard?.writeText(text); setCopied(what); setTimeout(() => setCopied(""), 1600); };
   const blurb = (s) => `My portfolio just premiered: ${s.title}. Watch it at https://${s.slug}.cinefolio.dev`;
 
@@ -200,6 +239,27 @@ export default function Films() {
             </b>
             <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
               Lists this film publicly on cinefolio.dev/showcase. Off by default; turn it off any time to remove it.
+            </i>
+          </span>
+        </label>
+      )}
+      {s.status === "live" && (
+        <label className="badgetoggle" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 4px 2px" }}>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={badgeOn[s.siteId] !== false}
+            disabled={badgeBusy === s.siteId}
+            onChange={() => toggleBadge(s)}
+            aria-label={`Show the Made with CineFolio credit on ${s.title || s.slug}`}
+            style={{ marginTop: 3, flex: "0 0 auto" }}
+          />
+          <span style={{ minWidth: 0 }}>
+            <b style={{ display: "block", fontSize: 13 }}>
+              Show the &ldquo;Made with CineFolio&rdquo; credit{badgeBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
+            </b>
+            <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
+              A small end credit at the foot of your site that helps other people find the tool. On by default. Turning it off is free and takes effect the next time you publish this film.
             </i>
           </span>
         </label>

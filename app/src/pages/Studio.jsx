@@ -363,8 +363,13 @@ export default function Studio() {
       const site = editTarget
         ? { site: { siteId: editTarget.siteId, slug: editTarget.slug } }
         : await api.createSite({ slug, title: profile.name });
+      // honor this film's "Made with CineFolio" end-credit preference at publish
+      // time: ON by default (new films and any film whose flag we do not know),
+      // and OFF only when the owner turned it off on the film. This is what makes
+      // turning it off in My Films remove it from the very next publish.
+      const badge = editTarget ? films.find((f) => f.siteId === editTarget.siteId)?.badge !== false : undefined;
       // a premiere ships the whole web app: index plus case-study pages
-      const bundle = compileBundle(tpl, pal, fullProfile, { sections });
+      const bundle = compileBundle(tpl, pal, fullProfile, { sections, badge });
       const r = await api.publish(site.site.siteId, { files: bundle.files, ...(stageMode ? { stage: true } : {}) });
       track(STEP.filmPublished); // funnel: a film went live
       setPub({ slug: site.site.slug, busy: false, done: { ...r, slug: site.site.slug, url: r.url || r.previewUrl } });

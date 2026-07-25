@@ -10,6 +10,8 @@ export const LANDING_HTML = `
     <button data-tab="home" class="on">Home</button>
     <!-- data-tab value stays "services" so the hash router in effects.js keeps working; only the visible label changes to "Plans" to read as software pricing, not a service menu. -->
     <button data-tab="services">Plans</button>
+    <!-- Examples is the product's strongest credibility asset made visible: a top-level nav item is universal among products that take a showcase seriously. data-tab="examples" is added to the router allowlist in effects.js so deep links and the back button work. -->
+    <button data-tab="examples">Examples</button>
     <button data-tab="contact">Contact</button>
   </div>
   <!-- "Open the App" (not "Enter the Studio") so the primary nav CTA reads as launching software, not booking a studio. -->
@@ -204,6 +206,35 @@ export const LANDING_HTML = `
       </div>
       <!-- REAL SOCIAL PROOF PLACEHOLDER: add genuine testimonials or a verified member count here once we have them. Do NOT invent quotes, star ratings, or customer numbers. -->
       <!-- e.g. <div class="testimonials">...real, attributable quotes only...</div> -->
+    </div>
+  </section>
+</main>
+
+<!-- ============ EXAMPLES ============ -->
+<!-- The proof made visible. These are REAL portfolios built with the app and shown
+     with their owners' permission, pulled live from the public GET /showcase endpoint
+     by effects.js. The heading, the honest one-liner and the build-your-own CTA are
+     static markup so the section is never a broken shell: if the fetch fails or returns
+     nothing, this still renders its heading and call to action, and effects.js only ever
+     injects cards for films the API actually returned. No customer name, count or card is
+     ever hard-coded here. -->
+<main data-page="examples">
+  <section class="light" style="min-height:100vh">
+    <div class="inner-wrap pageheadpad">
+      <div class="scene">Examples</div>
+      <h2>Real films, <span class="serif">really shipped.</span></h2>
+      <!-- One honest line stating exactly what these are. -->
+      <p class="smallnote" style="text-align:center;margin:-6px auto 26px;max-width:60ch">REAL PORTFOLIOS BUILT WITH CINEFOLIO, EACH LIVE ON ITS OWN ADDRESS · SHOWN WITH THEIR OWNERS' PERMISSION · NOTHING HERE IS A MOCKUP OR A TEMPLATE SCREENSHOT</p>
+      <!-- effects.js fills #examplesGrid with one .excard per film from GET /showcase.
+           #examplesStatus carries the loading / empty / error line so the grid area is
+           never an empty void. Both start with an honest loading state. -->
+      <div id="examplesStatus" class="smallnote" style="text-align:center;margin-bottom:18px">LOADING LIVE PORTFOLIOS…</div>
+      <div class="exgrid" id="examplesGrid" aria-live="polite"></div>
+      <!-- A clear path to build your own, always shown regardless of what the API returns. -->
+      <div class="cta-row" style="justify-content:center;margin-top:34px">
+        <button class="btn primary magnetic" data-enter>Build your own · first render free</button>
+        <a class="btn ghost magnetic" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live example ↗</a>
+      </div>
     </div>
   </section>
 </main>

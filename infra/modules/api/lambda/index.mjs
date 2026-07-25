@@ -58,6 +58,7 @@ export const ROUTES = {
   "POST /sites/{id}/rollback": sites.rollback,
   "POST /sites/{id}/duplicate": sites.duplicate,
   "POST /sites/{id}/showcase": showcase.setShowcase,
+  "POST /sites/{id}/badge": sites.setBadge,
   "DELETE /sites/{id}": sites.takedown,
   "POST /sites/{id}/delete": sites.deleteSite,
 };

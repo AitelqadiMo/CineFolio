@@ -65,6 +65,11 @@ export default function Editor({ siteId }) {
   const [source, setSource] = useState(null);    // HTML string for code/release view
   const [srcBusy, setSrcBusy] = useState(false);
   const [stats, setStats] = useState(null);
+  // "loading" until the first stats reply lands, then null-or-data. A separate
+  // flag records "the route answered but isn't wired here" so the analytics card
+  // can tell a genuine zero (data arrived, count is 0) apart from a missing
+  // backend, and never draw a skeleton forever.
+  const [statsState, setStatsState] = useState("loading"); // loading | ready | unwired | error
   const [moreTab, setMoreTab] = useState("analytics");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -83,7 +88,15 @@ export default function Editor({ siteId }) {
   useEffect(() => { load(); }, [siteId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    api.siteStats(siteId).then(setStats).catch((e) => { if (notWired(e)) setStats(null); });
+    let live = true;
+    setStatsState("loading"); setStats(null);
+    api.siteStats(siteId)
+      .then((r) => { if (live) { setStats(r); setStatsState("ready"); } })
+      // a fresh account's own film with zero views is NOT an error: the route
+      // returns an honest zero. Only a missing route (notWired) or a real
+      // failure lands here, and each reads distinctly so the card never lies.
+      .catch((e) => { if (live) setStatsState(notWired(e) ? "unwired" : "error"); });
+    return () => { live = false; };
   }, [siteId]);
 
   // AI films: how many messages to the director are left on the order
@@ -109,6 +122,20 @@ export default function Editor({ siteId }) {
 
   const site = data?.site;
   const releases = data?.releases || [];
+
+  // the audience, read straight from the stats route (no fabrication): a fixed
+  // 30-day window of daily page-load counts. `windowDays` and the zero flag drive
+  // an honest label and an honest empty state; nothing here invents a metric the
+  // beacon does not record (no unique visitors, no bounce rate, no per page).
+  const daily = stats?.daily || stats?.series || null;
+  const views30 = typeof stats?.views === "number" ? stats.views : null;
+  const week = typeof stats?.week === "number" ? stats.week : null;
+  const todayViews = typeof stats?.today === "number"
+    ? stats.today
+    : (Array.isArray(daily) && daily.length ? Number(daily[daily.length - 1]?.count ?? 0) : null);
+  const windowDays = typeof stats?.window === "number" ? stats.window : 30;
+  const hasSeries = Array.isArray(daily) && daily.length > 0;
+  const zeroViews = statsState === "ready" && views30 === 0;
   const orders = useMemo(() => ledger.list().filter((o) => !site || (o.name || "").toLowerCase() === (site.title || "").toLowerCase()), [site]);
 
   // the production feed: newest first, built only from real events
@@ -304,7 +331,7 @@ export default function Editor({ siteId }) {
                 <div className="fentry">
                   <div className="fwhen"><span className={`dot ${site.status === "live" ? "green" : site.status === "taken_down" ? "red" : ""}`} />{site.slug}.cinefolio.dev · {String(site.status || "").replace("_", " ").toUpperCase()}</div>
                   <b>{site.title}</b>
-                  <p>{releases.length} release{releases.length === 1 ? "" : "s"} in the vault{typeof (stats?.views ?? stats?.total) === "number" ? ` · seen ${stats.views ?? stats.total} times` : ""}. Every premiere is an atomic pointer flip; rolling back flips it back in seconds.</p>
+                  <p>{releases.length} release{releases.length === 1 ? "" : "s"} in the vault{views30 !== null ? ` · ${views30} view${views30 === 1 ? "" : "s"} in the last ${windowDays} days` : ""}. Every premiere is an atomic pointer flip; rolling back flips it back in seconds.</p>
                   <div className="facts">
                     {site.status === "live" && <a className="flink" href={liveUrl} target="_blank" rel="noopener noreferrer">Watch live ↗</a>}
                     {site.orderId && <button className="flink" style={{ color: "var(--bk-gold)", borderColor: "rgba(217,164,65,.4)" }} onClick={() => setRevising(true)}>◈ AI revision</button>}
@@ -418,18 +445,59 @@ export default function Editor({ siteId }) {
           <div className="morebody">
             {moreTab === "analytics" && (
               <div className="morecard">
-                <div className="mchead">Web traffic<span className="right"><span className="bkchip plain">ALL TIME</span></span></div>
-                <div className="kpirow">
-                  <div className="kpi on"><span>Views</span><b>{typeof (stats?.views ?? stats?.total) === "number" ? (stats.views ?? stats.total) : "—"}</b></div>
-                  <div className="kpi"><span>Visitors</span><b>—</b></div>
-                  <div className="kpi"><span>Views per visit</span><b>—</b></div>
-                  <div className="kpi"><span>Visit duration</span><b>—</b></div>
-                  <div className="kpi"><span>Bounce rate</span><b>—</b></div>
+                <div className="mchead">Audience
+                  <span className="right">
+                    <span className="bkchip plain">LAST {windowDays} DAYS</span>
+                  </span>
                 </div>
-                {stats === null && <div className="nodata">Per-film analytics wire up with the stats route. Until then the live view counter on All films is the source of truth.</div>}
-                {stats !== null && (Array.isArray(stats?.series || stats?.daily) && (stats.series || stats.daily).length
-                  ? <Sparkline data={stats.series || stats.daily} />
-                  : <div className="chartempty" aria-hidden="true"><i style={{ left: 0 }}>launch</i><i style={{ right: 0 }}>today</i></div>)}
+
+                {/* the metric, said plainly: these are page loads the site's
+                    beacon counted, not deduplicated unique visitors. Honesty in
+                    the label beats an impressive number. */}
+                {statsState === "loading" ? (
+                  // skeleton matches the real shape below: three KPI cells, then
+                  // a chart-height block, so nothing jumps when data lands.
+                  <>
+                    <div className="kpirow" aria-hidden="true">
+                      {[0, 1, 2].map((i) => (
+                        <div className="kpi" key={i}><span><span className="statskel" style={{ width: 54 }} /></span><b><span className="statskel" style={{ width: 40, height: 20 }} /></b></div>
+                      ))}
+                    </div>
+                    <div className="sparkwrap" aria-hidden="true"><span className="statskel" style={{ display: "block", width: "100%", height: 240 }} /></div>
+                    <span className="visually-hidden" aria-live="polite">Loading audience…</span>
+                  </>
+                ) : statsState === "error" ? (
+                  <div className="nodata" role="alert">Couldn't load audience right now. It's saved. Try reopening this tab in a moment.</div>
+                ) : statsState === "unwired" ? (
+                  <div className="nodata">Audience wires up with the stats route in this environment. Once it's deployed, every visit to your live link counts here.</div>
+                ) : (
+                  <>
+                    <div className="kpirow">
+                      <div className="kpi on"><span>Views, {windowDays} days</span><b>{views30 ?? "·"}</b></div>
+                      <div className="kpi"><span>Views, this week</span><b>{week ?? "·"}</b></div>
+                      <div className="kpi"><span>Views, today</span><b>{todayViews ?? "·"}</b></div>
+                    </div>
+                    {zeroViews ? (
+                      // an honest zero: real data arrived, the count is genuinely
+                      // 0. Never a fake number, never a spinner. Tell the owner
+                      // exactly when the number will move.
+                      <div className="nodata">
+                        <b style={{ color: "var(--bk-ink)", display: "block", marginBottom: 4 }}>No views yet.</b>
+                        {site?.status === "live"
+                          ? <>Views appear here the moment someone opens your live link. Share it to bring in your first audience.</>
+                          : <>Views appear here once your film is live and people start visiting. Premiere a release to open the doors.</>}
+                        <div style={{ fontSize: 12, marginTop: 8 }}>Counted as page loads (a reload or a return visit each add one), not unique visitors.</div>
+                      </div>
+                    ) : hasSeries ? (
+                      <>
+                        <Sparkline data={daily} />
+                        <div className="nodata" style={{ paddingTop: 0 }}>Page loads counted by your site's beacon over the last {windowDays} days, not deduplicated unique visitors.</div>
+                      </>
+                    ) : (
+                      <div className="nodata">No daily series available for this window yet.</div>
+                    )}
+                  </>
+                )}
               </div>
             )}
             {moreTab === "releases" && (

@@ -272,6 +272,46 @@
 .bkchip.red { color: var(--bk-red); border-color: rgba(230, 57, 70, .4); }
 .bkchip.plain { cursor: default; }
 
+/* ================= public-showcase consent toggle (film card) =================
+   WHY THIS EXISTS: Films.jsx renders inside the dark .backlot shell and marks the
+   consent control with .showcasetoggle plus a native <input type=checkbox
+   role=switch>. That class had NO rule in either stylesheet, so the control fell
+   back to a raw browser checkbox: a tiny pale box that looked broken against the
+   dark chrome and matched none of the card's other actions. This styles the class
+   here, in the sheet scoped to .backlot, so it renders as a real switch that reads
+   as deliberate. It carries every microstate: default, hover, focus, active,
+   disabled, and loading (the .spin beside the label, re-toned for the dark shell). */
+.backlot .showcasetoggle { cursor: pointer; border-top: 1px solid var(--bk-line); margin-top: 12px; }
+.backlot .showcasetoggle b { font-weight: 600; color: var(--bk-ink); }
+/* the switch itself: paint the native checkbox as a track + thumb so it needs no
+   extra markup and stays perfectly in sync with the input's checked/disabled state */
+.backlot .showcasetoggle input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; box-shadow: none; outline: none;
+  position: relative; width: 34px; height: 20px; flex: 0 0 auto; border-radius: 99px;
+  background: var(--bk-card); border: 1px solid var(--bk-line-2); cursor: pointer;
+  transition: background .18s, border-color .18s;
+}
+.backlot .showcasetoggle input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--bk-ink); transition: transform .18s, background .18s;
+}
+/* hover (default = off): lift the track edge, exactly like the kebab/menu hovers */
+.backlot .showcasetoggle input[type="checkbox"]:not(:disabled):hover { border-color: var(--bk-ink); }
+/* focus: the shell's gold focus ring, same as :focus-visible everywhere in .backlot */
+.backlot .showcasetoggle input[type="checkbox"]:focus-visible { outline: 2px solid var(--bk-gold); outline-offset: 2px; }
+/* active: the same tactile press the .bkbtn family uses */
+.backlot .showcasetoggle input[type="checkbox"]:not(:disabled):active::after { width: 17px; }
+/* on: jersey-green track (this film is publicly listed), thumb slides right */
+.backlot .showcasetoggle input[type="checkbox"]:checked { background: var(--bk-green); border-color: var(--bk-green); }
+.backlot .showcasetoggle input[type="checkbox"]:checked::after { transform: translateX(14px); background: #08131f; }
+.backlot .showcasetoggle input[type="checkbox"]:checked:not(:disabled):hover { filter: brightness(1.08); }
+/* disabled + loading: dim and lock while a write is in flight, matching .bkbtn:disabled */
+.backlot .showcasetoggle input[type="checkbox"]:disabled { opacity: .5; cursor: default; }
+.backlot .showcasetoggle:has(input:disabled) { cursor: default; }
+/* the loading .spin sits on the DARK shell; styles.css tones it for the light
+   canvas, so re-tone it here to stay visible against the console chrome */
+.backlot .showcasetoggle .spin { border-color: var(--bk-line-2); border-top-color: var(--bk-gold); vertical-align: middle; }
+
 /* ================= the editor chrome (The Set + film workspace) ================= */
 .edshell { position: fixed; inset: 0; z-index: 50; background: var(--bk-bg); display: flex; flex-direction: column; }
 .edbar {
@@ -572,6 +612,13 @@
 .sparkwrap { padding: 18px 20px; }
 .sparkwrap svg { width: 100%; height: 240px; display: block; }
 .sparkaxis { font-family: var(--mono); font-size: 10px; fill: var(--bk-faint); }
+
+/* audience skeleton: shimmer blocks that match the KPI + chart shape so the
+   card holds its layout while the stats route answers (no spinner, no jump). */
+.statskel { display: inline-block; height: 12px; border-radius: 6px; vertical-align: middle;
+  background: linear-gradient(90deg, var(--bk-bg-2) 25%, var(--bk-card) 50%, var(--bk-bg-2) 75%);
+  background-size: 200% 100%; animation: bkshimmer 1.3s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .statskel { animation: none; } }
 
 /* the locker's resume row */
 .lockerresume { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--bk-line); border-radius: 10px; background: var(--bk-card); }
