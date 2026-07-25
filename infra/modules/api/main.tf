@@ -57,6 +57,7 @@ locals {
   routes = {
     "GET /health"                   = false
     "GET /showcase"                 = false # public proof wall: opted-in live films, no auth
+    "GET /seats"                    = false # public founding counter: the landing's live seats line, no auth
     "POST /waitlist"                = false
     "GET /waitlist/count"           = false
     "POST /contact"                 = false
