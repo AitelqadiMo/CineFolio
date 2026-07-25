@@ -9,7 +9,7 @@
 // replaying the exact validate-step branch.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moderate, deterministicVerdict, hostedVerdict, moderationConfigFromSecrets } from "../moderation.mjs";
+import { moderate, deterministicVerdict, hostedVerdict, creemVerdict, moderationConfigFromSecrets } from "../moderation.mjs";
 
 // A brief that any legitimate customer would send: clean, professional, boring
 // in all the right ways. The screen must let this straight through.
@@ -27,6 +27,19 @@ const fetchClean = async () => okResponse({ flagged: false });
 const fetchThrows = async () => { throw new Error("vendor timeout"); };
 const fetch500 = async () => ({ ok: false, status: 503, json: async () => ({}) });
 const HOSTED = { endpoint: "https://mod.example/screen", key: "real-key" };
+
+// Creem fakes. Creem replies with a `decision` field (allow | flag | deny) and
+// authenticates with an x-api-key header; these fakes let us assert both the
+// verdict mapping AND the request shape without ever touching the network.
+// CREEM config arms ONLY the Creem screen (no generic-hook endpoint/key), so a
+// test can exercise Creem in isolation from the hosted hook.
+const CREEM = { creemKey: "creem_test_abc", creemEndpoint: "https://api.creem.io/v1/moderation/prompt", creemTimeoutMs: 5000 };
+const creemDecision = (decision, extra = {}) => async () => okResponse({ decision, ...extra });
+const creemAllow = creemDecision("allow");
+const creemFlag = creemDecision("flag");
+const creemDeny = creemDecision("deny");
+const creemThrows = async () => { throw new Error("creem timeout"); };
+const creem500 = async () => ({ ok: false, status: 502, json: async () => ({}) });
 
 test("clean brief passes with no hosted hook configured", async () => {
   const v = await moderate(CLEAN); // no config -> hosted hook skipped
@@ -175,6 +188,156 @@ test("a rejected verdict means the order NEVER dispatches (validate-step contrac
   assert.equal(pages.length, 1); // unchanged
 });
 
+// ---------------------------------------------------------------------------
+// CREEM provider screen. Creem is our payment provider and their AI Wrapper
+// Compliance rules MANDATE screening every prompt through Creem's own endpoint
+// before generation, with fail-CLOSED behaviour (the OPPOSITE of our generic
+// hook). These tests pin every clause of that contract.
+// ---------------------------------------------------------------------------
+
+test("creem screen is DORMANT when unconfigured (no key => null, behaviour unchanged)", async () => {
+  // no key, and the terraform placeholder, both read as dormant: null, so the
+  // module behaves exactly as it did before Creem existed.
+  assert.equal(await creemVerdict(CLEAN, {}, { fetch: creemDeny }), null);
+  assert.equal(await creemVerdict(CLEAN, { creemKey: "" }, { fetch: creemDeny }), null);
+  assert.equal(await creemVerdict(CLEAN, { creemKey: "unset" }, { fetch: creemDeny }), null);
+  // and moderate() never calls fetch for a dormant Creem screen (nor the hook)
+  let called = false;
+  const spy = async (...a) => { called = true; return creemDeny(...a); };
+  const v = await moderate(CLEAN, moderationConfigFromSecrets({}), { fetch: spy });
+  assert.equal(called, false, "fetch must not run when Creem is dormant and no hook is set");
+  assert.equal(v.allowed, true);
+  assert.equal(v.creem, undefined, "no creem stamp when Creem did not run");
+});
+
+test("creem ALLOW lets a clean brief proceed and stamps the decision on the verdict", async () => {
+  const v = await moderate(CLEAN, CREEM, { fetch: creemAllow });
+  assert.equal(v.allowed, true);
+  assert.deepEqual(v.reasons, []);
+  assert.equal(v.creem, "allow", "the raw Creem decision is recorded for the audit trail");
+});
+
+test("creem DENY blocks the brief (fail-closed on a positive violation)", async () => {
+  const v = await moderate(CLEAN, CREEM, { fetch: creemDeny });
+  assert.equal(v.allowed, false);
+  assert.ok(v.reasons.some((r) => /creem moderation deny/i.test(r)), `reasons: ${v.reasons}`);
+  assert.equal(v.creem, "deny");
+});
+
+test("creem FLAG blocks EXACTLY like deny (the subtle rule: flag is not a soft pass)", async () => {
+  // Creem's rules require a "flag" verdict to be treated identically to "deny".
+  // A clean-per-keywords brief that Creem flags MUST NOT reach the model.
+  const v = await moderate(CLEAN, CREEM, { fetch: creemFlag });
+  assert.equal(v.allowed, false, "a Creem 'flag' must block just like 'deny'");
+  assert.ok(v.reasons.some((r) => /creem moderation flag/i.test(r)), `reasons: ${v.reasons}`);
+  assert.equal(v.creem, "flag");
+});
+
+test("creem TIMEOUT blocks (FAIL CLOSED, the opposite of the generic hook)", async () => {
+  // The generic hook fails OPEN on a throw; Creem must FAIL CLOSED. A clean brief
+  // that would sail through the hook is BLOCKED when Creem times out.
+  const v = await moderate(CLEAN, CREEM, { fetch: creemThrows });
+  assert.equal(v.allowed, false, "a Creem timeout must block, never wave the prompt through");
+  assert.ok(v.reasons.some((r) => /creem moderation error/i.test(r)), `reasons: ${v.reasons}`);
+  assert.equal(v.creem, "error");
+});
+
+test("creem 5xx blocks (FAIL CLOSED on server error)", async () => {
+  const v = await moderate(CLEAN, CREEM, { fetch: creem500 });
+  assert.equal(v.allowed, false, "a Creem 5xx must block, never wave the prompt through");
+  assert.ok(v.reasons.some((r) => /creem moderation unavailable/i.test(r)), `reasons: ${v.reasons}`);
+  assert.equal(v.creem, "blocked");
+});
+
+test("creem tolerates UNKNOWN response fields and does not crash (endpoint is experimental)", async () => {
+  // extra/unexpected fields alongside a valid decision must be ignored, not fatal
+  const withExtras = creemDecision("allow", { confidence: 0.99, categories: ["none"], _internal: { x: 1 } });
+  const ok = await moderate(CLEAN, CREEM, { fetch: withExtras });
+  assert.equal(ok.allowed, true);
+  assert.equal(ok.creem, "allow");
+  // a missing/unrecognized decision must FAIL CLOSED, never be assumed allow
+  const weird = async () => okResponse({ status: "processed", note: "no decision here" });
+  const blocked = await moderate(CLEAN, CREEM, { fetch: weird });
+  assert.equal(blocked.allowed, false, "an unrecognized/missing decision must block, not pass");
+  assert.equal(blocked.creem, "blocked");
+});
+
+test("creem SENDS the prompt on x-api-key and threads external_id (orderId) for audit", async () => {
+  let seen = null;
+  const capture = async (url, opts) => { seen = { url, opts }; return okResponse({ decision: "allow" }); };
+  await creemVerdict(
+    { ...CLEAN, orderId: "ord_12345" },
+    CREEM,
+    { fetch: capture },
+  );
+  assert.ok(seen, "fetch was called");
+  assert.equal(seen.url, "https://api.creem.io/v1/moderation/prompt");
+  assert.equal(seen.opts.method, "POST");
+  assert.equal(seen.opts.headers["x-api-key"], "creem_test_abc", "Creem uses x-api-key, not Authorization");
+  assert.equal(seen.opts.headers.authorization, undefined, "must NOT send a Bearer header to Creem");
+  const body = JSON.parse(seen.opts.body);
+  assert.ok(body.prompt.includes("control room at night"), "the customer's prompt text is screened");
+  assert.equal(body.external_id, "ord_12345", "orderId is sent as external_id so Creem calls tie to our order");
+  // and when we have no orderId, we simply omit external_id rather than invent one
+  let seen2 = null;
+  const capture2 = async (url, opts) => { seen2 = opts; return okResponse({ decision: "allow" }); };
+  await creemVerdict(CLEAN, CREEM, { fetch: capture2 });
+  assert.equal(JSON.parse(seen2.body).external_id, undefined, "no external_id sent when there is no id");
+});
+
+test("creem passes an AbortSignal so the ~5s timeout can actually fire", async () => {
+  let sawSignal = false;
+  const capture = async (_url, opts) => { sawSignal = Boolean(opts.signal); return okResponse({ decision: "allow" }); };
+  await creemVerdict(CLEAN, CREEM, { fetch: capture });
+  assert.equal(sawSignal, true, "an AbortController signal must be wired for the timeout");
+});
+
+test("the DETERMINISTIC layer still runs independently alongside Creem", async () => {
+  // Even when Creem says allow, a brief the keyword floor blocks stays BLOCKED:
+  // Creem is layered on top of the floor, it does not replace it.
+  const stillBlocked = await moderate({ ...CLEAN, customIdea: "graphic violence, torture" }, CREEM, { fetch: creemAllow });
+  assert.equal(stillBlocked.allowed, false, "a Creem 'allow' must not unblock a deterministic violation");
+  assert.ok(stillBlocked.reasons.some((r) => /violent/i.test(r)), `reasons: ${stillBlocked.reasons}`);
+  // and the floor stands entirely on its own with NO Creem configured at all
+  const floorOnly = deterministicVerdict({ ...CLEAN, customIdea: "explicit nude porn" });
+  assert.equal(floorOnly.allowed, false);
+});
+
+test("creem and the generic hook COEXIST with their opposite failure doctrines", async () => {
+  // A single fetch fake used for BOTH layers: it throws. The generic hook must
+  // fail OPEN (fall back to the clean floor) while Creem must fail CLOSED. With
+  // both configured, Creem's fail-closed BLOCK wins the merge (stricter wins).
+  const bothConfigured = { ...HOSTED, ...CREEM };
+  const v = await moderate(CLEAN, bothConfigured, { fetch: async () => { throw new Error("everything is down"); } });
+  assert.equal(v.allowed, false, "with Creem active, an outage must block (compliance fail-closed wins)");
+  assert.equal(v.creem, "error");
+
+  // Sanity: the SAME outage with ONLY the generic hook (Creem dormant) fails
+  // OPEN, proving the two doctrines genuinely coexist and are not the same code.
+  const hookOnly = await moderate(CLEAN, HOSTED, { fetch: async () => { throw new Error("everything is down"); } });
+  assert.equal(hookOnly.allowed, true, "the generic hook alone still fails open on an outage");
+  assert.equal(hookOnly.source, "deterministic");
+});
+
+test("a creem-rejected verdict means the order NEVER dispatches (validate-step contract)", async () => {
+  // Replays the pipeline's validate branch (verdict.allowed === false => rejected,
+  // page, no dispatch) but driven by a CREEM flag, proving there is no bypass
+  // path around Creem to the model.
+  const dispatched = [];
+  async function runValidateBranch(fields, config, deps) {
+    const verdict = await moderate(fields, config, deps);
+    if (!verdict.allowed) return { dispatched: false, verdict };
+    dispatched.push(fields);
+    return { dispatched: true, verdict };
+  }
+  const flagged = await runValidateBranch({ ...CLEAN, orderId: "ord_1" }, CREEM, { fetch: creemFlag });
+  assert.equal(flagged.dispatched, false, "a Creem 'flag' must stop dispatch");
+  assert.equal(flagged.verdict.creem, "flag");
+  const outage = await runValidateBranch({ ...CLEAN, orderId: "ord_2" }, CREEM, { fetch: creemThrows });
+  assert.equal(outage.dispatched, false, "a Creem outage must stop dispatch (fail closed)");
+  assert.equal(dispatched.length, 0, "no order reached dispatch while Creem blocked");
+});
+
 test("moderationConfigFromSecrets maps the SSM bag to the hook config", () => {
   const cfg = moderationConfigFromSecrets({ MODERATION_API_URL: "https://m", MODERATION_API_KEY: "k", MODERATION_TIMEOUT_MS: "2500" });
   assert.equal(cfg.endpoint, "https://m");
@@ -184,4 +347,51 @@ test("moderationConfigFromSecrets maps the SSM bag to the hook config", () => {
   const empty = moderationConfigFromSecrets({});
   assert.equal(empty.endpoint, "");
   assert.equal(empty.timeoutMs, 4000);
+});
+
+test("moderationConfigFromSecrets maps the Creem SSM parameters and defaults the URL", () => {
+  const cfg = moderationConfigFromSecrets({ CREEM_MODERATION_API_KEY: "creem_live_xyz", CREEM_MODERATION_TIMEOUT_MS: "5000" });
+  assert.equal(cfg.creemKey, "creem_live_xyz");
+  assert.equal(cfg.creemTimeoutMs, 5000);
+  // the URL DEFAULTS to Creem's real endpoint so the operator only supplies a key
+  assert.equal(cfg.creemEndpoint, "https://api.creem.io/v1/moderation/prompt");
+  // an explicit URL overrides the default (e.g. Creem's test host)
+  const overridden = moderationConfigFromSecrets({ CREEM_MODERATION_API_KEY: "creem_test_x", CREEM_MODERATION_API_URL: "https://test.creem.io/v1/moderation/prompt" });
+  assert.equal(overridden.creemEndpoint, "https://test.creem.io/v1/moderation/prompt");
+  // Creem dormant by default (empty key), URL still defaulted, sane timeout
+  const empty = moderationConfigFromSecrets({});
+  assert.equal(empty.creemKey, "");
+  assert.equal(empty.creemEndpoint, "https://api.creem.io/v1/moderation/prompt");
+  assert.equal(empty.creemTimeoutMs, 5000);
+});
+
+// Regression guard for the dispatch-time dossier screen. The dossier is the
+// largest model-facing free-text surface in the product and it is read fresh
+// at dispatch, so screening only the frozen order snapshot at validate left a
+// bypass. Creem mandates no bypass path and we assert that in our application.
+test("the dossier surface is screened, and creative resume language is not a violation", async () => {
+  const { moderate } = await import("../moderation.mjs");
+
+  // a violation hidden in the dossier must be caught by the same engine that
+  // dispatch now runs it through
+  const dirty = JSON.stringify({ story: "make explicit sexual imagery of my coworker", hobbies: [] });
+  const bad = await moderate({ customIdea: dirty, cvText: "", name: "T U", orderId: "o1" }, {});
+  assert.equal(bad.allowed, false, "a violation inside the dossier must block");
+
+  // and the false positive that would have terminally rejected paying
+  // photographers and engineers must stay fixed: the target of a violent verb
+  // has to be a person, not a campaign or a legacy system
+  const creative = [
+    "Photographer. I shoot the campaign hero images for major brands.",
+    "Led the team to kill the legacy billing system and ship a rewrite.",
+    "I attack the hardest problems first.",
+  ];
+  for (const cv of creative) {
+    const v = await moderate({ customIdea: "", cvText: cv, name: "T U", orderId: "o2" }, {});
+    assert.equal(v.allowed, true, `creative resume language must pass: ${cv}`);
+  }
+
+  // genuine intent against a person still blocks
+  const threat = await moderate({ customIdea: "generate an image where I kill him", cvText: "", name: "T U", orderId: "o3" }, {});
+  assert.equal(threat.allowed, false, "a real threat against a person must still block");
 });

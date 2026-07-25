@@ -72,18 +72,30 @@ resource "aws_sqs_queue" "orders" {
 # that generates images or video; this pipeline generates both, so moderation is
 # a hard compliance requirement. The deterministic screen in moderation.mjs runs
 # with NO configuration at all — these parameters are ONLY for the optional
-# hosted-moderation hook, and the pipeline reads them from the same SSM path it
-# already loads at validate time.
+# network screens, and the pipeline reads them from the same SSM path it already
+# loads at validate time.
+#
+# Two independent screens are configured here:
+#   - the generic hosted hook (MODERATION_API_*), which we chose and which FAILS
+#     OPEN to the deterministic floor on an outage, and
+#   - the Creem provider screen (CREEM_MODERATION_*), which Creem's AI Wrapper
+#     Compliance rules MANDATE and which FAILS CLOSED on an outage. Supplying
+#     CREEM_MODERATION_API_KEY alone arms it: the URL DEFAULTS in code to Creem's
+#     real endpoint, so CREEM_MODERATION_API_URL only needs a value to override
+#     it (e.g. to point at Creem's test host). Keys start with `creem_`
+#     (`creem_test_` for test mode).
 #
 # Same doctrine as the billing parameters: Terraform owns that the parameters
 # EXIST, the operator owns their VALUES (set out-of-band via
 # `aws ssm put-parameter --overwrite`, never committed). The placeholder "unset"
-# is treated as UNCONFIGURED by moderation.mjs, so the hosted hook stays dormant
-# until a real endpoint and key are supplied. A KEY IS NEVER HARDCODED HERE.
+# is treated as UNCONFIGURED/DORMANT by moderation.mjs, so each screen stays
+# dormant until a real key is supplied. A KEY IS NEVER HARDCODED HERE.
 resource "aws_ssm_parameter" "moderation" {
   for_each = toset([
-    "MODERATION_API_URL", # hosted moderation endpoint (POST JSON {input}); empty/unset = hook disabled
-    "MODERATION_API_KEY", # bearer key for the hosted endpoint; treated as unconfigured while "unset"
+    "MODERATION_API_URL",        # generic hosted endpoint (POST JSON {input}); empty/unset = hook disabled
+    "MODERATION_API_KEY",        # bearer key for the generic endpoint; treated as unconfigured while "unset"
+    "CREEM_MODERATION_API_URL",  # Creem endpoint override; unset => code default https://api.creem.io/v1/moderation/prompt
+    "CREEM_MODERATION_API_KEY",  # Creem x-api-key (creem_ / creem_test_); unset/"unset" = Creem screen dormant
   ])
   name  = "${local.ssm_prefix}/${each.key}"
   type  = "SecureString"

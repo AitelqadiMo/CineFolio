@@ -10,6 +10,7 @@ import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly, Dialog, PromptDialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
+import { track, STEP } from "../funnel.js";
 
 const LS_ORDERS_URL = "https://app.lemonsqueezy.com/my-orders";
 const STATUS_CLASS = { ready: "live", queued: "queued", filming: "filming", dispatch_failed: "dispatch_failed", human_review: "human_review", preview_only: "draft" };
@@ -39,6 +40,7 @@ export default function Account() {
   const [cnameFor, setCnameFor] = useState(null);    // { site, domain } | null
 
   useEffect(() => {
+    track(STEP.pricingView); // funnel: the register / pricing surface was seen
     api.me()
       .then((r) => { setForm({ name: r.user.name || "", company: r.user.company || "", links: r.user.links || "" }); })
       .catch((e) => setErr(friendly(e.message)));
@@ -77,6 +79,7 @@ export default function Account() {
   const goFounding = async () => {
     setErr(""); setCheckingOut(true);
     try {
+      track(STEP.checkoutClick); // funnel: buyer sent to Lemon Squeezy checkout
       const c = await api.billingCheckout();
       watchForCredits();
       window.open(c.url, "_blank", "noopener");

@@ -23,9 +23,14 @@ export function safeEqual(a, b) {
 export const isEmail = (e) => typeof e === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 254;
 export const clampStr = (s, n) => String(s ?? "").slice(0, n);
 
-// ---- pricing v3 (single source of truth; keep the landing + terms copy in lockstep) ----
-export const CUT_PRICE = 99;        // The Director's Cut: one-time, mints DC_CREDITS productions
-export const COACH_PRICE = 295;     // The Coach's Slate: one-time 7-pack for coaches/agencies
+// ---- pricing v4 (single source of truth; keep the landing + terms copy in lockstep) ----
+// v4 retires the Coach's Slate and opens a founding window: the first
+// FOUNDING_SEATS buyers of the Director's Cut pay FOUNDING_PRICE, everyone
+// after pays CUT_PRICE. The tier does not change (same DC_CREDITS, same
+// entitlement); only the price the buyer sees while seats remain.
+export const CUT_PRICE = 99;        // The Director's Cut: one-time, mints DC_CREDITS productions (post-founding price)
+export const FOUNDING_PRICE = 49;   // founding price for the first FOUNDING_SEATS Director's Cut buyers
+export const FOUNDING_SEATS = 20;   // how many founding seats exist before the price returns to CUT_PRICE
 export const DC_CREDITS = 3;        // production credits per Director's Cut purchase
 export const NEW_FREE_CUTS = 1;     // free AI films for accounts created from pricing v3 on
 export const LEGACY_FREE_CUTS = 3;  // earlier accounts keep the three they were promised
@@ -45,11 +50,33 @@ export function publishSlots(profile) {
   return profile?.freeCutsLimit ?? LEGACY_FREE_CUTS;
 }
 
+// founding seats remaining, given the running count of founding purchases made
+// so far. Kept pure and defensive: a non-finite or negative count is untrusted
+// input, so we clamp to the [0, FOUNDING_SEATS] range rather than surface a lie.
+export function foundingSeatsLeftFrom(foundingSoldCount) {
+  const sold = Number(foundingSoldCount);
+  if (!Number.isFinite(sold)) return null;
+  return Math.max(0, FOUNDING_SEATS - Math.max(0, Math.floor(sold)));
+}
+
 // ONE authoritative entitlement snapshot. /me, order responses (200 and 402
-// alike), and the console's shared store all speak exactly this shape — no
+// alike), and the console's shared store all speak exactly this shape; no
 // surface computes its own version of the truth.
-export function entitlementOf(i = {}) {
+//
+// foundingSeatsLeft/foundingPrice are honest by construction. The seat count is
+// a GLOBAL fact (how many founding buyers have paid), which this pure snapshot
+// cannot read on its own without an AWS import. So a caller that already holds
+// the running count (the webhook keeps a real COUNTER/FOUNDING row, an O(1)
+// GetItem) passes it in as foundingSeatsLeft and we surface the true number;
+// a caller that does not know it passes nothing and we return null. Never a
+// fabricated number; the console shows no seat counter rather than a fake one.
+export function entitlementOf(i = {}, foundingSeatsLeft = null) {
   const limit = i.freeCutsLimit ?? LEGACY_FREE_CUTS;
+  // null seats-left means "unknown here" -> hold the founding price open, since
+  // the window is open far more often than not; the checkout handler, which
+  // does read the counter, is the authority that actually charges the right price.
+  const seatsLeft = Number.isFinite(foundingSeatsLeft) ? foundingSeatsLeft : null;
+  const foundingOpen = seatsLeft === null ? true : seatsLeft > 0;
   return {
     plan: i.plan || "free",
     aiCuts: i.aiCuts || 0,
@@ -57,6 +84,8 @@ export function entitlementOf(i = {}) {
     freeCutsLimit: limit,
     paidCredits: i.paidCredits || 0,
     publishSlots: publishSlots(i),
+    foundingSeatsLeft: seatsLeft,
+    foundingPrice: foundingOpen ? FOUNDING_PRICE : CUT_PRICE,
   };
 }
 

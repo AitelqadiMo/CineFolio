@@ -4,29 +4,48 @@
 // our pipeline generates both, so this file is a compliance hard-requirement,
 // not a nicety: an unscreened generation product cannot be approved.
 //
-// Two layers, by design:
+// Three layers, by design:
 //   1. DETERMINISTIC layer (always runs): a keyword + regex screen with zero
 //      dependencies and zero network cost. It works offline, in a cold Lambda,
 //      and during any provider outage, so there is ALWAYS a moderation verdict
 //      on record even when nothing else is reachable. This is the floor.
-//   2. HOSTED layer (optional): an SSM-configured moderation endpoint. It only
-//      runs when both the endpoint and the key are present. It exists to catch
-//      what a keyword screen cannot (paraphrase, obfuscation, novel harms).
+//   2. HOSTED layer (optional): an SSM-configured, VENDOR-GENERIC moderation
+//      endpoint. It only runs when both the endpoint and the key are present. It
+//      exists to catch what a keyword screen cannot (paraphrase, obfuscation,
+//      novel harms) when we point it at some vendor of our own choosing.
+//   3. CREEM layer (optional, but compliance-grade when on): Creem is our
+//      payment provider, and their AI Wrapper Compliance rules MANDATE that
+//      every prompt routed to an image/video model is screened through CREEM'S
+//      OWN moderation endpoint before generation. It runs when its own SSM key
+//      is present, calls Creem's documented endpoint, and treats a "flag" verdict
+//      exactly like "deny". This is a first-class provider screen, NOT a
+//      replacement for the deterministic floor: both still run.
 //
-// The two layers have DELIBERATELY OPPOSITE failure doctrines, and the reason
+// The layers have DELIBERATELY DIFFERENT failure doctrines, and the reason
 // matters for revenue and for safety both:
-//   - The hosted call FAILS OPEN to the deterministic verdict. A moderation
-//     vendor outage, timeout, or 5xx must never brick a paid order. The money
-//     flow survives on the deterministic floor, exactly like mail and the other
-//     side effects in this codebase fail soft.
-//   - BUT a hosted call that returns a POSITIVE violation FAILS CLOSED: we
-//     reject. This is the one deliberate exception to the fail-soft doctrine.
-//     A confirmed content violation MUST block dispatch; letting a flagged
-//     brief through to an image/video generator is the exact failure the
-//     provider requirement exists to prevent, so here "soft" is not an option.
+//   - The generic HOSTED call FAILS OPEN to the deterministic verdict. A
+//     moderation vendor outage, timeout, or 5xx must never brick a paid order.
+//     The money flow survives on the deterministic floor, exactly like mail and
+//     the other side effects in this codebase fail soft. We CHOSE this hook, so
+//     an outage of it is our problem to absorb, not the paying customer's.
+//   - The CREEM call FAILS CLOSED. This is the deliberate OPPOSITE of the hook
+//     above, and it is not a style choice: Creem compliance requires that a
+//     timeout or 5xx BLOCKS generation rather than letting an unscreened prompt
+//     reach the model. When Creem is the active provider, compliance wins over
+//     revenue: we would rather stall a paid order than ship an unscreened prompt
+//     and lose payment-provider approval (and therefore ALL revenue). Both
+//     doctrines coexist because each is right for its own layer.
+//   - BOTH the hosted hook and Creem FAIL CLOSED on a POSITIVE violation (a
+//     hosted "flagged", or a Creem "flag"/"deny"): we reject. A confirmed
+//     content violation MUST block dispatch; letting a flagged brief through to
+//     an image/video generator is the exact failure the provider requirement
+//     exists to prevent, so here "soft" is never an option.
 //
 // The verdict shape { allowed, reasons[], severity } is stored on the order row
 // so we can PROVE to a provider reviewer that moderation ran and what it found.
+// When Creem screened the prompt we also stamp the raw Creem decision onto the
+// verdict (verdict.creem = "allow"|"flag"|"deny"|"blocked"|"error") so we can
+// prove PER ORDER, in an audit, that Creem screening actually ran.
 
 // Severity ranking so we can keep the highest signal when several categories
 // trip at once. "clear" is the baseline for an allowed brief.
@@ -108,7 +127,11 @@ const CATEGORIES = [
       /\b(mass\s+shooting|school\s+shooting|massacre|bloodbath)\b/,
       /\b(how\s+to\s+(?:kill|murder|hurt|attack)|instructions?\s+to\s+kill)\b/,
       /\b(graphic\s+violence|brutal\s+killing|execution\s+video)\b/,
-      /\b(kill|murder|assassinate|attack|shoot|stab|bomb)\s+(?:my|the|a|him|her|them)\b/,
+      // Target must be a PERSON, not an object. Our customers are creative
+      // professionals: a photographer writes "I shoot the campaign", an engineer
+      // writes "kill the legacy system". The old pattern matched an object after
+      // the verb and terminally rejected those paid orders as violent content.
+      /\b(kill|murder|assassinate|attack|stab|shoot)\s+(?:him|her|them|someone|somebody|people|a\s+(?:person|man|woman|child)|my\s+(?:boss|ex|neighbou?r|wife|husband))\b/,
     ],
   },
   {
@@ -259,44 +282,195 @@ export async function hostedVerdict(fields, config, deps = {}) {
   }
 }
 
-// The single entry point the pipeline calls. Always runs the deterministic
-// floor; layers the hosted opinion on top when configured. The merge rule is
-// "stricter wins": if EITHER layer blocks, the brief is blocked. That keeps the
-// deterministic block authoritative even when the hosted layer says "clean",
-// and lets the hosted layer add a block the keywords missed.
-export async function moderate(fields, config = {}, deps = {}) {
-  const base = deterministicVerdict(fields);
-  const hosted = await hostedVerdict(fields, config, deps); // null when unconfigured or failed open
+// The Creem provider screen. Creem is our payment provider, and their AI Wrapper
+// Compliance rules MANDATE that every prompt routed to an image/video model is
+// screened through Creem's OWN moderation endpoint before generation. This is a
+// first-class provider screen, layered ON TOP of the deterministic floor, never
+// a replacement for it.
+//
+// Contract, verified from docs.creem.io/api-reference/endpoint/screen-prompt:
+//   POST https://api.creem.io/v1/moderation/prompt
+//   header: x-api-key: <creem_... key>   (test keys start with creem_test_)
+//   body:   { prompt: "<text>", external_id: "<id tying the call to an order>" }
+//   reply:  { decision: "allow" | "flag" | "deny", ... }  (may carry extra fields)
+//
+// Failure doctrine, and WHY it is the OPPOSITE of hostedVerdict above:
+//   - hostedVerdict is a hook WE chose, so it FAILS OPEN: an outage falls back
+//     to the deterministic floor and never bricks a paid order.
+//   - creemVerdict FAILS CLOSED: a timeout, transport error, or 5xx BLOCKS the
+//     order instead of letting an unscreened prompt reach the model. Creem
+//     compliance REQUIRES this, and compliance wins over revenue whenever Creem
+//     is the active provider: an unscreened generation would risk our
+//     payment-provider approval, which would cost us ALL revenue, not one order.
+//     So on any error while configured we return a BLOCKING verdict, not null.
+//   - A "flag" verdict is treated EXACTLY like "deny": both block. Creem marks
+//     the endpoint experimental, so we IGNORE unknown response fields and only
+//     read `decision`; anything that is not a clean "allow" blocks (fail closed).
+//
+// Returns null ONLY when the screen is dormant (no key configured), so behaviour
+// is unchanged until an operator supplies a real Creem key. Otherwise it always
+// returns a verdict carrying a `creem` stamp so the order row proves it ran.
+export async function creemVerdict(fields, config = {}, deps = {}) {
+  const key = config?.creemKey;
+  // Treat the terraform placeholder ("unset"/empty) as DORMANT, mirroring how
+  // the generic hook and the billing handler treat their placeholders: infra
+  // owns that the parameter exists, the operator owns whether it has a real
+  // value. Dormant => null => moderate() behaves exactly as before Creem existed.
+  if (!key || key === "unset") return null;
 
-  if (!hosted) return base; // deterministic floor stands alone
+  const endpoint = config?.creemEndpoint || "https://api.creem.io/v1/moderation/prompt";
+  const fetchFn = deps.fetch || globalThis.fetch;
+  // Creem recommends roughly a 5 second timeout with a clean retryable error.
+  const timeoutMs = Number(config?.creemTimeoutMs) || 5000;
+  const prompt = [fields?.customIdea, fields?.cvText, fields?.name]
+    .map((v) => String(v ?? ""))
+    .join("\n")
+    .slice(0, 8000); // cap payload; the free-text fields are already clamped upstream
 
-  if (!hosted.allowed) {
-    // hosted block wins outright, and we preserve any deterministic reasons too
-    // so the stored verdict shows everything that was seen.
-    const reasons = [...new Set([...base.reasons, ...hosted.reasons])];
+  // A stable external_id ties this screening call to our order record so a Creem
+  // audit can line up "we screened prompt X" with "we generated order X". The
+  // orderId is ideal. We only send the field when we actually have an id, so we
+  // never invent a meaningless one; the screen still works without it.
+  const externalId = fields?.orderId ?? config?.orderId ?? null;
+
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const r = await fetchFn(endpoint, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        // Creem authenticates with x-api-key, NOT a Bearer header; this is the
+        // key difference from our generic hook's Authorization scheme.
+        "x-api-key": key,
+      },
+      body: JSON.stringify({
+        prompt,
+        ...(externalId != null && externalId !== "" ? { external_id: String(externalId) } : {}),
+      }),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    // FAIL CLOSED on any non-2xx (5xx included): a compliance screen that could
+    // not render a clean verdict must BLOCK, never wave the prompt through.
+    if (!r || !r.ok) {
+      return {
+        allowed: false,
+        reasons: [`creem moderation unavailable (status ${r?.status ?? "none"}); blocked fail-closed`],
+        severity: "high",
+        source: "creem",
+        creem: "blocked",
+      };
+    }
+    const data = await r.json();
+    // Read ONLY `decision`; ignore any other (experimental) fields rather than
+    // failing on them. Normalize so unexpected casing/whitespace cannot sneak an
+    // unrecognized value past as "allow".
+    const decision = String(data?.decision ?? "").trim().toLowerCase();
+    if (decision === "allow") {
+      return { allowed: true, reasons: [], severity: "clear", source: "creem", creem: "allow" };
+    }
+    // flag AND deny both BLOCK, treated identically per Creem's rules. Any other
+    // value (unknown/missing decision) also blocks: fail closed, never assume ok.
+    const known = decision === "flag" || decision === "deny";
+    return {
+      allowed: false,
+      reasons: [known ? `creem moderation ${decision}` : "creem moderation returned an unrecognized decision"],
+      severity: "high",
+      source: "creem",
+      creem: known ? decision : "blocked",
+    };
+  } catch (e) {
+    // Timeout (AbortController) / network / bad JSON: FAIL CLOSED. This is the
+    // deliberate opposite of hostedVerdict's catch, which returns null. Log so an
+    // outage is visible in CloudWatch, and surface a retryable-shaped reason, but
+    // BLOCK the order: an unscreened prompt must not reach the model under Creem.
+    console.error(JSON.stringify({ level: "error", msg: "creem moderation failed closed", err: e?.message }));
+    return {
+      allowed: false,
+      reasons: [`creem moderation error (${e?.message || "timeout"}); blocked fail-closed`],
+      severity: "high",
+      source: "creem",
+      creem: "error",
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Fold one provider verdict into the running merged verdict under the same
+// "stricter wins" rule the module has always used: if EITHER side blocks, the
+// brief is blocked, and we keep the union of reasons and the worse severity so
+// the stored row shows everything that was seen. `label` names the layer that
+// contributed a block, so `source` stays meaningful for the audit trail.
+function mergeVerdict(base, layer, label) {
+  if (!layer) return base; // layer dormant or (for the generic hook) failed open
+  if (!layer.allowed) {
+    const reasons = [...new Set([...base.reasons, ...layer.reasons])];
     return {
       allowed: false,
       reasons,
-      severity: worseSeverity(base.severity, hosted.severity),
-      source: base.allowed ? "hosted" : "both",
+      severity: worseSeverity(base.severity, layer.severity),
+      // if the floor was already clean, this layer is the sole blocker; else both
+      source: base.allowed ? label : "both",
     };
   }
-
-  // hosted allowed: the deterministic verdict remains authoritative. If the
-  // floor blocked, we STILL block (stricter wins); otherwise it is clean.
+  // layer allowed: the base remains authoritative (a base block still blocks).
   if (!base.allowed) return base;
-  return { allowed: true, reasons: [], severity: "clear", source: "both" };
+  return { allowed: true, reasons: [], severity: "clear", source: base.source === "deterministic" ? label : "both" };
 }
 
-// Pull the hosted-hook configuration out of the already-loaded SSM secrets bag.
-// The pipeline loads all /cinefolio/<env> parameters once; these two keys ride
+// The single entry point the pipeline calls. Always runs the deterministic
+// floor; layers the optional hosted hook AND the optional Creem provider screen
+// on top when each is configured. The merge rule is "stricter wins": if ANY
+// layer blocks, the brief is blocked. That keeps the deterministic block
+// authoritative even when a layer says "clean", and lets either network layer
+// add a block the keywords missed. The Creem decision, when Creem ran, is
+// stamped onto the returned verdict (verdict.creem) so the order row can PROVE
+// per order that Creem screening happened before any generation.
+export async function moderate(fields, config = {}, deps = {}) {
+  const base = deterministicVerdict(fields);
+
+  // Both network screens are independent of each other and of the floor, so run
+  // them concurrently to keep validate latency to a single ~5s budget, not two.
+  const [hosted, creem] = await Promise.all([
+    hostedVerdict(fields, config, deps), // null when unconfigured OR failed open
+    creemVerdict(fields, config, deps),  // null ONLY when dormant; blocks on error (fail closed)
+  ]);
+
+  // Merge the generic hook first, then Creem, under identical stricter-wins
+  // logic. Order does not change the allow/deny outcome (block is commutative);
+  // it only affects the `source` label when exactly one network layer blocks.
+  let verdict = mergeVerdict(base, hosted, "hosted");
+  verdict = mergeVerdict(verdict, creem, "creem");
+
+  // Stamp the raw Creem decision when Creem actually ran (dormant => no stamp),
+  // so an auditor can confirm per order that the prompt was screened by Creem
+  // before generation, and see exactly what Creem said.
+  if (creem && creem.creem) verdict = { ...verdict, creem: creem.creem };
+  return verdict;
+}
+
+// Pull the moderation configuration out of the already-loaded SSM secrets bag.
+// The pipeline loads all /cinefolio/<env> parameters once; every key below rides
 // in that same bag, so there is no extra SSM round-trip. Kept here so the wiring
 // in pipeline.mjs stays a one-liner and the parameter names live next to the
 // code that reads them.
+//
+// Two independent screens are configured here:
+//   - the generic hosted hook (MODERATION_API_URL / MODERATION_API_KEY), and
+//   - the Creem provider screen (CREEM_MODERATION_API_KEY, with an optional
+//     CREEM_MODERATION_API_URL that DEFAULTS to Creem's real endpoint so an
+//     operator only has to supply the key to turn compliance screening on).
+// Each stays dormant until its own key holds a real value, so adding Creem does
+// not change behaviour for any environment that has not set the Creem key.
 export function moderationConfigFromSecrets(sec = {}) {
   return {
     endpoint: sec.MODERATION_API_URL || "",
     key: sec.MODERATION_API_KEY || "",
     timeoutMs: Number(sec.MODERATION_TIMEOUT_MS) || 4000,
+    // Creem: key alone arms the screen; URL defaults to the documented endpoint.
+    creemKey: sec.CREEM_MODERATION_API_KEY || "",
+    creemEndpoint: sec.CREEM_MODERATION_API_URL || "https://api.creem.io/v1/moderation/prompt",
+    creemTimeoutMs: Number(sec.CREEM_MODERATION_TIMEOUT_MS) || 5000,
   };
 }
