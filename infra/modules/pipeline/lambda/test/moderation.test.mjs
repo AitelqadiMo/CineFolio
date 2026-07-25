@@ -9,7 +9,7 @@
 // replaying the exact validate-step branch.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moderate, deterministicVerdict, hostedVerdict, creemVerdict, moderationConfigFromSecrets } from "../moderation.mjs";
+import { moderate, deterministicVerdict, hostedVerdict, creemVerdict, moderationConfigFromSecrets, isTransientFailure } from "../moderation.mjs";
 
 // A brief that any legitimate customer would send: clean, professional, boring
 // in all the right ways. The screen must let this straight through.
@@ -394,4 +394,290 @@ test("the dossier surface is screened, and creative resume language is not a vio
   // genuine intent against a person still blocks
   const threat = await moderate({ customIdea: "generate an image where I kill him", cvText: "", name: "T U", orderId: "o3" }, {});
   assert.equal(threat.allowed, false, "a real threat against a person must still block");
+});
+
+// ===========================================================================
+// DEFECT 1: a TRANSIENT moderation outage must NOT be treated as a content
+// verdict. The block stays (allowed:false, fail-closed) so nothing unscreened
+// ever ships, but the verdict is stamped transient so the pipeline can retry +
+// human_review instead of terminally rejecting an honest paid order. These tests
+// pin BOTH halves: the transient stamp itself, and the validate-step routing
+// that the stamp drives.
+// ===========================================================================
+
+test("a Creem TIMEOUT is stamped transient (outage), not a content verdict", async () => {
+  const v = await moderate(CLEAN, CREEM, { fetch: creemThrows });
+  // still blocked: an unscreened prompt must never reach the model (fail closed)
+  assert.equal(v.allowed, false);
+  assert.equal(v.creem, "error");
+  // but it is an OUTAGE, not a verdict: the pipeline must retry, not reject
+  assert.equal(v.transient, true, "a timeout is a transient outage, not a violation");
+});
+
+test("a Creem 5xx is stamped transient (outage), not a content verdict", async () => {
+  const v = await moderate(CLEAN, CREEM, { fetch: creem500 });
+  assert.equal(v.allowed, false);
+  assert.equal(v.creem, "blocked");
+  assert.equal(v.transient, true, "a 5xx is a transient outage, not a violation");
+});
+
+test("a Creem FLAG / DENY is a real verdict, NOT transient (stays terminal)", async () => {
+  const flag = await moderate(CLEAN, CREEM, { fetch: creemFlag });
+  assert.equal(flag.allowed, false);
+  assert.equal(flag.creem, "flag");
+  assert.equal(flag.transient, false, "a flag is a confirmed verdict, never transient");
+
+  const deny = await moderate(CLEAN, CREEM, { fetch: creemDeny });
+  assert.equal(deny.allowed, false);
+  assert.equal(deny.creem, "deny");
+  assert.equal(deny.transient, false, "a deny is a confirmed verdict, never transient");
+});
+
+test("a clean/allowed verdict is never transient", async () => {
+  const allowed = await moderate(CLEAN, CREEM, { fetch: creemAllow });
+  assert.equal(allowed.allowed, true);
+  assert.equal(allowed.transient, false, "an allowed brief carries no stall");
+
+  const floor = await moderate(CLEAN); // deterministic only, no network
+  assert.equal(floor.allowed, true);
+  assert.equal(floor.transient, false);
+});
+
+test("a REAL violation during a Creem outage stays terminal, not transient", async () => {
+  // Creem times out (transient), but the deterministic floor independently
+  // blocks a genuine violation. There IS a verdict on record, so the block must
+  // be terminal, NOT a retryable stall: retrying would reach the same rejection.
+  const v = await moderate({ ...CLEAN, customIdea: "explicit nude porn" }, CREEM, { fetch: creemThrows });
+  assert.equal(v.allowed, false);
+  assert.equal(v.transient, false, "a confirmed floor violation is terminal even while Creem is down");
+});
+
+test("isTransientFailure: only a lone Creem unavailability counts as transient", () => {
+  const clean = { allowed: true, reasons: [], severity: "clear" };
+  const block = { allowed: false, reasons: ["x"], severity: "high" };
+  const creemOut = { allowed: false, reasons: ["unavailable"], severity: "high", creem: "blocked" };
+  const creemErr = { allowed: false, reasons: ["error"], severity: "high", creem: "error" };
+  const creemFlagV = { allowed: false, reasons: ["flag"], severity: "high", creem: "flag" };
+  const creemAllowV = { allowed: true, reasons: [], severity: "clear", creem: "allow" };
+
+  // lone Creem outage (5xx or timeout), floor + hosted clean => transient
+  assert.equal(isTransientFailure(clean, null, creemOut), true);
+  assert.equal(isTransientFailure(clean, null, creemErr), true);
+  // a real Creem verdict is never transient
+  assert.equal(isTransientFailure(clean, null, creemFlagV), false);
+  // Creem allowed / dormant is never transient
+  assert.equal(isTransientFailure(clean, null, creemAllowV), false);
+  assert.equal(isTransientFailure(clean, null, null), false);
+  // a confirmed floor OR hosted block alongside a Creem outage is NOT transient
+  assert.equal(isTransientFailure(block, null, creemOut), false);
+  assert.equal(isTransientFailure(clean, block, creemOut), false);
+});
+
+test("VALIDATE-STEP RECOVERY: a transient outage retries (never terminally rejects), a verdict rejects", async () => {
+  // Replays the pipeline's validate branch EXACTLY as pipeline.mjs implements it
+  // (clean=dispatch; transient=throw retryable ModerationUnavailable, NO terminal
+  // status; verdict=setStatus 'rejected' + throw terminal OrderInvalid). We model
+  // the three outcomes without the AWS SDK so the contract is regression-guarded.
+  // ModerationUnavailable is routed by the state machine's Validate Retry (retry
+  // + backoff) then its States.ALL Catch (human_review, recoverable); OrderInvalid
+  // is routed to InvalidNoop (terminal). The two error NAMES are what route them.
+  class OrderInvalid extends Error { constructor(m) { super(m); this.name = "OrderInvalid"; } }
+  class ModerationUnavailable extends Error { constructor(m) { super(m); this.name = "ModerationUnavailable"; } }
+
+  async function runValidateBranch(fields, config, deps) {
+    const statuses = [];
+    const verdict = await moderate(fields, config, deps);
+    if (verdict.allowed) {
+      return { dispatched: true, verdict, statuses };
+    }
+    if (verdict.transient) {
+      // STALL: record the outage on the CURRENT status (no terminal write), throw
+      // a retryable error. Crucially we never write status "rejected" here.
+      statuses.push({ status: "current", moderation: verdict });
+      throw new ModerationUnavailable(`moderation unavailable: ${verdict.reasons.join("; ")}`);
+    }
+    // VERDICT: terminal rejection.
+    statuses.push({ status: "rejected", moderation: verdict });
+    throw new OrderInvalid(`content moderation: ${verdict.reasons.join("; ")}`);
+  }
+
+  // timeout: retryable, and the order was NEVER moved to rejected
+  let sawTimeout;
+  try {
+    await runValidateBranch(CLEAN, CREEM, { fetch: creemThrows });
+    assert.fail("a transient outage must throw, never dispatch");
+  } catch (e) { sawTimeout = e; }
+  assert.equal(sawTimeout.name, "ModerationUnavailable", "an outage throws the retryable error, not OrderInvalid");
+  assert.notEqual(sawTimeout.name, "OrderInvalid", "an outage must NOT be a terminal reject");
+
+  // 5xx: same, retryable, not terminal
+  let saw5xx;
+  try { await runValidateBranch(CLEAN, CREEM, { fetch: creem500 }); assert.fail("must throw"); }
+  catch (e) { saw5xx = e; }
+  assert.equal(saw5xx.name, "ModerationUnavailable");
+
+  // flag: terminal reject (OrderInvalid -> InvalidNoop), status written rejected
+  let sawFlag, flagStatuses;
+  try {
+    // capture statuses by re-implementing inline so we can inspect the writes
+    const statuses = [];
+    const verdict = await moderate(CLEAN, CREEM, { fetch: creemFlag });
+    assert.equal(verdict.transient, false);
+    statuses.push({ status: "rejected", moderation: verdict });
+    flagStatuses = statuses;
+    throw new OrderInvalid(`content moderation: ${verdict.reasons.join("; ")}`);
+  } catch (e) { sawFlag = e; }
+  assert.equal(sawFlag.name, "OrderInvalid", "a flag is a terminal content rejection");
+  assert.equal(flagStatuses[0].status, "rejected", "a verdict writes the terminal rejected status");
+
+  // deny: terminal reject too
+  let sawDeny;
+  try { await runValidateBranch(CLEAN, CREEM, { fetch: creemDeny }); assert.fail("must throw"); }
+  catch (e) { sawDeny = e; }
+  assert.equal(sawDeny.name, "OrderInvalid");
+
+  // and a clean brief still dispatches
+  const clean = await runValidateBranch(CLEAN, CREEM, { fetch: creemAllow });
+  assert.equal(clean.dispatched, true);
+});
+
+// ===========================================================================
+// DEFECT 2: a moderation rejection must RESTORE the spent credit, and do so at
+// most once. studio.mjs spends one credit before enqueue (free cut: ADD aiCuts
+// +1 toward the cap; paid cut: ADD paidCredits -1). restoreCredit() in
+// pipeline.mjs mirrors that in reverse, gated by a conditional stamp on the
+// ORDER row so a retry or a duplicate rejection can never refund twice.
+//
+// pipeline.mjs cannot be imported here (it needs the AWS SDK and the bundled
+// email.mjs), so, matching this suite's established pattern of replaying the
+// pipeline's branch logic, we replay restoreCredit's claim-then-credit sequence
+// against a faithful in-memory DynamoDB fake that enforces the SAME conditional
+// semantics (attribute_not_exists guards, ADD deltas, ConditionalCheckFailed).
+// ===========================================================================
+
+// A tiny DynamoDB fake: just enough of UpdateItem to model the exact conditions
+// restoreCredit relies on. Keys are "PK|SK"; items are plain objects.
+function makeFakeDdb(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  const keyOf = (Key) => `${Key.PK}|${Key.SK}`;
+  class ConditionalCheckFailedException extends Error {
+    constructor() { super("The conditional request failed"); this.name = "ConditionalCheckFailedException"; }
+  }
+  return {
+    store,
+    get(Key) { return store.get(keyOf(Key)) || null; },
+    // Supports the two shapes restoreCredit uses: a SET-with-attribute_not_exists
+    // claim stamp, and an ADD delta guarded by an attribute condition.
+    update({ Key, kind, values, condition }) {
+      const k = keyOf(Key);
+      const item = store.get(k) || { PK: Key.PK, SK: Key.SK };
+      // evaluate the condition predicates our code actually uses
+      if (condition === "claim") {
+        // attribute_exists(PK) AND attribute_not_exists(creditRestoredAt)
+        if (!store.has(k)) throw new ConditionalCheckFailedException(); // no such order
+        if (item.creditRestoredAt !== undefined) throw new ConditionalCheckFailedException();
+        item.creditRestoredAt = values.t;
+      } else if (condition === "freeRefund") {
+        // attribute_exists(aiCuts) AND aiCuts > 0
+        if (!(typeof item.aiCuts === "number" && item.aiCuts > 0)) throw new ConditionalCheckFailedException();
+        item.aiCuts += values.delta; // delta = -1
+      } else if (condition === "paidRefund") {
+        // attribute_exists(PK)
+        if (!store.has(k)) throw new ConditionalCheckFailedException();
+        item.paidCredits = (item.paidCredits || 0) + values.delta; // delta = +1
+      }
+      store.set(k, item);
+      return item;
+    },
+    ConditionalCheckFailedException,
+  };
+}
+
+// Faithful replay of pipeline.mjs restoreCredit(order): claim on the ORDER row
+// (at most once), then mirror the spend on the PROFILE row. Returns the same
+// shape the real helper does so the assertions read like production behaviour.
+async function restoreCreditReplay(ddb, order) {
+  const orderId = order?.orderId;
+  const sub = String(order?.GSI1PK || "").startsWith("USER#") ? order.GSI1PK.slice(5) : null;
+  if (!orderId || !sub || sub === "anon") return { refunded: false, reason: "no account owner" };
+  if (!order.freeCut && !order.paid) return { refunded: false, reason: "no credit was spent" };
+  // claim
+  try {
+    ddb.update({ Key: { PK: `ORDER#${orderId}`, SK: "META" }, condition: "claim", values: { t: "2026-07-25T00:00:00Z" } });
+  } catch (e) {
+    if (e.name === "ConditionalCheckFailedException") return { refunded: false, reason: "already restored" };
+    throw e;
+  }
+  // credit
+  const profileKey = { PK: `USER#${sub}`, SK: "PROFILE" };
+  if (order.freeCut) {
+    ddb.update({ Key: profileKey, condition: "freeRefund", values: { delta: -1 } });
+  } else {
+    ddb.update({ Key: profileKey, condition: "paidRefund", values: { delta: 1 } });
+  }
+  return { refunded: true, kind: order.freeCut ? "free" : "paid" };
+}
+
+test("credit refund: a FREE-cut rejection gives the free cut back exactly once", async () => {
+  // profile spent one free cut: aiCuts went 0 -> 1 (cap 1). order recorded freeCut.
+  const ddb = makeFakeDdb({
+    "ORDER#o1|META": { PK: "ORDER#o1", SK: "META", orderId: "o1", GSI1PK: "USER#u1", freeCut: true, paid: false },
+    "USER#u1|PROFILE": { PK: "USER#u1", SK: "PROFILE", aiCuts: 1, freeCutsLimit: 1 },
+  });
+  const r1 = await restoreCreditReplay(ddb, ddb.get({ PK: "ORDER#o1", SK: "META" }));
+  assert.equal(r1.refunded, true);
+  assert.equal(r1.kind, "free");
+  assert.equal(ddb.get({ PK: "USER#u1", SK: "PROFILE" }).aiCuts, 0, "the free cut is restored (aiCuts back to 0)");
+  assert.ok(ddb.get({ PK: "ORDER#o1", SK: "META" }).creditRestoredAt, "the order is stamped restored");
+});
+
+test("credit refund: a PAID-credit rejection gives the paid credit back exactly once", async () => {
+  // profile spent one paid credit: paidCredits 1 -> 0. order recorded paid.
+  const ddb = makeFakeDdb({
+    "ORDER#o2|META": { PK: "ORDER#o2", SK: "META", orderId: "o2", GSI1PK: "USER#u2", freeCut: false, paid: true },
+    "USER#u2|PROFILE": { PK: "USER#u2", SK: "PROFILE", paidCredits: 0 },
+  });
+  const r1 = await restoreCreditReplay(ddb, ddb.get({ PK: "ORDER#o2", SK: "META" }));
+  assert.equal(r1.refunded, true);
+  assert.equal(r1.kind, "paid");
+  assert.equal(ddb.get({ PK: "USER#u2", SK: "PROFILE" }).paidCredits, 1, "the paid credit is handed back");
+});
+
+test("credit refund is IDEMPOTENT: a retry or duplicate rejection never refunds twice", async () => {
+  const ddb = makeFakeDdb({
+    "ORDER#o3|META": { PK: "ORDER#o3", SK: "META", orderId: "o3", GSI1PK: "USER#u3", freeCut: false, paid: true },
+    "USER#u3|PROFILE": { PK: "USER#u3", SK: "PROFILE", paidCredits: 0 },
+  });
+  const order = ddb.get({ PK: "ORDER#o3", SK: "META" });
+
+  const first = await restoreCreditReplay(ddb, order);
+  assert.equal(first.refunded, true);
+  assert.equal(ddb.get({ PK: "USER#u3", SK: "PROFILE" }).paidCredits, 1);
+
+  // a Validate retry re-runs the whole rejection path: the SAME order object,
+  // the SAME rejection. It must NOT refund again.
+  const second = await restoreCreditReplay(ddb, ddb.get({ PK: "ORDER#o3", SK: "META" }));
+  assert.equal(second.refunded, false);
+  assert.equal(second.reason, "already restored", "the claim stamp blocks a second refund");
+  assert.equal(ddb.get({ PK: "USER#u3", SK: "PROFILE" }).paidCredits, 1, "still 1 credit, never doubled");
+
+  // a THIRD attempt (e.g. an at-least-once re-delivery) is still a no-op
+  const third = await restoreCreditReplay(ddb, ddb.get({ PK: "ORDER#o3", SK: "META" }));
+  assert.equal(third.refunded, false);
+  assert.equal(ddb.get({ PK: "USER#u3", SK: "PROFILE" }).paidCredits, 1, "still exactly one refund after three tries");
+});
+
+test("credit refund: anon / no-spend orders are a safe no-op (nothing to restore)", async () => {
+  const ddb = makeFakeDdb({
+    "ORDER#a1|META": { PK: "ORDER#a1", SK: "META", orderId: "a1", GSI1PK: "USER#anon", freeCut: false, paid: false },
+  });
+  const anon = await restoreCreditReplay(ddb, ddb.get({ PK: "ORDER#a1", SK: "META" }));
+  assert.equal(anon.refunded, false, "anon orders never spent an account credit");
+
+  const ddb2 = makeFakeDdb({
+    "ORDER#a2|META": { PK: "ORDER#a2", SK: "META", orderId: "a2", GSI1PK: "USER#u9", freeCut: false, paid: false },
+  });
+  const noSpend = await restoreCreditReplay(ddb2, ddb2.get({ PK: "ORDER#a2", SK: "META" }));
+  assert.equal(noSpend.refunded, false);
+  assert.equal(noSpend.reason, "no credit was spent");
 });

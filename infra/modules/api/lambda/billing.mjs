@@ -370,8 +370,16 @@ export async function webhook(event, ctx) {
       ReturnValues: "ALL_NEW",
     });
     // a purchase upgrades the plan (and its premiere slots): the flagship makes a
-    // director, a larger pack makes a coach. Upgrades only, never down; a coach
-    // who buys a single flagship cut stays a coach.
+    // director. Upgrades only, never down; a coach who buys a single flagship cut
+    // stays a coach.
+    //
+    // LEGACY ONLY: "coach" was the Coach's Slate, retired in pricing v4 and no
+    // longer sellable. There is no coach buy URL and checkout always serves the
+    // flagship, so no new purchase mints seven-plus credits through the live
+    // catalog. This branch survives purely as a GRANDFATHERING path: if an old
+    // seven-pack ever settles (a CREDITS_MAP still maps its product to >= 7), it
+    // must still land as a coach, and an existing coach must keep the plan and
+    // slots they already hold. Do not repurpose this to sell a coach tier again.
     const plan = credits >= 7 ? "coach" : "director";
     if (updated?.plan !== "coach" && updated?.plan !== plan) {
       await ctx.ddb.update({

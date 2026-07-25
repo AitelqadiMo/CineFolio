@@ -282,7 +282,23 @@ resource "aws_sfn_state_machine" "build" {
         Resource   = aws_lambda_function.worker.arn
         Parameters = { action = "validate", "orderId.$" = "$.orderId" }
         ResultPath = "$.validate"
-        Retry      = [{ ErrorEquals = ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], IntervalSeconds = 5, MaxAttempts = 2, BackoffRate = 2 }]
+        # Two retriers, DELIBERATELY separate because they mean different things:
+        #   - AWS Lambda service faults (throttle / transient service error) retry
+        #     as before.
+        #   - ModerationUnavailable is thrown by validate ONLY when a moderation
+        #     vendor was unreachable (Creem fail-closed: timeout / 5xx) with NO
+        #     confirmed content verdict. It is a TRANSIENT outage, not a rejection,
+        #     so it must retry with backoff and re-screen. This resource is the
+        #     function ARN (direct integration), so the thrown error's name
+        #     propagates verbatim and ErrorEquals matches it by name. When these
+        #     retries exhaust, the States.ALL Catch below routes to HumanReview
+        #     (operator-recoverable) rather than InvalidNoop (terminal). A genuine
+        #     content violation throws OrderInvalid instead and is caught first,
+        #     so it still terminates at InvalidNoop and never retries.
+        Retry = [
+          { ErrorEquals = ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], IntervalSeconds = 5, MaxAttempts = 2, BackoffRate = 2 },
+          { ErrorEquals = ["ModerationUnavailable"], IntervalSeconds = 10, MaxAttempts = 3, BackoffRate = 2 },
+        ]
         Catch = [
           { ErrorEquals = ["OrderInvalid"], Next = "InvalidNoop" },
           { ErrorEquals = ["States.ALL"], ResultPath = "$.error", Next = "HumanReview" },
@@ -298,6 +314,14 @@ resource "aws_sfn_state_machine" "build" {
           Payload      = { action = "dispatch", "orderId.$" = "$.orderId", "taskToken.$" = "$$.Task.Token" }
         }
         ResultPath = "$.cut"
+        # States.TaskFailed is a wildcard for any thrown error except States.Timeout,
+        # so the dispatch-time dossier screen's ModerationUnavailable (transient
+        # vendor outage) already retries here with backoff and, on exhaustion, the
+        # States.ALL Catch parks the order in HumanReview (recoverable) rather than
+        # a terminal reject. A dossier content violation throws OrderInvalid, which
+        # also matches States.TaskFailed; it is rejected in-lambda (status flip +
+        # credit refund) before the throw, so the human_review landing is just the
+        # operator notice, and no unscreened dossier ever reaches the model.
         Retry      = [{ ErrorEquals = ["States.Timeout", "States.TaskFailed"], IntervalSeconds = 60, MaxAttempts = 2, BackoffRate = 2 }]
         Catch      = [{ ErrorEquals = ["States.ALL"], ResultPath = "$.error", Next = "HumanReview" }]
         Next       = "Finalize"

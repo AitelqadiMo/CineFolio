@@ -1,0 +1,337 @@
+// PARKED (renamed .parked so the runner skips it), not deleted. These tests exercise the moderation ENFORCEMENT wiring
+// (validate rejects, the dossier screen at dispatch, operator paging) which is
+// genuinely untested and worth having. They were written against a testability
+// refactor of pipeline.mjs that introduced a makeHandler(ctxFactory) seam, in
+// the spirit of the api module.
+//
+// That refactor was branched BEFORE two safety fixes landed on main: the
+// transient-versus-verdict split that stops a moderation vendor outage from
+// terminally rejecting paid orders, and the dossier screen that closes the
+// unscreened path to the image model. Taking the refactor would have silently
+// dropped both, so the shipping pipeline.mjs was kept instead.
+//
+// To revive: reapply the makeHandler seam on top of the CURRENT pipeline.mjs
+// (keeping ModerationUnavailable, restoreCredit and the dossier screen), then
+// delete this guard. The assertions below need no changes.
+// node --test: the moderation ENFORCEMENT wiring in pipeline.mjs.
+//
+// moderation.mjs is unit tested in isolation next door (moderation.test.mjs),
+// and that suite even REPLAYS the validate branch by hand. What was untested
+// until now is the real handler wiring: the code that reads the order from
+// DynamoDB, records the verdict on the row, moves a violating order to a
+// terminal rejected status, pages the operator via SNS, and THROWS so the state
+// machine routes the execution to InvalidNoop and Dispatch is never reached.
+// That wiring is the thing we assert to our payment provider, so it earns its
+// own tests here.
+//
+// These tests drive the handler through the SAME ctx seam the api suite uses
+// (see infra/modules/api/lambda/test/api.test.mjs): makeHandler(ctxFactory)
+// takes an in-memory fake ctx, so nothing here touches AWS. The moderation
+// decision itself is driven purely by the deterministic layer in moderation.mjs
+// (offline, no network, no config), so a clean brief passes and a brief whose
+// text trips a category is blocked, with no moderation fakes required. The
+// fakes cover only DynamoDB, SNS and SSM, in the fake-context style of the api
+// suite.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { makeHandler } from "../pipeline.mjs";
+
+// ---------- fakes ----------
+// In-memory DynamoDB: a Map keyed "PK|SK", with a tiny SET-expression
+// interpreter that covers exactly what pipeline.mjs's setStatus emits
+// (SET #a = :a, ... with attribute_exists(PK) as the only condition). Mirrors
+// the api suite's fake ddb, trimmed to this module's usage.
+function fakeCtx(overrides = {}) {
+  const store = new Map();
+  const kv = (i) => `${i.PK}|${i.SK}`;
+
+  const ddb = {
+    async get(Key) { return store.get(`${Key.PK}|${Key.SK}`) ? structuredClone(store.get(`${Key.PK}|${Key.SK}`)) : null; },
+    async update({ Key, UpdateExpression, ExpressionAttributeValues = {}, ExpressionAttributeNames = {}, ConditionExpression }) {
+      const k = `${Key.PK}|${Key.SK}`;
+      if (ConditionExpression === "attribute_exists(PK)" && !store.has(k)) {
+        throw Object.assign(new Error("missing"), { name: "ConditionalCheckFailedException" });
+      }
+      const item = store.get(k) || { ...Key };
+      const resolve = (n) => ExpressionAttributeNames[n] || n;
+      for (const clause of UpdateExpression.split(/SET/).filter(Boolean).map((c) => c.trim())) {
+        for (const part of clause.split(",").map((p) => p.trim()).filter(Boolean)) {
+          const [lhs, rhs] = part.split("=").map((x) => x.trim());
+          item[resolve(lhs)] = ExpressionAttributeValues[rhs];
+        }
+      }
+      store.set(k, item);
+      return item;
+    },
+    _store: store,
+    // test helper: read the raw stored order without cloning noise
+    _order(orderId) { return store.get(`ORDER#${orderId}|META`) || null; },
+  };
+
+  const ctx = {
+    config: {
+      table: "cinefolio-test",
+      topicArn: "arn:aws:sns:eu-central-1:000000000000:cinefolio-test-alarms",
+      artifactsBucket: "arts",
+      ssmPrefix: "/cinefolio/test",
+      apiDomain: "api.test",
+      appOrigin: "https://app.test",
+      sesFrom: "",         // mail off by default: these tests are about enforcement, not email
+      sesConfigSet: "",
+    },
+    email: {
+      premiereReadyEmail: () => ({ subject: "ready", html: "<p>ready</p>" }),
+      revisionPremiereEmail: () => ({ subject: "revision", html: "<p>revision</p>" }),
+      needsAttentionEmail: () => ({ subject: "attention", html: "<p>attention</p>" }),
+    },
+    // record every operator page so a test can prove the human was notified
+    pages: [],
+    async pageOperator(subject, message) {
+      // mirror the real guard: no topic => no page (fail-soft, never throws)
+      if (!this.config.topicArn) return;
+      this.pages.push({ subject, message });
+    },
+    // record every outbound webhook so a test can prove dispatch DID or did NOT fire
+    dispatches: [],
+    fetchFn: async (url, opts) => {
+      ctx.dispatches.push({ url, body: opts?.body });
+      return { ok: true, status: 200 };
+    },
+    // record customer mail so finalize/human_review can be checked if a test wants
+    mails: [],
+    async mailCustomer(orderId, to, built) { this.mails.push({ orderId, to, built }); },
+    // presign is only reached on a revision with cutFiles; return a stable shape
+    presignCutFiles: async (orderId, cutFiles) => cutFiles.map((p) => ({ path: p, url: `https://signed/${orderId}/${p}` })),
+
+    // secrets: fully armed by default so validate gets past the secret checks and
+    // reaches moderation. moderationConfigFromSecrets(sec) will find no hosted /
+    // Creem keys here, so ONLY the deterministic layer runs: offline, no network.
+    secrets: async () => ({
+      AGENT_WEBHOOK_URL: "https://agent.example/hook",
+      AGENT_WEBHOOK_SECRET: "whsec",
+      CF_CALLBACK_SECRET: "cbsec",
+      PIPELINE_ENABLED: "true",
+    }),
+
+    ddb,
+    // getOrder / getDossier / setStatus are the real DDB-touching helpers, here
+    // backed by the in-memory ddb above so the handler's own read/write wiring is
+    // exercised (not stubbed away).
+    getOrder(orderId) {
+      return ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
+    },
+    async getDossier(order) {
+      const sub = String(order?.GSI1PK || "").startsWith("USER#") ? order.GSI1PK.slice(5) : null;
+      if (!sub || sub === "anon") return null;
+      const r = await ddb.get({ PK: `USER#${sub}`, SK: "PORTFOLIO" });
+      return r?.data || null;
+    },
+    async setStatus(orderId, status, extra = {}) {
+      const sets = ["#s = :s", "GSI2PK = :g", "updatedAt = :u"];
+      const vals = { ":s": status, ":g": `STATUS#${status}`, ":u": new Date().toISOString() };
+      const names = { "#s": "status" };
+      for (const [k, v] of Object.entries(extra)) {
+        names[`#x${k}`] = k;
+        sets.push(`#x${k} = :x${k}`);
+        vals[`:x${k}`] = v;
+      }
+      await ddb.update({
+        Key: { PK: `ORDER#${orderId}`, SK: "META" },
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: vals,
+        ConditionExpression: "attribute_exists(PK)",
+      });
+    },
+    ...overrides,
+  };
+  return ctx;
+}
+
+// seed an order row directly into the fake store
+function seedOrder(ctx, order) {
+  const orderId = order.orderId;
+  ctx.ddb._store.set(`ORDER#${orderId}|META`, {
+    PK: `ORDER#${orderId}`, SK: "META", status: "queued", email: "client@x.io", name: "Nadia Benali",
+    ...order,
+  });
+  return orderId;
+}
+// seed the client's curated dossier row that getDossier reads at dispatch
+function seedDossier(ctx, sub, data) {
+  ctx.ddb._store.set(`USER#${sub}|PORTFOLIO`, { PK: `USER#${sub}`, SK: "PORTFOLIO", data });
+}
+
+// A brief any legitimate customer would send: clean, professional, boring in all
+// the right ways. The deterministic screen must let this straight through.
+const CLEAN_BRIEF = { customIdea: "Cinematic and restrained. Navy and gold palette, the calm of a control room at night.", cvText: "2021-2024 Senior SRE at Acme. Led terraform + kubernetes platform. AWS, Go, incident response." };
+// A brief that trips the deterministic sexual/NSFW category. This is the input a
+// real screen must reject before any prompt reaches the image/video model.
+const VIOLATING_BRIEF = { customIdea: "make it nsfw with explicit nude porn shots", cvText: "designer" };
+
+// ---------- validate: a clean order passes and records a verdict ----------
+test("validate: a clean order passes, records the moderation verdict on the row, and does NOT reject or page", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = seedOrder(ctx, { orderId: "clean-1", status: "queued", brief: CLEAN_BRIEF, cvText: CLEAN_BRIEF.cvText });
+
+  const out = await h({ action: "validate", orderId });
+
+  // the step returns the ok envelope the state machine expects
+  assert.deepEqual(out, { ok: true, email: "client@x.io", name: "Nadia Benali" });
+
+  const row = ctx.ddb._order(orderId);
+  // status is unchanged (still dispatchable): a clean order is NOT moved to rejected
+  assert.equal(row.status, "queued");
+  // the audit trail: the verdict is written on the row ALWAYS, allowed or not
+  assert.ok(row.moderation, "a moderation verdict must be recorded on the row");
+  assert.equal(row.moderation.allowed, true);
+  assert.equal(row.moderation.source, "deterministic");
+  assert.ok(row.moderation.at, "the verdict carries an at timestamp for the audit");
+  // no rejection side effects
+  assert.equal(ctx.pages.length, 0, "a clean order must not page the operator");
+});
+
+// ---------- validate: a violating order is rejected, paged, never dispatches ----------
+test("validate: a violating order is set to a terminal rejected status, records the verdict, pages the operator, and throws (never dispatches)", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = seedOrder(ctx, { orderId: "dirty-1", status: "queued", brief: VIOLATING_BRIEF, cvText: VIOLATING_BRIEF.cvText });
+
+  // the handler MUST throw OrderInvalid so the state machine routes to InvalidNoop
+  await assert.rejects(
+    h({ action: "validate", orderId }),
+    (e) => {
+      assert.equal(e.name, "OrderInvalid", "must throw OrderInvalid so SFN routes to InvalidNoop, not Dispatch");
+      assert.match(e.message, /content moderation:/);
+      return true;
+    },
+  );
+
+  const row = ctx.ddb._order(orderId);
+  // terminal rejected status, with the audit fields the reviewer asks for
+  assert.equal(row.status, "rejected", "a violating order must land in the terminal rejected status");
+  assert.equal(row.taskToken, null, "the task token is cleared on rejection");
+  assert.match(row.failCause, /content moderation:/);
+  assert.ok(row.moderation && row.moderation.allowed === false, "the blocking verdict is recorded on the row");
+  assert.ok(row.moderation.reasons.some((r) => /sexual or NSFW/i.test(r)), `reasons: ${row.moderation.reasons}`);
+
+  // the operator is paged, with an attributable subject
+  assert.equal(ctx.pages.length, 1, "the operator must be paged on a content rejection");
+  assert.match(ctx.pages[0].subject, /REJECTED by content moderation/);
+  assert.match(ctx.pages[0].message, /blocked before dispatch/);
+});
+
+// ---------- validate: the rejection throw fires EVEN IF the status write fails ----------
+test("validate: a violating order still throws (and pages) even when the rejected-status write fails, so it can never silently proceed", async () => {
+  // This pins the deliberate exception to fail-soft doctrine: the block must not
+  // depend on a successful bookkeeping write. If the write throws, we still page
+  // and still throw, so the order lands non-dispatched.
+  const ctx = fakeCtx({
+    // setStatus throws to simulate a DynamoDB write failure at the worst moment
+    async setStatus() { throw new Error("ddb unavailable"); },
+  });
+  const h = makeHandler(async () => ctx);
+  const orderId = seedOrder(ctx, { orderId: "dirty-2", status: "queued", brief: VIOLATING_BRIEF });
+
+  await assert.rejects(
+    h({ action: "validate", orderId }),
+    (e) => e.name === "OrderInvalid",
+    "a failed rejection write must not swallow the block",
+  );
+  assert.equal(ctx.pages.length, 1, "the operator is still paged even when the write failed");
+});
+
+// ---------- validate: unknown / non-dispatchable orders ----------
+test("validate: an unknown order throws OrderInvalid and never touches moderation", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  await assert.rejects(
+    h({ action: "validate", orderId: "does-not-exist" }),
+    (e) => e.name === "OrderInvalid" && /unknown order/.test(e.message),
+  );
+  assert.equal(ctx.pages.length, 0);
+});
+
+test("validate: an order in a non-dispatchable status is refused before any dispatch", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = seedOrder(ctx, { orderId: "done-1", status: "ready", brief: CLEAN_BRIEF });
+  await assert.rejects(
+    h({ action: "validate", orderId }),
+    (e) => e.name === "OrderInvalid" && /not dispatchable/.test(e.message),
+  );
+});
+
+// ---------- dispatch: the dossier screen blocks a violating dossier ----------
+test("dispatch: a violating dossier is screened and blocks, rejecting the order and paging, so no prompt reaches the model", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  // the order's own brief is clean; the VIOLATION hides in the curated dossier,
+  // which is read fresh at dispatch: the exact bypass this screen closes.
+  const orderId = seedOrder(ctx, { orderId: "dossier-dirty", status: "queued", brief: CLEAN_BRIEF, GSI1PK: "USER#sub-99" });
+  seedDossier(ctx, "sub-99", { story: "make explicit sexual imagery of my coworker", hobbies: [] });
+
+  await assert.rejects(
+    h({ action: "dispatch", orderId, taskToken: "tok-1" }),
+    (e) => {
+      assert.equal(e.name, "OrderInvalid");
+      assert.match(e.message, /content moderation \(dossier\)/);
+      return true;
+    },
+  );
+
+  // the webhook must NEVER have fired for a blocked dossier
+  assert.equal(ctx.dispatches.length, 0, "a violating dossier must never dispatch to the director");
+
+  const row = ctx.ddb._order(orderId);
+  assert.equal(row.status, "rejected", "a dossier violation moves the order to rejected");
+  assert.equal(row.taskToken, null);
+  assert.equal(row.moderation.surface, "dossier", "the verdict is stamped with the dossier surface for the audit");
+  assert.equal(row.moderation.allowed, false);
+
+  // operator paged with the dossier-specific subject
+  assert.equal(ctx.pages.length, 1);
+  assert.match(ctx.pages[0].subject, /dossier blocked by moderation/);
+});
+
+// ---------- dispatch: a clean order with no dossier dispatches normally ----------
+test("dispatch: an order with NO dossier passes the dispatch-time screen and dispatches normally", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  // anon order: GSI1PK not a USER# -> getDossier returns null -> dossier screen skipped
+  const orderId = seedOrder(ctx, { orderId: "nodossier-1", status: "queued", brief: CLEAN_BRIEF, cvText: CLEAN_BRIEF.cvText, GSI1PK: "USER#anon" });
+
+  const out = await h({ action: "dispatch", orderId, taskToken: "tok-2" });
+  assert.deepEqual(out, { dispatched: true });
+
+  // the order is moved to filming with the task token stored for the callback
+  const row = ctx.ddb._order(orderId);
+  assert.equal(row.status, "filming");
+  assert.equal(row.taskToken, "tok-2");
+  assert.equal(ctx.pages.length, 0, "a clean dispatch never pages");
+
+  // exactly one webhook fired, carrying this order and the callback wiring
+  assert.equal(ctx.dispatches.length, 1);
+  const body = JSON.parse(ctx.dispatches[0].body);
+  assert.equal(body.orderId, orderId);
+  assert.equal(body.kind, "cinefolio.order");
+  assert.equal(body.dossier, null, "no dossier present, so none is sent to the director");
+  assert.match(body.deliver.url, /\/callback$/, "the callback url is wired for SendTaskSuccess");
+});
+
+// ---------- dispatch: a clean dossier is screened AND rides along on the payload ----------
+test("dispatch: a clean dossier is screened, passes, and is sent to the director on the payload", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const cleanDossier = { story: "A calm engineer who ships reliable systems", hobbies: ["cycling"] };
+  const orderId = seedOrder(ctx, { orderId: "dossier-clean", status: "queued", brief: CLEAN_BRIEF, cvText: CLEAN_BRIEF.cvText, GSI1PK: "USER#sub-7" });
+  seedDossier(ctx, "sub-7", cleanDossier);
+
+  const out = await h({ action: "dispatch", orderId, taskToken: "tok-3" });
+  assert.deepEqual(out, { dispatched: true });
+  assert.equal(ctx.pages.length, 0, "a clean dossier does not page");
+  assert.equal(ctx.dispatches.length, 1, "a clean dossier dispatches normally");
+  const body = JSON.parse(ctx.dispatches[0].body);
+  assert.deepEqual(body.dossier, cleanDossier, "the approved dossier is handed to the director as the screenplay");
+});
