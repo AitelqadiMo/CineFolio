@@ -1,0 +1,46 @@
+name: test
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node:test api route suite
+        run: node --test
+        working-directory: infra/modules/api/lambda
+
+  pipeline-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node:test pipeline worker suite
+        run: node --test
+        working-directory: infra/modules/pipeline/lambda
+
+  spa-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: install SPA deps
+        run: npm ci
+        working-directory: app
+      - name: build SPA
+        run: npm run build
+        working-directory: app
