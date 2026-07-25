@@ -1,0 +1,236 @@
+// engine.js · CineFolio's deterministic portfolio engine. No LLM anywhere:
+// a parsed profile + a hand-built template + a palette = a finished site, in
+// milliseconds, every time. The AI film pipeline is the premium layer ABOVE this.
+// Compiled client-side for instant preview; published through the normal
+// immutable-release pipeline, so the server never needs to run this code.
+// compile() emits one self-contained page (inline case-study expanders, used by
+// the Studio live preview). compileBundle() emits a multi-page site: an index
+// whose case-study cards link out, plus one standalone page per case study.
+
+import { buildShareHead, shareAssets, paletteColors } from "./head.js";
+
+export const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// The share/SEO head an index (home) page carries. WHY a helper: every template
+// emits its own <head> in its own skin, so each calls this with its own palette
+// colours and its own share title/description built from the SAME real user data
+// that fills the visible page. Absolute origin comes from head.js's ORIGIN_TOKEN,
+// rewritten by the publisher at publish time (the one place that knows the real
+// address). og:title/description mirror the page's own <title>/description so the
+// card sells exactly what the page shows.
+export const indexHead = (p, pal, colors) => buildShareHead(p, pal, {
+  path: "",
+  title: `${p.name} · ${p.headline}`,
+  description: p.summary || p.headline,
+  type: "profile",
+  colors,
+  person: true,
+});
+
+// The share/SEO head a standalone CASE STUDY page carries. WHY separate: a case
+// study must describe ITSELF, not the home page: its own name and its own
+// summary become the card, and og:type is "article". The canonical path is the
+// project's own page so a shared case study previews as that project.
+export const caseHead = (p, pal, pr, colors, ctx = {}) => buildShareHead(p, pal, {
+  path: ctx.path || "",
+  title: `${pr.name} · ${p.name}`,
+  description: pr.summary || pr.desc || pr.name,
+  type: "article",
+  colors,
+  person: false,
+});
+
+export const SKILL_BANK = ["aws","azure","gcp","kubernetes","docker","terraform","terragrunt","ansible","jenkins","github actions","gitlab","ci/cd","python","javascript","typescript","react","node","java","go","rust","sql","figma","photoshop","illustrator","after effects","premiere","blender","ui","ux","product design","branding","marketing","seo","sales","copywriting","analytics","excel","notion","prometheus","grafana","linux","agile","scrum","machine learning","ai","data","mongodb","postgres","redis","graphql","next.js","vue","angular","swift","kotlin","flutter","devops","sre","security","photography","film","editing","helm","spark","tableau","salesforce"];
+
+export const SECTION_RE = /^(experience|work experience|employment|professional experience|education|skills|technical skills|projects|selected projects|languages|certifications?|awards|summary|profile|about)\s*:?\s*$/i;
+export const PERIOD_RE = /((19|20)\d{2})\s*(?:[-\u2013\u2014]|to)\s*((19|20)\d{2}|present|now|current|ongoing)/i;
+
+// ---------- resume text -> structured profile ----------
+export function parseProfile(text, overrides = {}) {
+  const raw = String(text || "").slice(0, 20000);
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lower = raw.toLowerCase();
+
+  const email = overrides.email || (raw.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/) || [""])[0];
+  const phone = (raw.match(/(\+?\d[\d ().-]{7,}\d)/) || [""])[0].trim();
+  const links = {
+    github: (raw.match(/github\.com\/[\w.-]+/i) || [""])[0],
+    linkedin: (raw.match(/linkedin\.com\/in\/[\w.-]+/i) || [""])[0],
+    // NOTE: no lookbehind. Safari < 16.4 throws SyntaxError at parse time and
+    // takes the whole bundle down. Group-match with a leading boundary instead.
+    website: (raw.match(/\bhttps?:\/\/(?!\S*(github|linkedin))[\w.-]+\.[a-z]{2,}\S*/i) || [""])[0] ||
+             ((raw.match(/(^|[\s|,;(])([\w-]+\.(dev|me|site|design|studio))\b/im) || [])[2] || ""),
+  };
+
+  // sectionize
+  const sections = { _head: [] };
+  let cur = "_head";
+  for (const l of lines) {
+    const m = l.match(SECTION_RE);
+    if (m) {
+      const k = m[1].toLowerCase();
+      cur = /experience|work|employment/.test(k) ? "experience"
+        : /education/.test(k) ? "education"
+        : /skill/.test(k) ? "skills"
+        : /project/.test(k) ? "projects"
+        : /language/.test(k) ? "languages"
+        : /certif|award/.test(k) ? "certs"
+        : /summary|profile|about/.test(k) ? "summary" : cur;
+      sections[cur] = sections[cur] || [];
+      continue;
+    }
+    (sections[cur] = sections[cur] || []).push(l);
+  }
+
+  const head = sections._head;
+  const notNamey = (l) => /@|http|\d{4}|\+\d|linkedin|github/i.test(l) || l.length > 48;
+  const name = overrides.name || head.find((l) => !notNamey(l)) || "Your Name";
+  const headline = overrides.headline ||
+    head.filter((l) => !notNamey(l) && l !== name)[0] ||
+    (sections.summary || [])[0]?.slice(0, 90) || "Professional";
+
+  // skills: explicit section + bank scan
+  const sectionSkills = (sections.skills || []).join(" ").split(/[,•|·/]+/).map((s) => s.trim().replace(/^[-\u2013\u2014:]\s*/, "")).filter((s) => s && s.length < 28 && !/^skills?$/i.test(s));
+  const bankSkills = SKILL_BANK.filter((s) => lower.includes(s));
+  const skills = [...new Set([...sectionSkills, ...bankSkills.map(cap)])].slice(0, 14);
+
+  // experience entries
+  const experience = [];
+  let entry = null;
+  for (const l of sections.experience || sections._head || []) {
+    const pm = l.match(PERIOD_RE);
+    if (pm) {
+      if (entry) experience.push(entry);
+      const rest = l.replace(PERIOD_RE, "").replace(/^[\s,|·@-]+|[\s,|·-]+$/g, "");
+      entry = { period: pm[0].replace(/\s+/g, " "), title: rest.slice(0, 90) || "Role", org: "", points: [] };
+      const at = rest.match(/^(.*?)\s+(?:at|@|,|·|\||\u2014|-)\s+(.{2,60})$/i);
+      if (at) { entry.title = at[1].trim(); entry.org = at[2].trim(); }
+    } else if (entry) {
+      const b = l.replace(/^[-•*▪◦→]\s*/, "");
+      if (b !== l || (entry.points.length && l.length > 30)) entry.points.push(b.slice(0, 220));
+      else if (!entry.org && l.length < 60) entry.org = l;
+      if (entry.points.length > 5) entry.points.length = 5;
+    }
+  }
+  if (entry) experience.push(entry);
+
+  const education = (sections.education || []).filter((l) => l.length > 6).slice(0, 3).map((l) => l.slice(0, 120));
+  const projects = [];
+  let proj = null;
+  for (const l of sections.projects || []) {
+    const b = l.replace(/^[-•*▪]\s*/, "");
+    if (b === l && l.length < 60 && !proj?.desc) { if (proj) projects.push(proj); proj = { name: l.slice(0, 60), desc: "" }; }
+    else if (proj) proj.desc = (proj.desc ? proj.desc + " " : "") + b.slice(0, 180);
+    else { proj = { name: b.slice(0, 60), desc: "" }; }
+  }
+  if (proj) projects.push(proj);
+  const languages = (sections.languages || []).join(", ").split(/[,•|·]+/).map((s) => s.trim()).filter(Boolean).slice(0, 6);
+  const summary = overrides.summary || (sections.summary || []).join(" ").slice(0, 420);
+
+  return {
+    name, headline, email, phone, links, summary,
+    skills, experience: experience.slice(0, 5), education, projects: projects.slice(0, 4), languages,
+    photo: overrides.photo || null,
+    ...overrides,
+  };
+}
+
+export function cap(s) { return s.length <= 3 ? s.toUpperCase() : s[0].toUpperCase() + s.slice(1); }
+
+export const initialsAvatar = (name, bg, fg) => {
+  const ini = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase() || "CF";
+  return "data:image/svg+xml;utf8," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="${bg}"/><text x="60" y="76" font-family="Georgia,serif" font-size="46" fill="${fg}" text-anchor="middle" font-weight="bold">${ini}</text></svg>`
+  );
+};
+export const linkRow = (p, color) => {
+  const links = p.links || {};
+  const L = [];
+  if (links.github) L.push(`<a href="https://${links.github.replace(/^https?:\/\//, "")}" target="_blank" rel="noopener noreferrer">GitHub</a>`);
+  if (links.linkedin) L.push(`<a href="https://${links.linkedin.replace(/^https?:\/\//, "")}" target="_blank" rel="noopener noreferrer">LinkedIn</a>`);
+  if (links.website) L.push(`<a href="${/^http/.test(links.website) ? links.website : "https://" + links.website}" target="_blank" rel="noopener noreferrer">Website</a>`);
+  if (p.email) L.push(`<a href="mailto:${esc(p.email)}">Email</a>`);
+  return L.join(`<span style="opacity:.4;color:${color}"> / </span>`);
+};
+// ---------- the end credit (the "Made with CineFolio" badge) ----------
+// A portfolio is a piece of craft, so its footer badge reads like an END CREDIT,
+// not an ad: a hairline rule, then one small, letter-spaced, monospaced line, the
+// way a film closes on a single card. It is ON by default and removable for free
+// in one click (see Films.jsx); when the owner turns it off, on() is false and
+// this emits nothing at all. Never a paywall, never a nag.
+//
+// It adapts to every film stock: each template passes its OWN resolved text and
+// accent colors (fg, accent), so the credit borrows the page's palette instead of
+// a fixed color that would clash on a light stock or a dark one. The link opens
+// cinefolio.dev with rel="noopener". The mark is muted (low opacity) so it sits
+// under the work, and the accent shows only on the small diamond and on hover.
+export const creditBadge = (opts = {}) => {
+  const fg = opts.fg || "currentColor";
+  const accent = opts.accent || fg;
+  return `<footer data-cf-credit style="margin:0;padding:30px 24px;text-align:center;background:transparent">
+<div aria-hidden="true" style="width:38px;height:1px;margin:0 auto 16px;background:${accent};opacity:.5"></div>
+<a href="https://cinefolio.dev/?ref=made-with" target="_blank" rel="noopener" style="display:inline-block;font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:9.5px;letter-spacing:.28em;text-transform:uppercase;color:${fg};opacity:.5;text-decoration:none">
+<span style="color:${accent};opacity:.85">&#9672;</span>&nbsp; Made with CineFolio</a>
+</footer>`;
+};
+// credit(on, opts): the badge when the owner leaves it on (the default), or an
+// empty string when they have turned it off. Every template calls this exactly
+// where its page ends, so a disabled badge leaves no trace in the markup.
+export const credit = (on, opts) => (on === false ? "" : creditBadge(opts));
+
+// ---------- normalizers: richer optional fields, both new and legacy shapes ----------
+// experience may arrive as parsed {period,title,org,points}, structured
+// {role,company,start,end,highlights[]}, or legacy expLines strings. Fold every
+// form into the internal {period,title,org,points} the templates already draw.
+export const normExperience = (p) => {
+  const src = Array.isArray(p.experience) && p.experience.length ? p.experience
+    : Array.isArray(p.expLines) && p.expLines.length ? p.expLines : [];
+  return src.map((x) => {
+    if (typeof x === "string") return { period: "", title: x, org: "", points: [] };
+    if (x && (x.role || x.company || x.start || x.end || Array.isArray(x.highlights))) {
+      const period = [x.start, x.end].filter(Boolean).join(" · ");
+      return { period, title: x.role || x.title || "Role", org: x.company || x.org || "", points: Array.isArray(x.highlights) ? x.highlights.slice(0, 6) : (x.points || []) };
+    }
+    return { period: x.period || "", title: x.title || "Role", org: x.org || "", points: Array.isArray(x.points) ? x.points : [] };
+  });
+};
+export const hasCerts = (p) => Array.isArray(p.certifications) && p.certifications.length;
+export const hasEduObjs = (p) => Array.isArray(p.education) && p.education.some((e) => e && typeof e === "object");
+export const hasLangObjs = (p) => Array.isArray(p.languages) && p.languages.some((l) => l && typeof l === "object");
+export const eduLabel = (e) => typeof e === "string" ? e : [e.degree, e.school, e.years].filter(Boolean).join(", ");
+export const langLabel = (l) => typeof l === "string" ? l : [l.name, l.level].filter(Boolean).join(": ");
+
+// ---------- slugs ----------
+export const slugify = (name, seen) => {
+  let base = String(name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (!base) base = "project";
+  let slug = base, n = 2;
+  while (seen && seen.has(slug)) { slug = base + "-" + n; n++; }
+  if (seen) seen.add(slug);
+  return slug;
+};
+// build the ordered list of case-study projects (capped at 12) with stable slugs
+export const caseStudyList = (projects) => {
+  const seen = new Set();
+  return (projects || []).filter(isCaseStudy).slice(0, 12).map((pr) => ({ pr, slug: slugify(pr.name, seen) }));
+};
+
+// ---------- rich projects / case studies (shared logic, per-template skin) ----------
+export const isCaseStudy = (pr) => !!(pr.problem || pr.process || pr.results || pr.role || pr.cover);
+export const metaRow = (pr, cls) => {
+  const cells = [["ROLE", pr.role], ["TIMELINE", pr.timeline], ["TOOLS", pr.tools]].filter(([, v]) => v);
+  if (!cells.length) return "";
+  return `<div class="${cls}">${cells.map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("")}</div>`;
+};
+export const csBlocks = (pr, cls) => ["problem", "process", "results"]
+  .filter((k) => pr[k])
+  .map((k) => `<div class="${cls}"><h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p></div>`)
+  .join("");
+
+// caseHref(pr): given a project, return the relative page path when a bundle is
+// being built, or "" for the single-page compile() (inline expanders stay).
+export const noHref = () => "";
+
+/* ================================================================
+   TEMPLATE 01 · THE MONOLITH (cinematic dark)
+================================================================ */
