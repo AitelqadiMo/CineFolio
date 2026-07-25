@@ -347,14 +347,27 @@ export function paymentReceivedEmail(purchase, appOrigin) {
 // and the address wait, and the Director's Cut keeps the marquee lit.
 export function trialWarningEmail(site, appOrigin) {
   const hoursLeft = Math.max(1, Math.round((new Date(site.trialEndsAt) - Date.now()) / 3600000));
+  // price: the caller resolved the true current Director's Cut price (the same
+  // founding-counter read the vault call does). Fall back to 99, the standard
+  // one-time price, if the caller passed nothing, so we never quote a made-up
+  // discount. This email hardcoded $99 before, overstating 2x to a founding
+  // window prospect while the vault email and checkout said $49.
+  const price = Number(site.price) > 0 ? Number(site.price) : 99;
+  const seatsLeft = Number.isFinite(site.foundingSeatsLeft) ? site.foundingSeatsLeft : null;
+  // a true founding line ONLY when we actually know seats remain. No count, no
+  // line: we never invent scarcity. Same doctrine as the vault email.
+  const foundingLine = seatsLeft && seatsLeft > 0
+    ? [`You are early. Founding members pay <b>$${price}</b> while founding seats remain, and the console shows exactly how many are left.`]
+    : [];
   return {
     subject: `Final screening: ${site.title || site.slug} goes dark in about ${hoursLeft} hours.`,
     ...build("Last call", "The marquee dims soon.", [
       `<b>${esc(site.title || site.slug)}</b> is a limited engagement, and its 72 hours are almost up: in about <b>${hoursLeft} hours</b> the premiere leaves ${site.url ? `<a href="${site.url}" style="color:${BRAND.navy};font-weight:bold;">${esc(site.url)}</a>` : "its address"}.`,
       "Nothing is lost when that happens. The film and every release stay in your vault, and the address stays reserved for you.",
-      "<b>The Director's Cut ($99, one time)</b> keeps this premiere live for good — and adds two more AI productions, three premiere slots, and revision messages with every production.",
-    ], appOrigin ? { url: `${appOrigin}/settings`, label: "Keep it live — $99" } : null, {
-      preheader: `${site.title || site.slug} goes dark in ~${hoursLeft}h. Keep it live for $99 — nothing is ever deleted.`,
+      `<b>The Director's Cut ($${price}, one time)</b> keeps this premiere live for good — and adds two more AI productions, three premiere slots, and revision messages with every production.`,
+      ...foundingLine,
+    ], appOrigin ? { url: `${appOrigin}/settings`, label: `Keep it live — $${price}` } : null, {
+      preheader: `${site.title || site.slug} goes dark in ~${hoursLeft}h. Keep it live for $${price} — nothing is ever deleted.`,
       details: [["Film", esc(site.title || site.slug)], ["Screens until", esc(String(site.trialEndsAt).slice(0, 16).replace("T", " ")) + " UTC"], ["After that", "The vault — kept safe, address held"]],
     }),
   };

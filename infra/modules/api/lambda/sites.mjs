@@ -420,6 +420,43 @@ export async function notifyVaulted(ctx, site) {
   }
 }
 
+// The engagement clock is a FREE-plan conversion mechanic, and a paid plan
+// carries no clock, ever (publish sets one only when !paidPlan). But the
+// purchase webhook touches ONLY the profile, never site rows, so a customer
+// who premieres on the free plan and THEN buys the Director's Cut still has
+// the old clock sitting on their live film, and the sweep or the view beacon
+// would darken a paying customer's marquee 72 hours after they paid for it.
+// This guard heals that: when the owner's plan is paid, the clock is cleared
+// for good instead of enforced. Same rule publish already applies ("publishing
+// after an upgrade clears it for good"), enforced one layer deeper so it holds
+// with no re-publish required. Fail-soft on the write: a hiccup only means the
+// next sweep heals it, and we still skip the darken this pass.
+const paidPlanOf = (profile) => profile?.plan === "director" || profile?.plan === "coach";
+export async function healPaidTrial(ctx, site) {
+  let profile = null;
+  try {
+    const owner = site.owner || (String(site.GSI1PK || "").startsWith("USER#") ? site.GSI1PK.slice(5) : null);
+    profile = owner ? await ctx.ddb.get({ PK: `USER#${owner}`, SK: "PROFILE" }) : null;
+  } catch (e) {
+    // the plan is unknowable this pass: fall through to the free-plan path so
+    // the sweep's own doctrine (the darken must land no matter what) stands.
+    // A paid owner hit by a read blip self-heals on the next sweep or beacon.
+    console.error(JSON.stringify({ level: "warn", msg: "paid trial plan read failed soft", siteId: site?.siteId, err: e?.message }));
+    return false;
+  }
+  if (!paidPlanOf(profile)) return false;
+  try {
+    await ctx.ddb.update({
+      Key: { PK: site.PK, SK: "META" },
+      UpdateExpression: "SET trialEndsAt = :n, updatedAt = :t",
+      ExpressionAttributeValues: { ":n": null, ":t": now() },
+    });
+  } catch (e) {
+    console.error(JSON.stringify({ level: "warn", msg: "paid trial heal failed soft", siteId: site?.siteId, err: e?.message }));
+  }
+  return true;
+}
+
 // called from the view beacon: an expired limited engagement darkens itself on
 // the first look past its end time. Lazy by design — a trial nobody views
 // costs nothing up, and the beacon fires on every real visit. The moment it
@@ -428,6 +465,8 @@ export async function notifyVaulted(ctx, site) {
 export async function expireTrialIfDue(ctx, site) {
   if (!site || site.status !== "live" || !site.trialEndsAt) return false;
   if (site.trialEndsAt > now()) return false;
+  // a paid owner's film never darkens: heal the leftover clock and stay live
+  if (await healPaidTrial(ctx, site)) return false;
   await darkenSite(ctx, site, "trial_ended");
   await notifyVaulted(ctx, site);
   return true;
@@ -445,11 +484,26 @@ export async function sweepTrials(ctx) {
     ExpressionAttributeValues: { ":t": "site" },
   });
   const all = page.items || [];
-  let darkened = 0, warned = 0, vaulted = 0;
+  let darkened = 0, warned = 0, vaulted = 0, healed = 0;
   const nowIso = now();
   const warnHorizon = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+  // the true current price for the final-screening call, read ONCE per sweep
+  // exactly the way notifyVaulted reads it per send: seats remaining (or an
+  // unreadable counter, holding the window open like the rest of the product)
+  // means the founding price, a closed window means the standard price. The
+  // warn email quoted a hardcoded $99 before this, overstating 2x to the
+  // warmest prospective founding buyer in the product.
+  let warnSeatsLeft = null;
+  try {
+    const row = await ctx.ddb.get({ PK: "COUNTER", SK: "FOUNDING" });
+    warnSeatsLeft = foundingSeatsLeftFrom(row?.count || 0);
+  } catch { /* counter unreadable: hold the founding window open below */ }
+  const warnPrice = warnSeatsLeft === null || warnSeatsLeft > 0 ? FOUNDING_PRICE : CUT_PRICE;
   for (const site of all) {
     if (site.status !== "live" || !site.trialEndsAt) continue;
+    // a paid owner's film never darkens AND never gets the pay-to-keep-it
+    // email: heal the leftover clock and move on (see healPaidTrial).
+    if (await healPaidTrial(ctx, site)) { healed++; continue; }
     if (site.trialEndsAt <= nowIso) {
       // the marquee goes dark, then the owner hears about it. The darken must
       // land no matter what; only a SUCCESSFUL darken earns the vault call, and
@@ -477,12 +531,15 @@ export async function sweepTrials(ctx) {
       const owner = String(site.GSI1PK || "").startsWith("USER#") ? site.GSI1PK.slice(5) : null;
       const profile = owner ? await ctx.ddb.get({ PK: `USER#${owner}`, SK: "PROFILE" }) : null;
       if (profile?.email) {
-        await sendEmail(ctx, profile.email, trialWarningEmail({ ...site, url: previewUrl(ctx, site.slug) }, ctx.config.appOrigin || ""));
+        await sendEmail(ctx, profile.email, trialWarningEmail(
+          { ...site, url: previewUrl(ctx, site.slug), price: warnPrice, foundingSeatsLeft: warnSeatsLeft },
+          ctx.config.appOrigin || "",
+        ));
         warned++;
       }
     }
   }
-  return { darkened, warned, vaulted, scanned: all.length };
+  return { darkened, warned, vaulted, healed, scanned: all.length };
 }
 
 // POST /sites/{id}/delete: the real delete. Two-step by design: only a
