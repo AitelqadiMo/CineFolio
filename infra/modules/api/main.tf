@@ -56,10 +56,13 @@ locals {
   # route_key => requires JWT
   routes = {
     "GET /health"                   = false
+    "GET /showcase"                 = false # public proof wall: opted-in live films, no auth
     "POST /waitlist"                = false
     "GET /waitlist/count"           = false
     "POST /contact"                 = false
     "POST /hit"                     = false
+    "POST /funnel"                  = false # public first-party funnel beacon (honeypot-guarded, no PII)
+    "GET /funnel/report"            = true  # the Floor: funnel drop-off report (admin group in-handler)
     "POST /studio/generate"         = false # anonymous rough cut only; production runs moved to /studio/order
     "POST /studio/order"            = true  # AI cuts: an account entitlement (3 free, then paid)
     "GET /studio/status"            = false
@@ -90,6 +93,7 @@ locals {
     "POST /sites/{id}/publish"      = true
     "POST /sites/{id}/rollback"     = true
     "POST /sites/{id}/duplicate"    = true
+    "POST /sites/{id}/showcase"     = true # owner (or admin) opts their live film in/out of the public showcase
     "POST /sites/{id}/domain"       = true
     "POST /sites/{id}/delete"       = true
     "DELETE /sites/{id}"            = true
@@ -97,8 +101,8 @@ locals {
     "POST /orders/{id}/revision"    = true
     "GET /profile"                  = true
     "PUT /profile"                  = true
-    "GET /billing/checkout"         = true  # the buyer's personalized Lemon Squeezy checkout URL
-    "POST /billing/webhook"         = false # authenticated by X-Signature HMAC (LS webhook secret) inside the handler
+    "GET /billing/checkout"         = true  # the buyer's personalized checkout URL from the active provider
+    "POST /billing/webhook"         = false # authenticated by the active provider's signature HMAC inside the handler
   }
 }
 
@@ -362,7 +366,10 @@ resource "aws_lambda_permission" "trial_sweep" {
   source_arn    = aws_cloudwatch_event_rule.trial_sweep.arn
 }
 
-# ---------- billing (Lemon Squeezy) configuration parameters ----------
+# ---------- billing (multi-provider) configuration parameters ----------
+# v4 moves the register to Creem (primary) and Polar (backup), keeping Lemon
+# Squeezy as a third option. BILLING_PROVIDER selects who is live; each provider
+# has its own buy URL and webhook secret so switching is a one-parameter change.
 # Terraform owns that these parameters EXIST; the operator owns their VALUES,
 # set out-of-band (aws ssm put-parameter --overwrite) and never committed.
 # ignore_changes keeps applies from reverting a real value to the placeholder.
@@ -370,10 +377,14 @@ resource "aws_lambda_permission" "trial_sweep" {
 # freshly applied environment can never verify webhooks against a known string.
 resource "aws_ssm_parameter" "billing" {
   for_each = toset([
-    "LS_BUY_URL_DC",     # Director's Cut checkout link
-    "LS_BUY_URL_COACH",  # Coach's Slate checkout link
-    "LS_WEBHOOK_SECRET", # webhook signing secret (X-Signature HMAC key)
-    "LS_CREDITS_MAP",    # JSON: {"variant:<id>": credits} — packs beyond the flagship default
+    "BILLING_PROVIDER",     # "creem" | "polar" | "lemonsqueezy": the active merchant (defaults to creem when unset)
+    "CREEM_BUY_URL_DC",     # Director's Cut checkout link (Creem, primary)
+    "CREEM_WEBHOOK_SECRET", # Creem webhook signing secret (creem-signature HMAC key)
+    "POLAR_BUY_URL_DC",     # Director's Cut checkout link (Polar, backup)
+    "POLAR_WEBHOOK_SECRET", # Polar webhook signing secret (Standard Webhooks whsec_ key)
+    "LS_BUY_URL_DC",        # Director's Cut checkout link (Lemon Squeezy, kept third)
+    "LS_WEBHOOK_SECRET",    # Lemon Squeezy webhook signing secret (X-Signature HMAC key)
+    "CREDITS_MAP",          # JSON: {"<product_id>": credits, "default": 3}: packs beyond the flagship default, all providers
   ])
   name  = "${local.ssm_prefix}/${each.key}"
   type  = "SecureString"

@@ -226,7 +226,10 @@ export function initLanding(root, opts = {}) {
      bentoCount is the REAL ADDRESSES card now; it keeps its static
      *.cinefolio.dev text and no counter may overwrite it. */
   fetch(`${API}/waitlist/count`).then((r) => r.json()).then(({ count }) => {
-    if (count && count > 4) $("#wlCount").textContent = count + " ON THE STUDIO LIST · THREE FREE FILMS · NO SPAM";
+    // Copy must match the real free tier: every account gets 1 free AI render
+    // credit (not "three films"). The count itself is real API data, so it is
+    // honest social proof; we only correct the credit claim beside it.
+    if (count && count > 4) $("#wlCount").textContent = count + " ON THE STUDIO LIST · 1 FREE AI RENDER PER ACCOUNT · NO SPAM";
   }).catch(() => { /* the note keeps its default line */ });
   // bento pointer-flip tick: the release number advances like a live deploy
   const flipN = $("#flipN");

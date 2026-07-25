@@ -540,6 +540,13 @@
 .bktoast .x { background: none; border: 0; color: var(--bk-faint); cursor: pointer; font-size: 11px; padding: 4px; }
 .bktoast .x:hover { color: var(--bk-ink); }
 
+/* first-run: one primary action, then the supporting checklist */
+.bkfirst { padding: 10px 4px 6px; }
+.bkfirsthead { margin-top: 18px; text-align: center; }
+.bkfirsthead h2 { font-family: var(--disp); font-weight: 700; font-size: clamp(1.15rem, 2.2vw, 1.5rem); letter-spacing: .005em; }
+.bkfirsthead p { font-size: 13px; color: var(--bk-dim); max-width: 560px; margin: 8px auto 0; line-height: 1.5; }
+.bkfirstcta { margin-top: 16px; }
+
 /* first-run checklist on the dashboard */
 .bksteps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }
 @media (max-width: 900px) { .bksteps { grid-template-columns: 1fr; } }

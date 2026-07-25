@@ -28,7 +28,7 @@ export const api = {
   updateMe: (patch) => req("/me", { method: "PUT", body: patch, auth: true }),
 
   generate: (order) => req("/studio/generate", { method: "POST", body: order }),
-  order: (order) => req("/studio/order", { method: "POST", body: order, auth: true }), // 3 free AI cuts per account, then 402
+  order: (order) => req("/studio/order", { method: "POST", body: order, auth: true }), // free render credits per account, then 402 with the founding checkout
   orderStatus: (orderId) => req(`/studio/status?orderId=${encodeURIComponent(orderId)}`),
   orderCut: (orderId) => req(`/studio/cut?orderId=${encodeURIComponent(orderId)}`), // returns HTML string
   billingCheckout: (product) => req(`/billing/checkout${product ? `?product=${encodeURIComponent(product)}` : ""}`, { auth: true }), // personalized LS checkout URL; 503 until the store opens
@@ -41,6 +41,7 @@ export const api = {
   rollback: (id, to) => req(`/sites/${id}/rollback`, { method: "POST", body: to ? { to } : {}, auth: true }),
   takedown: (id) => req(`/sites/${id}`, { method: "DELETE", auth: true }),
   deleteSite: (id) => req(`/sites/${id}/delete`, { method: "POST", auth: true }),
+  setShowcase: (id, showcase) => req(`/sites/${id}/showcase`, { method: "POST", body: { showcase }, auth: true }), // owner opt-in/out of the public showcase; returns the persisted flag
 
   media: (contentType) => req("/media", { method: "POST", body: { contentType }, auth: true }),
   mediaDirect: (contentType, dataBase64) => req("/media/direct", { method: "POST", body: { contentType, dataBase64 }, auth: true }), // CORS-immune fallback
@@ -58,6 +59,7 @@ export const api = {
   adminContacts: () => req("/admin/contacts", { auth: true }),
   adminPipeline: () => req("/admin/pipeline", { auth: true }),
   adminPipelineSet: (enabled) => req("/admin/pipeline", { method: "POST", body: { enabled }, auth: true }),
+  adminFunnel: () => req("/funnel/report", { auth: true }),
 
   // ---------- buyer-facing surfaces (UI-first) ----------
   // These routes are the contract the console expects; some are not wired in the

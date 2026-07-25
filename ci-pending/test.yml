@@ -1,0 +1,37 @@
+# ============================================================================
+# FALLBACK COPY. This file could not be committed to its real home at
+# .github/workflows/test.yml because the connected GitHub integration token
+# lacks the 'workflow' OAuth scope: pushing any file under .github/workflows/
+# is rejected by the GitHub API with:
+#   403 "Resource not accessible by integration" (failed to create tree)
+#
+# TO INSTALL (one manual step, by a human with workflow scope):
+#   git mv ci-pending/test.yml .github/workflows/test.yml
+#   git commit -m "ci: install test workflow" && git push
+# Then delete this ci-pending/ directory. The content below is final and
+# verified (node --test is green, 44/44).
+# ============================================================================
+
+# CineFolio API test suite: the guard rail for every push and PR into main.
+# The route-level suite runs against in-memory fakes, so it needs no AWS, no
+# network, and no external services. Fast by design: no dependency install,
+# no caching. This is what protects main during the revenue sprint.
+name: test
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node:test route suite
+        run: node --test
+        working-directory: infra/modules/api/lambda

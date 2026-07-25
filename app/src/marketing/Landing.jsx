@@ -4,11 +4,13 @@
 import { useEffect, useRef } from "react";
 import { LANDING_HTML } from "./markup.js";
 import { initLanding } from "./effects.js";
+import { track, STEP } from "../funnel.js";
 import "./landing.css";
 
 export default function Landing({ onEnter }) {
   const ref = useRef(null);
   useEffect(() => {
+    track(STEP.landingView); // funnel: marketing landing rendered
     const cleanup = initLanding(ref.current, { onEnter });
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps

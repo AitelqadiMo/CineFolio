@@ -8,9 +8,12 @@ import * as sites from "./sites.mjs";
 import * as orders from "./orders.mjs";
 import * as admin from "./admin.mjs";
 import * as billing from "./billing.mjs";
+import * as funnel from "./funnel.mjs";
+import * as showcase from "./showcase.mjs";
 
 export const ROUTES = {
   "GET /health": async (_e, ctx) => json(200, { ok: true, service: "cinefolio-api", env: ctx.config.appEnv, ts: new Date().toISOString() }),
+  "GET /showcase": showcase.getShowcase,
   "GET /me": misc.getMe,
   "PUT /me": misc.putMe,
   "POST /media": misc.mediaUpload,
@@ -23,6 +26,8 @@ export const ROUTES = {
   "GET /waitlist/count": misc.waitlistCount,
   "POST /contact": misc.contact,
   "POST /hit": misc.hit,
+  "POST /funnel": funnel.record,
+  "GET /funnel/report": funnel.report,
   "GET /admin/orders": misc.adminOrders,
   "POST /admin/orders/{id}/retry": studio.adminRetry,
   "GET /admin/stats": admin.stats,
@@ -52,6 +57,7 @@ export const ROUTES = {
   "POST /sites/{id}/publish": sites.publish,
   "POST /sites/{id}/rollback": sites.rollback,
   "POST /sites/{id}/duplicate": sites.duplicate,
+  "POST /sites/{id}/showcase": showcase.setShowcase,
   "DELETE /sites/{id}": sites.takedown,
   "POST /sites/{id}/delete": sites.deleteSite,
 };

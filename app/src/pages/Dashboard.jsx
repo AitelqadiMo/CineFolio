@@ -9,6 +9,7 @@ import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly, confetti, Dialog, ConfirmDialog, PromptDialog, slugProblem } from "../ui.jsx";
 import { ledger } from "../orders.js";
+import { track, STEP } from "../funnel.js";
 
 const hasDraft = () => { try { return !!localStorage.getItem("cf.studioDraft"); } catch { return false; } };
 
@@ -85,6 +86,7 @@ export default function Dashboard() {
     const o = premiereCut; setBusyId(siteId); setErr("");
     try {
       await api.publish(siteId, { orderId: o.orderId });
+      track(STEP.filmPublished); // funnel: a film went live
       ledger.acknowledge(o.orderId);
       setPremiereCut(null); setDelivery(null);
       confetti(); await load();
@@ -97,6 +99,7 @@ export default function Dashboard() {
     try {
       const site = await api.createSite({ slug: s, title: o.name || s, orderId: o.orderId });
       await api.publish(site.site.siteId, { orderId: o.orderId });
+      track(STEP.filmPublished); // funnel: a film went live
       ledger.acknowledge(o.orderId);
       setPremiereCut(null); setDelivery(null); setCutSlug("");
       confetti(); await load();

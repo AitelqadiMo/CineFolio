@@ -11,6 +11,7 @@ import { friendly, ConfirmDialog, PromptDialog } from "../ui.jsx";
 import { toast } from "../shell/Toast.jsx";
 import { ledger } from "../orders.js";
 import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
+import { track, STEP } from "../funnel.js";
 import AssetChips from "../shell/Intake.jsx";
 
 const fmt = (d) => (d ? new Date(d).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
@@ -142,6 +143,7 @@ export default function Editor({ siteId }) {
         if ((r.assets ?? 0) === 0) {
           setErr(`Release #${r.release} shipped ${r.pages ?? "?"} page(s) but 0 assets. The deployed API is running old publish code: run terraform apply in envs/dev, then rebuild again.`);
         } else {
+          track(STEP.filmPublished); // funnel: a film went live
           toast(`Release #${r.release} is live: ${r.pages} page${r.pages === 1 ? "" : "s"} and ${r.assets} asset${r.assets === 1 ? "" : "s"} shipped.`);
         }
         setRelSel("live");

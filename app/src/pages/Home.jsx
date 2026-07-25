@@ -9,6 +9,7 @@ import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
 import { useIntakeAssets, useDropzone, usePopover, packBrief } from "../media.js";
 import { ledger } from "../orders.js";
+import { track, STEP } from "../funnel.js";
 import AssetChips from "../shell/Intake.jsx";
 
 const DEMO = parseProfile("", { name: "Jordan Vega", headline: "Product Designer, systems and story" });
@@ -21,30 +22,35 @@ export default function Home() {
   const [sites, setSites] = useState(null);
   const stylePop = usePopover();
   const fileRef = useRef(null);
+  const prevPaid = useRef(null); // funnel purchase watcher: last seen paidCredits
   const intake = useIntakeAssets();
   const { over, dropProps } = useDropzone(intake.addFiles);
 
   const [firstRun, setFirstRun] = useState({ dossier: false, draft: false });
   const ent = useEntitlement();               // the shared studio-pass truth (entitlement.js)
-  const [lane, setLane] = useState("ai");     // "ai" (express, needs resume) | "set" (manual)
+  // The Set is the default lane: it renders your site as you type, needs nothing
+  // but a name, and never blocks. The AI Director lane is opt-in (it needs a
+  // resume and runs in the pipeline). A returning user with films who still has
+  // free cuts is nudged back to the express lane; a brand-new lot starts on The Set.
+  const [lane, setLane] = useState("set");    // "set" (build it, renders live) | "ai" (AI Director, needs resume)
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
   const [buy, setBuy] = useState(null);       // LS checkout url, offered when every cut is spent
 
   useEffect(() => {
-    api.sites().then((r) => setSites(r.sites || [])).catch(() => setSites([]));
+    api.sites().then((r) => {
+      const list = r.sites || [];
+      setSites(list);
+      // returning users with a film and cuts to spare: the express AI lane is theirs
+      if (list.length > 0) refreshEnt().then((e) => { if (e && (e.freeCutsLeft > 0 || e.paidCredits > 0)) setLane("ai"); });
+    }).catch(() => setSites([]));
     api.getProfile().then((r) => setFirstRun((f) => ({ ...f, dossier: !!r.profile }))).catch(() => { /* optional */ });
-    refreshEnt().then((e) => {
-      if (e && e.freeCutsLeft === 0 && !(e.paidCredits > 0)) setLane("set");
-    });
+    refreshEnt();
     try { setFirstRun((f) => ({ ...f, draft: !!localStorage.getItem("cf.studioDraft") })); } catch { /* noop */ }
-    // brand-new lot: roll the First Screening once, never twice, always skippable
-    try {
-      if (!localStorage.getItem("cf.fsSeen")) {
-        localStorage.setItem("cf.fsSeen", "1");
-        api.getProfile().then((r) => { if (!r.profile) nav("welcome"); }).catch(() => { /* stay home */ });
-      }
-    } catch { /* private mode: the dossier step below still leads there */ }
+    // A brand-new lot lands right here, on one obvious action: the empty state
+    // sells The Set and shows the guided First Screening as an optional step.
+    // We no longer force the eight-scene walk before the dashboard is even seen;
+    // the fastest route to a first film is a single click, not a form.
   }, []);
 
   const rollToSet = () => {
@@ -65,7 +71,7 @@ export default function Home() {
   // skeleton until the cut lands in the preview
   const rollToDirector = async () => {
     const cv = intake.resume?.text || "";
-    if (cv.trim().length < 80) { setErr("The director needs your resume: drop a PDF or TXT first, or switch to The Set to type it in."); return; }
+    if (cv.trim().length < 80) { setErr("The AI Director lane needs a resume to read. Drop a PDF or TXT above, or switch to The Set and see your site render as you type, no resume required."); return; }
     setSending(true); setErr("");
     try {
       const name = (cv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || "").slice(0, 60);
@@ -78,6 +84,7 @@ export default function Home() {
         covers: intake.covers.filter((c) => !String(c.url).startsWith("data:")).map((c) => ({ name: c.name, url: c.url })),
         links: null,
       });
+      track(STEP.filmGenerated); // funnel: an AI cut order came back
       setEnt(r.entitlement); // the server's snapshot, never a client-side guess
       ledger.record({ orderId: r.orderId, name, price: r.price || 0, ai: true, production: !!r.production, status: r.production ? "queued" : "preview_only" });
       try { localStorage.setItem("cf.activeOrder", JSON.stringify({ orderId: r.orderId, name })); } catch { /* noop */ }
@@ -87,6 +94,7 @@ export default function Home() {
         if (e.body?.entitlement) setEnt(e.body.entitlement); // the 402 carries the truth too
         setLane("set");
         setErr("Your free AI films are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
+        track(STEP.checkoutClick); // funnel: buyer sent to Lemon Squeezy checkout
         api.billingCheckout().then((c) => setBuy(c.url))
           .catch(() => setErr("Your free AI films are spent. The Set is open for manual filming; the paid register opens soon."));
       }
@@ -96,9 +104,12 @@ export default function Home() {
   const friendlyMsg = (e) => e?.message || "The studio hit a snag. Try again in a moment.";
 
   // the moment credits land (the checkout watcher or a manual recheck), the
-  // register closes itself and the AI lane re-opens — on every surface at once
+  // register closes itself and the AI lane re-opens, on every surface at once
   useEffect(() => {
     if (buy && (ent?.paidCredits || 0) > 0) { setBuy(null); setErr(""); setLane("ai"); }
+    // funnel purchase: fire once when a paid credit actually lands (webhook has no browser session)
+    const paid = ent?.paidCredits ?? null;
+    if (paid !== null) { if (prevPaid.current !== null && paid > prevPaid.current) track(STEP.purchase); prevPaid.current = paid; }
   }, [buy, ent]);
 
   const roll = () => { if (lane === "ai") rollToDirector(); else rollToSet(); };
@@ -126,7 +137,7 @@ export default function Home() {
   return (
     <div>
       <div className="bkhero">
-        <h1 className="bkgreet">What story are we filming today, <em>{who}</em>?</h1>
+        <h1 className="bkgreet">What story are you telling today, <em>{who}</em>?</h1>
 
         <div className={`bkcomposer ${over ? "over" : ""}`} {...dropProps}>
           <input
@@ -155,20 +166,20 @@ export default function Home() {
           {(intake.error || err) && <div className="bkerr" role="alert">{intake.error || err}</div>}
           {buy && (
             <div className="bkbuy">
-              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut — $99 · 3 productions</a>
-              <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid — check my credits</button>
+              <a className="btn" href={buy} target="_blank" rel="noopener noreferrer" onClick={() => watchForCredits()}>Unlock the Director&apos;s Cut · $99 · 3 productions</a>
+              <button type="button" className="btn ghost" onClick={() => refreshEnt()}>I&apos;ve paid, check my credits</button>
             </div>
           )}
           <span className="visually-hidden" aria-live="polite">{intake.busy ? "Reading your files…" : sending ? "Sending to the director…" : ""}</span>
           <div className="bkcomprow" style={{ position: "relative" }}>
             <button className="bkplus" title="Attach resume, headshot or project shots" aria-label="Attach resume, headshot or project shots" onClick={() => fileRef.current?.click()}>+</button>
-            <div className="bklane" role="radiogroup" aria-label="Who films it">
-              <button role="radio" aria-checked={lane === "ai"} className={lane === "ai" ? "on" : ""} disabled={ent?.freeCutsLeft === 0 && !(ent?.paidCredits > 0)}
-                title={ent?.freeCutsLeft === 0 && !(ent?.paidCredits > 0) ? "Free cuts spent — unlock a paid cut" : "The AI director films it; you wait in the lounge"} onClick={() => setLane("ai")}>
-                ◈ AI Director{ent ? ` · ${ent.freeCutsLeft > 0 ? `${ent.freeCutsLeft} free` : ent.paidCredits > 0 ? `${ent.paidCredits} paid` : "0 left"}` : ""}
-              </button>
-              <button role="radio" aria-checked={lane === "set"} className={lane === "set" ? "on" : ""} title="Film it yourself; renders as you type" onClick={() => setLane("set")}>
+            <div className="bklane" role="radiogroup" aria-label="How to build it">
+              <button role="radio" aria-checked={lane === "set"} className={lane === "set" ? "on" : ""} title="Build it yourself. Your site renders as you type. Free, instant, no resume needed." onClick={() => setLane("set")}>
                 ◉ The Set
+              </button>
+              <button role="radio" aria-checked={lane === "ai"} className={lane === "ai" ? "on" : ""} disabled={ent?.freeCutsLeft === 0 && !(ent?.paidCredits > 0)}
+                title={ent?.freeCutsLeft === 0 && !(ent?.paidCredits > 0) ? "Free cuts spent. Unlock a paid cut, or build it on The Set" : "The AI Director builds it from your resume in the pipeline; watch from the lounge"} onClick={() => setLane("ai")}>
+                ◈ AI Director{ent ? ` · ${ent.freeCutsLeft > 0 ? `${ent.freeCutsLeft} free` : ent.paidCredits > 0 ? `${ent.paidCredits} paid` : "0 left"}` : ""}
               </button>
             </div>
             <div ref={stylePop.ref} style={{ marginLeft: "auto", position: "relative" }}>
@@ -192,8 +203,8 @@ export default function Home() {
         </div>
         <p className="bkhelper">
           {lane === "ai"
-            ? "Drop the resume and a photo, hit send: the AI director films a scroll-story portfolio while you watch from the lounge. Uses one of your cuts."
-            : "Resume as PDF or TXT, images up to 10MB. We read everything in your browser; nothing is filed until you hit send."}
+            ? "Attach a resume and a photo, hit send, and the AI Director builds a scroll-story portfolio from them in the pipeline. Uses one of your free cuts. No resume yet? The Set builds you a site right now."
+            : "Open The Set and your portfolio renders as you type, no resume required. Drop one to prefill, if you have it. PDF or TXT, images up to 10MB, all read in your browser; nothing leaves it until you hit send."}
         </p>
       </div>
 
@@ -214,25 +225,31 @@ export default function Home() {
               </div>
             )}
             {sites?.length === 0 && (() => {
-              const done = 1 + (firstRun.dossier ? 1 : 0) + (firstRun.draft ? 1 : 0);
+              const done = 1 + (firstRun.draft ? 1 : 0) + (firstRun.dossier ? 1 : 0);
+              const remaining = 3 - (firstRun.draft ? 1 : 0) - (firstRun.dossier ? 1 : 0);
               return (
-                <div style={{ padding: "10px 4px 6px" }}>
+                <div className="bkfirst">
                   <div className="mono" style={{ fontSize: 9.5 }}>
-                    {done} OF 4 DONE · ACCOUNT CREATED ✓{firstRun.dossier ? " · DOSSIER FILLED ✓" : ""}{firstRun.draft ? " · TAKE DIRECTED ✓" : ""}
+                    STEP {done} OF 4 · {remaining} TO GO · ACCOUNT CREATED ✓{firstRun.draft ? " · FIRST FILM STARTED ✓" : ""}{firstRun.dossier ? " · RESUME SAVED ✓" : ""}
                   </div>
-                  <div className="bkgauge" aria-hidden="true"><div className="fill" style={{ width: `${(done / 4) * 100}%` }} /></div>
+                  <div className="bkgauge" aria-label={`Setup ${done} of 4 done`}><div className="fill" style={{ width: `${(done / 4) * 100}%` }} /></div>
+                  <div className="bkfirsthead">
+                    <h2>Build your first film. It renders as you type.</h2>
+                    <p>The Set is a live editor: type a line, watch your portfolio site appear. No resume, no wait. When it looks right, publish it live in one click.</p>
+                    <button className="bkbtn primary bkfirstcta" onClick={() => nav("studio")}>Open The Set · build your first film →</button>
+                  </div>
                   <div className="bksteps">
-                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav(firstRun.dossier ? "profile" : "welcome")}>
-                      <span className="no" aria-hidden="true">{firstRun.dossier ? "✓" : "1"}</span>
-                      <span><b>{firstRun.dossier ? "Fill your dossier" : "Walk the First Screening"}</b><i>{firstRun.dossier ? "Upload a resume once; every film casts from it." : "Eight scenes, five minutes: the studio learns your story."}</i></span>
-                    </button>
                     <button className={`bkstep ${firstRun.draft ? "done" : ""}`} onClick={() => nav("studio")}>
-                      <span className="no" aria-hidden="true">{firstRun.draft ? "✓" : "2"}</span>
-                      <span><b>Direct your free take</b><i>Drop assets above, or open The Set; it renders as you type.</i></span>
+                      <span className="no" aria-hidden="true">{firstRun.draft ? "✓" : "1"}</span>
+                      <span><b>Build it on The Set</b><i>Type and it renders live. Nothing required but a name.</i></span>
+                    </button>
+                    <button className={`bkstep ${firstRun.dossier ? "done" : ""}`} onClick={() => nav(firstRun.dossier ? "profile" : "welcome")}>
+                      <span className="no" aria-hidden="true">{firstRun.dossier ? "✓" : "2"}</span>
+                      <span><b>{firstRun.dossier ? "Resume saved" : "Add a resume (optional)"}</b><i>{firstRun.dossier ? "Every film prefills from it. Keep it current in My dossier." : "Drop one and the editor prefills itself. Skip it and keep typing."}</i></span>
                     </button>
                     <button className="bkstep" onClick={() => nav("studio")}>
                       <span className="no" aria-hidden="true">3</span>
-                      <span><b>Premiere it</b><i>One click, live on yourname.cinefolio.dev.</i></span>
+                      <span><b>Publish it live</b><i>One click, live on yourname.cinefolio.dev.</i></span>
                     </button>
                   </div>
                 </div>

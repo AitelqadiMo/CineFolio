@@ -3,8 +3,8 @@
 // Pointer: CloudFront KVS  slug -> "{siteId}/releases/{n}"   (atomic flip, no invalidation)
 // Fallback (if KVS data plane unavailable): copy release -> sites/{slug}/current/ + invalidate.
 // DynamoDB: SITE#{id}/META (GSI1 SLUG#{slug} for uniqueness), SITE#{id}/RELEASE#{00n}.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf, publishSlots, TRIAL_HOURS } from "./lib.mjs";
-import { sendEmail, firstPremiereEmail, trialWarningEmail } from "./email.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, pathParam, qs, clampStr, uuid, now, slugify, validateBundle, isPagePath, assetTypeOf, publishSlots, TRIAL_HOURS, FOUNDING_PRICE, CUT_PRICE, foundingSeatsLeftFrom } from "./lib.mjs";
+import { sendEmail, firstPremiereEmail, trialWarningEmail, filmVaultedEmail } from "./email.mjs";
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})+$/;
 
@@ -178,6 +178,9 @@ export async function publish(event, ctx) {
   // films and every paid-plan premiere carry no clock. A re-release during the
   // window keeps the ORIGINAL clock (releases never extend it); publishing
   // after an upgrade clears it for good.
+  // "coach" is a LEGACY plan (the retired Coach's Slate, unsellable in pricing
+  // v4); it stays here so a grandfathered coach keeps a paid plan's no-clock
+  // premieres and never regresses to the free trial engagement.
   const paidPlan = profile?.plan === "director" || profile?.plan === "coach";
   const aiBorn = Boolean(b.orderId || site.orderId);
   const trialEndsAt = !paidPlan && aiBorn
@@ -287,11 +290,27 @@ export async function takedown(event, ctx) {
   return ok({ ok: true, siteId: site.siteId, status: "taken_down" });
 }
 
+// the KVS sentinel a vaulted slug points at so the edge can tell a film that
+// WAS published (limited engagement over, address held) apart from a slug that
+// never existed, without a data lookup the router cannot do. The router reads
+// this value and serves the honest vault page; every other not-live slug (never
+// existed, or an owner takedown) stays a plain not-found. Keep in lockstep with
+// the same constant in infra/modules/hosting/functions/router.js.
+export const VAULT_SENTINEL = "_vault";
+
 // darken a live film — pointer, fallback copies, cache, status — shared by the
 // owner's takedown and the limited-engagement expiry. The releases themselves
 // are never touched: the vault keeps everything, only the marquee goes dark.
 async function darkenSite(ctx, site, statusLabel) {
-  try { await ctx.kvs.del(ctx.config.kvsArn, site.slug); } catch { /* fallback mode or never flipped */ }
+  // pull the live pointer first (this IS the film going dark). Then, for a
+  // limited-engagement expiry ONLY, drop a vault sentinel in its place so the
+  // edge can serve the honest "in the vault" page instead of the generic
+  // not-found. A takedown leaves the slug fully dark: the owner pulled it on
+  // purpose, so it reads as never-published, never as a vault upsell.
+  try {
+    await ctx.kvs.del(ctx.config.kvsArn, site.slug);
+    if (statusLabel === "trial_ended") await ctx.kvs.put(ctx.config.kvsArn, site.slug, VAULT_SENTINEL);
+  } catch { /* fallback mode or never flipped: vaulted degrades to plain not-found */ }
   // purge the fallback pointer copies (sites/{slug}/...) so the router's
   // KVS-miss path has nothing to serve
   const releases = await ctx.ddb.query({
@@ -314,13 +333,81 @@ async function darkenSite(ctx, site, statusLabel) {
   });
 }
 
+// how recently a film must have crossed its end time for the vault call to
+// fire. This is the highest-intent email in the product, but only if it is
+// timely: telling an owner their link "just" went dark when it expired days or
+// years ago (a legacy backfill darken) would be a lie, so a stale expiry is
+// darkened silently. A real expiry is caught within one hourly sweep, or within
+// seconds by the beacon, so this window is generous by design.
+export const VAULT_NOTIFY_WINDOW_HOURS = 24;
+
+// the vault call: the owner's live link just went dark in front of their own
+// audience, which is the highest-intent moment in the whole funnel. Tell them
+// honestly, once, with the true revive price and a one-click path. Shared by
+// the beacon and the hourly sweep so the two mechanisms speak with one voice.
+//
+// Fail-soft to the bone: this must NEVER break an expiry (a darken already
+// happened before we are called). The stamp lands FIRST under a conditional so
+// the beacon, the sweep, and overlapping sweeps can never double-send; the mail
+// rides after, exactly like the first-premiere and final-screening stamps.
+export async function notifyVaulted(ctx, site) {
+  try {
+    if (!site?.trialEndsAt) return false;
+    const endedMs = Date.parse(site.trialEndsAt);
+    if (!Number.isFinite(endedMs)) return false;
+    // stale expiry (legacy/backfill darken): darken stands, but stay silent
+    if (Date.now() - endedMs > VAULT_NOTIFY_WINDOW_HOURS * 3600 * 1000) return false;
+
+    // stamp first (conditional): the guard that makes the send exactly-once
+    try {
+      await ctx.ddb.update({
+        Key: { PK: site.PK, SK: "META" },
+        UpdateExpression: "SET vaultedNotifiedAt = :t, updatedAt = :t",
+        ConditionExpression: "attribute_exists(PK) AND attribute_not_exists(vaultedNotifiedAt)",
+        ExpressionAttributeValues: { ":t": now() },
+      });
+    } catch (e) {
+      if (e?.name === "ConditionalCheckFailedException") return false; // already sent
+      throw e;
+    }
+
+    const owner = site.owner || (String(site.GSI1PK || "").startsWith("USER#") ? site.GSI1PK.slice(5) : null);
+    const profile = owner ? await ctx.ddb.get({ PK: `USER#${owner}`, SK: "PROFILE" }) : null;
+    const email = profile?.email || null;
+    if (!email) return false; // stamped (we tried); no address to reach
+
+    // the true current price: read the real founding counter (one O(1) GetItem,
+    // exactly as billing's checkout does). If seats remain (or the read fails,
+    // holding the window open like the rest of the product) the founding price
+    // stands; once the window closes it is the standard price. Never fabricated.
+    let seatsLeft = null;
+    try {
+      const row = await ctx.ddb.get({ PK: "COUNTER", SK: "FOUNDING" });
+      seatsLeft = foundingSeatsLeftFrom(row?.count || 0);
+    } catch { /* counter unreadable: hold the founding window open below */ }
+    const price = seatsLeft === null || seatsLeft > 0 ? FOUNDING_PRICE : CUT_PRICE;
+
+    await sendEmail(ctx, email, filmVaultedEmail(
+      { ...site, url: previewUrl(ctx, site.slug), price, foundingSeatsLeft: seatsLeft },
+      ctx.config.appOrigin || ""
+    ));
+    return true;
+  } catch (e) {
+    console.error(JSON.stringify({ level: "warn", msg: "vault notify failed soft", siteId: site?.siteId, err: e?.message }));
+    return false;
+  }
+}
+
 // called from the view beacon: an expired limited engagement darkens itself on
 // the first look past its end time. Lazy by design — a trial nobody views
-// costs nothing up, and the beacon fires on every real visit.
+// costs nothing up, and the beacon fires on every real visit. The moment it
+// darkens is the moment the owner's link went dark, so the vault call rides
+// here too (fail-soft, once).
 export async function expireTrialIfDue(ctx, site) {
   if (!site || site.status !== "live" || !site.trialEndsAt) return false;
   if (site.trialEndsAt > now()) return false;
   await darkenSite(ctx, site, "trial_ended");
+  await notifyVaulted(ctx, site);
   return true;
 }
 
@@ -336,13 +423,20 @@ export async function sweepTrials(ctx) {
     ExpressionAttributeValues: { ":t": "site" },
   });
   const all = page.items || [];
-  let darkened = 0, warned = 0;
+  let darkened = 0, warned = 0, vaulted = 0;
   const nowIso = now();
   const warnHorizon = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
   for (const site of all) {
     if (site.status !== "live" || !site.trialEndsAt) continue;
     if (site.trialEndsAt <= nowIso) {
-      try { await darkenSite(ctx, site, "trial_ended"); darkened++; }
+      // the marquee goes dark, then the owner hears about it. The darken must
+      // land no matter what; only a SUCCESSFUL darken earns the vault call, and
+      // the call is fail-soft and exactly-once (a stale expiry stays silent).
+      try {
+        await darkenSite(ctx, site, "trial_ended");
+        darkened++;
+        if (await notifyVaulted(ctx, site)) vaulted++;
+      }
       catch (e) { console.error(JSON.stringify({ level: "error", msg: "sweep darken failed", siteId: site.siteId, err: e?.message })); }
     } else if (site.trialEndsAt <= warnHorizon && !site.trialWarnedAt) {
       // stamp FIRST (conditional) so overlapping sweeps can never double-send;
@@ -366,7 +460,7 @@ export async function sweepTrials(ctx) {
       }
     }
   }
-  return { darkened, warned, scanned: all.length };
+  return { darkened, warned, vaulted, scanned: all.length };
 }
 
 // POST /sites/{id}/delete: the real delete. Two-step by design: only a
@@ -538,6 +632,9 @@ const pub = (s, ctx) => ({
   trialEndsAt: s.trialEndsAt || null, // limited engagement clock; null = permanent
   releases: s.releases, liveRelease: s.liveRelease, stagedRelease: s.stagedRelease ?? null,
   audienceOf: s.audienceOf || null, pointerMode: s.pointerMode,
+  // public showcase consent, so the toggle reflects stored state across reloads
+  // rather than resetting to off. Strict true only: consent is never inferred.
+  showcase: s.showcase === true,
   customDomain: s.customDomain || null, domainStatus: s.domainStatus || null,
   createdAt: s.createdAt, publishedAt: s.publishedAt,
   previewUrl: previewUrl(ctx, s.slug),

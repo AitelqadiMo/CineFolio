@@ -616,7 +616,7 @@ test("studio/order: one free cut for new accounts, legacy accounts keep their th
   assert.equal(first.code, 200);
   assert.equal(first.body.freeCutsLeft, 0);
   assert.equal(first.body.price, 0);
-  assert.deepEqual(first.body.entitlement, { plan: "free", aiCuts: 1, freeCutsLeft: 0, freeCutsLimit: 1, paidCredits: 0, publishSlots: 1 }, "the 200 carries the authoritative snapshot");
+  assert.deepEqual(first.body.entitlement, { plan: "free", aiCuts: 1, freeCutsLeft: 0, freeCutsLimit: 1, paidCredits: 0, publishSlots: 1, foundingSeatsLeft: 20, foundingPrice: 49 }, "the 200 carries the authoritative snapshot, now including the founding window");
   const second = parse(await h(ev("POST /studio/order", { claims: "fc1", body })));
   assert.equal(second.code, 402);
   assert.equal(second.body.price, 99);
@@ -994,14 +994,14 @@ test("billing: checkout is personal, priced, and degrades honestly", async () =>
   const h = makeHandler(async () => lsCtx());
   const { code, body } = parse(await h(ev("GET /billing/checkout", { claims: "buyer" })));
   assert.equal(code, 200);
-  assert.equal(body.price, 99);
+  assert.equal(body.price, 49, "pricing v4: the founding window is the live price");
   assert.match(body.url, /^https:\/\/cinefolio\.lemonsqueezy\.com\/buy\/dc\?/);
   assert.ok(decodeURIComponent(body.url).includes("checkout[email]=buyer@x.io"), "buyer email is prefilled");
   assert.ok(decodeURIComponent(body.url).includes("checkout[custom][user_sub]=buyer"), "the sub rides along for the webhook");
-  // the coach pack rides the same register with its own link and price
+  // The Coach's Slate is retired in pricing v4. An unknown product must degrade
+  // to the flagship rather than quoting a tier we no longer sell.
   const coach = parse(await h(ev("GET /billing/checkout", { claims: "buyer", qs: { product: "coach" } })));
-  assert.equal(coach.body.price, 295);
-  assert.match(coach.body.url, /^https:\/\/cinefolio\.lemonsqueezy\.com\/buy\/coach\?/);
+  assert.equal(coach.body.price, 49, "a retired tier degrades to the flagship, never a dead price");
   // no session -> 401 even before the gateway is in play
   assert.equal(parse(await h(ev("GET /billing/checkout"))).code, 401);
   // store not open yet -> an honest 503, never a broken link

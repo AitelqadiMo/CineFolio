@@ -8,6 +8,7 @@ import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { friendly, confetti, Dialog, ConfirmDialog, PromptDialog, slugProblem } from "../ui.jsx";
 import { ledger } from "../orders.js";
+import { track, STEP } from "../funnel.js";
 
 const ageOf = (s) => (s.publishedAt ? Math.floor((Date.now() - new Date(s.publishedAt).getTime()) / 86400000) : 0);
 
@@ -29,11 +30,28 @@ export default function Films() {
   const [premiereCut, setPremiereCut] = useState(null);
   const [cutSlug, setCutSlug] = useState("");
   const [copied, setCopied] = useState("");
+  // Public showcase consent, tracked per film. The sites list does not carry the
+  // stored flag, so this seeds from the server default (OFF) and then only ever
+  // holds a value the SERVER confirmed: every toggle reconciles to the persisted
+  // flag the endpoint returns, and rolls back visibly if the write fails.
+  const [showcaseOn, setShowcaseOn] = useState({}); // siteId -> boolean (confirmed)
+  const [showcaseBusy, setShowcaseBusy] = useState(null); // siteId currently writing
+  const [confirmShowcase, setConfirmShowcase] = useState(null); // site pending an ON confirm
   const cheered = useRef(false);
   const kebabRef = useRef(null);
 
   const [aiOrders, setAiOrders] = useState([]);
-  const load = () => api.sites().then((r) => setSites(r.sites)).catch((e) => setErr(friendly(e.message)));
+  const load = () => api.sites().then((r) => {
+    setSites(r.sites);
+    // seed confirmed consent from server truth where present, defaulting OFF for
+    // any film the list does not describe (the server default). A value already
+    // confirmed this session is kept, so a reload-free reconcile never regresses.
+    setShowcaseOn((cur) => {
+      const next = { ...cur };
+      for (const s of r.sites || []) if (!(s.siteId in next)) next[s.siteId] = s.showcase === true;
+      return next;
+    });
+  }).catch((e) => setErr(friendly(e.message)));
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // AI cuts awaiting their premiere: merge the account-scoped local ledger
@@ -73,6 +91,7 @@ export default function Films() {
     const o = order || premiereCut; setBusyId(siteId); setErr("");
     try {
       await api.publish(siteId, { orderId: o.orderId });
+      track(STEP.filmPublished); // funnel: a film went live
       ledger.acknowledge(o.orderId); setPremiereCut(null); setDelivery(null);
       confetti(); await load();
     } catch (e) { setErr(friendly(e.message)); } finally { setBusyId(null); }
@@ -84,9 +103,36 @@ export default function Films() {
     try {
       const site = await api.createSite({ slug: s, title: o.name || s, orderId: o.orderId });
       await api.publish(site.site.siteId, { orderId: o.orderId });
+      track(STEP.filmPublished); // funnel: a film went live
       ledger.acknowledge(o.orderId); setPremiereCut(null); setDelivery(null); setCutSlug("");
       confetti(); await load();
     } catch (e) { setErr(friendly(e.message)); } finally { setBusyId(null); }
+  };
+
+  // Set public-showcase consent. Optimistic: flip the switch now, then reconcile
+  // to the flag the server actually persisted. On failure, roll back to the prior
+  // confirmed value and surface the error, so the UI never shows a state the
+  // server did not confirm.
+  const applyShowcase = async (site, next) => {
+    const prev = showcaseOn[site.siteId] === true;
+    setErr(""); setShowcaseBusy(site.siteId);
+    setShowcaseOn((m) => ({ ...m, [site.siteId]: next })); // optimistic
+    try {
+      const r = await api.setShowcase(site.siteId, next);
+      setShowcaseOn((m) => ({ ...m, [site.siteId]: r.showcase === true })); // reconcile to server truth
+    } catch (e) {
+      setShowcaseOn((m) => ({ ...m, [site.siteId]: prev })); // visible rollback
+      setErr(friendly(e.message));
+    } finally {
+      setShowcaseBusy(null);
+    }
+  };
+  // Turning ON is deliberate: confirm first, spelling out exactly what goes public.
+  // Turning OFF is immediate and reversible, no gate.
+  const toggleShowcase = (site) => {
+    if (showcaseBusy) return;
+    if (showcaseOn[site.siteId] === true) applyShowcase(site, false);
+    else setConfirmShowcase(site);
   };
 
   const copy = (what, text) => { navigator.clipboard?.writeText(text); setCopied(what); setTimeout(() => setCopied(""), 1600); };
@@ -137,6 +183,27 @@ export default function Films() {
         </span>
         <button className="kebab" aria-label={`Actions for ${s.title || s.slug}`} aria-haspopup="menu" aria-expanded={kebab === s.siteId} onClick={() => setKebab(kebab === s.siteId ? null : s.siteId)}>⋯</button>
       </span>
+      {s.status === "live" && (
+        <label className="showcasetoggle" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 4px 2px" }}>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={showcaseOn[s.siteId] === true}
+            disabled={showcaseBusy === s.siteId}
+            onChange={() => toggleShowcase(s)}
+            aria-label={`Show ${s.title || s.slug} on the public showcase`}
+            style={{ marginTop: 3, flex: "0 0 auto" }}
+          />
+          <span style={{ minWidth: 0 }}>
+            <b style={{ display: "block", fontSize: 13 }}>
+              Show on the public showcase{showcaseBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
+            </b>
+            <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
+              Lists this film publicly on cinefolio.dev/showcase. Off by default; turn it off any time to remove it.
+            </i>
+          </span>
+        </label>
+      )}
       {kebab === s.siteId && (
         <div className="bkmenu" ref={kebabRef} style={{ position: "absolute", right: 0, top: "100%", marginTop: 4 }} role="menu">
           <button role="menuitem" onClick={() => { setKebab(null); nav(`film/${s.siteId}`); }}><span className="mi" aria-hidden="true">◉</span>Open in the workspace</button>
@@ -156,7 +223,7 @@ export default function Films() {
     <div className="bkpad">
       <div className="bkpagehead">
         <h1>Films</h1>
-        <button className="bkbtn lite" onClick={() => nav("studio")}>Create ▾</button>
+        <button className="bkbtn lite" onClick={() => nav("studio")}>New film</button>
       </div>
 
       {delivery && (
@@ -201,9 +268,9 @@ export default function Films() {
       )}
       {sites?.length === 0 && (
         <div className="bkempty">
-          <span className="mono">NOTHING IN PRODUCTION</span>
-          Your first film is one brief away.
-          <div style={{ marginTop: 16 }}><button className="bkbtn primary" onClick={() => nav("studio")}>Open The Set</button></div>
+          <span className="mono">NO FILMS YET</span>
+          Build your first one on The Set: type and it renders live, then publish in one click. No resume needed.
+          <div style={{ marginTop: 16 }}><button className="bkbtn primary" onClick={() => nav("studio")}>Open The Set · build your first film</button></div>
         </div>
       )}
 
@@ -339,6 +406,45 @@ export default function Films() {
         onConfirm={() => { const s = confirmDelete; setConfirmDelete(null); act(s.siteId, () => api.deleteSite(s.siteId)); }}
         onClose={() => setConfirmDelete(null)}
       />
+
+      {/* ---------- opt in to the public showcase ---------- */}
+      <Dialog
+        open={!!confirmShowcase} kicker="THE PUBLIC SHOWCASE"
+        title={confirmShowcase ? `Show ${confirmShowcase.title || confirmShowcase.slug} publicly?` : ""}
+        onClose={() => setConfirmShowcase(null)} width={520}
+      >
+        {confirmShowcase && (
+          <>
+            <div className="dlgtext">
+              This lists your film on the public showcase at cinefolio.dev/showcase, where anyone,
+              signed in or not, can see it. Turning it on shares these publicly:
+            </div>
+            <div className="sharerow">
+              <span className="mono sharelbl">TITLE</span>
+              <span className="shareval">{confirmShowcase.title || confirmShowcase.slug}</span>
+            </div>
+            <div className="sharerow">
+              <span className="mono sharelbl">SLUG</span>
+              <span className="shareval mono">{confirmShowcase.slug}</span>
+            </div>
+            <div className="sharerow">
+              <span className="mono sharelbl">LIVE ADDRESS</span>
+              <span className="shareval mono">{`https://${confirmShowcase.slug}.cinefolio.dev`}</span>
+            </div>
+            <div className="dlgtext" style={{ marginTop: 12 }}>
+              Nothing else is shared: no email, no account details, no analytics. You can turn this
+              off at any time and the film leaves the showcase on the next visit.
+            </div>
+            <div className="btnrow" style={{ marginTop: 18 }}>
+              <button type="button" className="btn primary" disabled={showcaseBusy === confirmShowcase.siteId}
+                onClick={() => { const s = confirmShowcase; setConfirmShowcase(null); applyShowcase(s, true); }}>
+                {showcaseBusy === confirmShowcase.siteId ? <span className="spin" /> : null}Show it on the showcase
+              </button>
+              <button type="button" className="btn ghost" onClick={() => setConfirmShowcase(null)}>Cancel</button>
+            </div>
+          </>
+        )}
+      </Dialog>
     </div>
   );
 }

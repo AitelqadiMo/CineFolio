@@ -67,10 +67,52 @@ resource "aws_sqs_queue" "orders" {
   tags = var.tags
 }
 
+# ---------- content-moderation configuration parameters ----------
+# Creem (payment provider) mandates a prompt-moderation surface for any product
+# that generates images or video; this pipeline generates both, so moderation is
+# a hard compliance requirement. The deterministic screen in moderation.mjs runs
+# with NO configuration at all — these parameters are ONLY for the optional
+# network screens, and the pipeline reads them from the same SSM path it already
+# loads at validate time.
+#
+# Two independent screens are configured here:
+#   - the generic hosted hook (MODERATION_API_*), which we chose and which FAILS
+#     OPEN to the deterministic floor on an outage, and
+#   - the Creem provider screen (CREEM_MODERATION_*), which Creem's AI Wrapper
+#     Compliance rules MANDATE and which FAILS CLOSED on an outage. Supplying
+#     CREEM_MODERATION_API_KEY alone arms it: the URL DEFAULTS in code to Creem's
+#     real endpoint, so CREEM_MODERATION_API_URL only needs a value to override
+#     it (e.g. to point at Creem's test host). Keys start with `creem_`
+#     (`creem_test_` for test mode).
+#
+# Same doctrine as the billing parameters: Terraform owns that the parameters
+# EXIST, the operator owns their VALUES (set out-of-band via
+# `aws ssm put-parameter --overwrite`, never committed). The placeholder "unset"
+# is treated as UNCONFIGURED/DORMANT by moderation.mjs, so each screen stays
+# dormant until a real key is supplied. A KEY IS NEVER HARDCODED HERE.
+resource "aws_ssm_parameter" "moderation" {
+  for_each = toset([
+    "MODERATION_API_URL",        # generic hosted endpoint (POST JSON {input}); empty/unset = hook disabled
+    "MODERATION_API_KEY",        # bearer key for the generic endpoint; treated as unconfigured while "unset"
+    "CREEM_MODERATION_API_URL",  # Creem endpoint override; unset => code default https://api.creem.io/v1/moderation/prompt
+    "CREEM_MODERATION_API_KEY",  # Creem x-api-key (creem_ / creem_test_); unset/"unset" = Creem screen dormant
+  ])
+  name  = "${local.ssm_prefix}/${each.key}"
+  type  = "SecureString"
+  value = "unset"
+  tags  = var.tags
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 # ---------- pipeline worker Lambda ----------
-# The bundle = pipeline.mjs + the SHARED email template library. email.mjs is
-# sourced from the api module at plan time, so there is exactly ONE copy of
-# every customer email in the repo and the two lambdas can never drift apart.
+# The bundle = pipeline.mjs + the content-moderation screen + the SHARED email
+# template library. email.mjs is sourced from the api module at plan time, so
+# there is exactly ONE copy of every customer email in the repo and the two
+# lambdas can never drift apart. moderation.mjs is pipeline-local: it is the
+# content-screening gate the pipeline runs before every dispatch.
 data "archive_file" "worker" {
   type        = "zip"
   output_path = "${path.module}/.build/pipeline.zip"
@@ -78,6 +120,10 @@ data "archive_file" "worker" {
   source {
     content  = file("${path.module}/lambda/pipeline.mjs")
     filename = "pipeline.mjs"
+  }
+  source {
+    content  = file("${path.module}/lambda/moderation.mjs")
+    filename = "moderation.mjs"
   }
   source {
     content  = file("${path.module}/../api/lambda/email.mjs")
@@ -236,7 +282,23 @@ resource "aws_sfn_state_machine" "build" {
         Resource   = aws_lambda_function.worker.arn
         Parameters = { action = "validate", "orderId.$" = "$.orderId" }
         ResultPath = "$.validate"
-        Retry      = [{ ErrorEquals = ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], IntervalSeconds = 5, MaxAttempts = 2, BackoffRate = 2 }]
+        # Two retriers, DELIBERATELY separate because they mean different things:
+        #   - AWS Lambda service faults (throttle / transient service error) retry
+        #     as before.
+        #   - ModerationUnavailable is thrown by validate ONLY when a moderation
+        #     vendor was unreachable (Creem fail-closed: timeout / 5xx) with NO
+        #     confirmed content verdict. It is a TRANSIENT outage, not a rejection,
+        #     so it must retry with backoff and re-screen. This resource is the
+        #     function ARN (direct integration), so the thrown error's name
+        #     propagates verbatim and ErrorEquals matches it by name. When these
+        #     retries exhaust, the States.ALL Catch below routes to HumanReview
+        #     (operator-recoverable) rather than InvalidNoop (terminal). A genuine
+        #     content violation throws OrderInvalid instead and is caught first,
+        #     so it still terminates at InvalidNoop and never retries.
+        Retry = [
+          { ErrorEquals = ["Lambda.ServiceException", "Lambda.TooManyRequestsException"], IntervalSeconds = 5, MaxAttempts = 2, BackoffRate = 2 },
+          { ErrorEquals = ["ModerationUnavailable"], IntervalSeconds = 10, MaxAttempts = 3, BackoffRate = 2 },
+        ]
         Catch = [
           { ErrorEquals = ["OrderInvalid"], Next = "InvalidNoop" },
           { ErrorEquals = ["States.ALL"], ResultPath = "$.error", Next = "HumanReview" },
@@ -252,6 +314,14 @@ resource "aws_sfn_state_machine" "build" {
           Payload      = { action = "dispatch", "orderId.$" = "$.orderId", "taskToken.$" = "$$.Task.Token" }
         }
         ResultPath = "$.cut"
+        # States.TaskFailed is a wildcard for any thrown error except States.Timeout,
+        # so the dispatch-time dossier screen's ModerationUnavailable (transient
+        # vendor outage) already retries here with backoff and, on exhaustion, the
+        # States.ALL Catch parks the order in HumanReview (recoverable) rather than
+        # a terminal reject. A dossier content violation throws OrderInvalid, which
+        # also matches States.TaskFailed; it is rejected in-lambda (status flip +
+        # credit refund) before the throw, so the human_review landing is just the
+        # operator notice, and no unscreened dossier ever reaches the model.
         Retry      = [{ ErrorEquals = ["States.Timeout", "States.TaskFailed"], IntervalSeconds = 60, MaxAttempts = 2, BackoffRate = 2 }]
         Catch      = [{ ErrorEquals = ["States.ALL"], ResultPath = "$.error", Next = "HumanReview" }]
         Next       = "Finalize"

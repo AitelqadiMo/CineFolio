@@ -360,6 +360,48 @@ export function trialWarningEmail(site, appOrigin) {
   };
 }
 
+// the vault call: fires ONCE, at the moment a limited engagement actually ends
+// and the film returns to the vault. This is the owner's highest-intent moment
+// in the whole product: their live link just went dark in front of their own
+// audience. Total honesty, zero shame, zero fake urgency. The film is not gone,
+// the address is still theirs, and one click revives it. Price is passed in by
+// the caller (which reads the real founding counter) so the number quoted here
+// is the true current price, never a fabricated one. Builder stays pure.
+export function filmVaultedEmail(site, appOrigin) {
+  const name = esc(site.title || site.slug);
+  // price: the caller resolved the true current Director's Cut price. Fall back
+  // to 99 (the standard one-time price) if the caller passed nothing, so we
+  // never quote a made-up discount.
+  const price = Number(site.price) > 0 ? Number(site.price) : 99;
+  const seatsLeft = Number.isFinite(site.foundingSeatsLeft) ? site.foundingSeatsLeft : null;
+  const address = site.url
+    ? `<a href="${site.url}" style="color:${BRAND.navy};font-weight:bold;">${esc(site.url)}</a>`
+    : "its address";
+  // a true founding line ONLY when we actually know seats remain. No count, no
+  // line: we never invent scarcity. The console shows the live seat counter.
+  const foundingLine = seatsLeft && seatsLeft > 0
+    ? [`You are early. Founding members pay <b>$${price}</b> while founding seats remain, and the console shows exactly how many are left.`]
+    : [];
+  const cta = appOrigin ? { url: `${appOrigin}/settings`, label: `Bring it back for $${price}` } : null;
+  return {
+    subject: `${site.title || site.slug} has moved to the vault.`,
+    ...build("Now in the vault", "Your film moved to the vault.", [
+      `<b>${name}</b> screened its 72-hour limited engagement, and that run has now ended. The premiere has left ${address} and returned to your vault.`,
+      "Nothing is lost. Every release you built is kept safe, and the address stays reserved for you. Right now a visitor to that link sees an honest note that the portfolio is not currently showing, not your film.",
+      `One click brings it back. <b>The Director's Cut ($${price}, one time)</b> revives this exact film for good and adds two more AI productions, three premiere slots, and revision messages on every production. You build the film and the app renders it; reviving it is instant.`,
+      ...foundingLine,
+    ], cta, {
+      preheader: `${site.title || site.slug} finished its 72-hour run and is back in your vault. The address is still yours. Bring it back for $${price}.`,
+      details: [
+        ["Film", name],
+        ["Left the marquee", esc(String(site.trialEndsAt || "").slice(0, 16).replace("T", " ")) + " UTC"],
+        ["In the vault", "Kept safe, address held"],
+      ],
+      secondary: "You built this film and premiered it, so this note goes only to you. Bring it back whenever the timing is right; the vault holds it as long as you like.",
+    }),
+  };
+}
+
 // ---------- fail-soft senders ----------
 
 // low-level: send a built email to one recipient; never throws into the caller

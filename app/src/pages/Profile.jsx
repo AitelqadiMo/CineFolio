@@ -10,6 +10,7 @@ import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly } from "../ui.jsx";
 import { parseResumeToProfile, EMPTY_PROFILE, mergeProfile } from "../templates/profileParse.js";
+import { track, STEP } from "../funnel.js";
 
 const LS_KEY = "cf.portfolioProfile";
 const LANG_LEVELS = ["Native", "Fluent", "Professional", "Basic"];
@@ -75,6 +76,7 @@ export default function Profile() {
       try {
         if (!api.putProfile) throw new Error("not wired");
         await api.putProfile(profile);
+        track(STEP.profileUploaded); // funnel: portfolio dossier saved
         setSaveState("studio");
       } catch {
         setSaveState("local");

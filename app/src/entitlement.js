@@ -27,14 +27,22 @@ export function useEntitlement() {
 export async function refreshEnt() {
   try {
     const r = await api.me();
-    if (r?.user) setEnt({
-      plan: r.user.plan || "free",
-      aiCuts: r.user.aiCuts || 0,
-      freeCutsLeft: r.user.freeCutsLeft ?? 0,
-      freeCutsLimit: r.user.freeCutsLimit || 3,
-      paidCredits: r.user.paidCredits || 0,
-      publishSlots: r.user.publishSlots || 1,
-    });
+    if (r?.user) {
+      const next = {
+        plan: r.user.plan || "free",
+        aiCuts: r.user.aiCuts || 0,
+        freeCutsLeft: r.user.freeCutsLeft ?? 0,
+        freeCutsLimit: r.user.freeCutsLimit || 3,
+        paidCredits: r.user.paidCredits || 0,
+        publishSlots: r.user.publishSlots || 1,
+      };
+      // founding-member pricing: forward the server's honest figures when they
+      // ride the snapshot. Only pass through real numbers, so the UI never
+      // invents a seat count or a price the server did not send.
+      if (typeof r.user.foundingSeatsLeft === "number") next.foundingSeatsLeft = r.user.foundingSeatsLeft;
+      if (typeof r.user.foundingPrice === "number") next.foundingPrice = r.user.foundingPrice;
+      setEnt(next);
+    }
   } catch { /* the store keeps its last truth */ }
   return current;
 }

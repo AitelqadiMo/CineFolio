@@ -1,20 +1,49 @@
-// Admin v3: the production floor becomes an operations console. Six desks on
-// real data: Overview (platform stats + audience), Films (every site on the
-// platform, with moderation), Orders (the pipeline kanban), People, Inbox,
-// and Controls (the pipeline kill switch). Admin group enforced server-side
-// on every route; this page is just the window.
+// Admin v3: the production floor becomes an operations console. Desks on real
+// data: Overview (platform stats + audience), Revenue (the 1000 USD chase),
+// Films (every site on the platform, with moderation), Orders (the pipeline
+// kanban), People, Inbox, Funnel (where signups drop off), and Controls (the
+// pipeline kill switch). Admin group enforced server-side on every route; this
+// page is just the window.
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { SplitTitle, Skeleton, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
 
 const TABS = [
   { k: "overview", label: "Overview" },
+  { k: "revenue", label: "Revenue" },
   { k: "films", label: "Films" },
   { k: "orders", label: "Orders" },
   { k: "people", label: "People" },
   { k: "inbox", label: "Inbox" },
+  { k: "funnel", label: "Funnel" },
   { k: "controls", label: "Controls" },
 ];
+
+// The funnel vocabulary in stage order, mirroring FUNNEL_STEPS on the server, so
+// this desk can render a plain-English label and a one-line meaning for each of
+// the nine steps the report walks. The order here IS the drop-off order.
+const FUNNEL_LABELS = {
+  landing_view: { label: "Landing viewed", note: "The marketing landing rendered for a visitor." },
+  signup_start: { label: "Sign-up started", note: "Someone opened create-account and touched a field." },
+  signup_complete: { label: "Account confirmed", note: "The Cognito confirmation succeeded." },
+  profile_uploaded: { label: "Portfolio saved", note: "A dossier was saved to the studio." },
+  film_generated: { label: "AI cut returned", note: "An AI cut came back from the director." },
+  film_published: { label: "Film published", note: "A film went live for an audience." },
+  pricing_view: { label: "Pricing seen", note: "The register or pricing surface was viewed." },
+  checkout_click: { label: "Checkout clicked", note: "The buyer clicked through to Lemon Squeezy." },
+  purchase: { label: "Purchase cleared", note: "A paid credit landed, webhook-confirmed." },
+};
+
+// A conversion rate is a 0..1 fraction OR null. Null means the source stage had
+// zero traffic, so there was nothing to convert FROM: that is genuinely unknown
+// and reads as "no data", NEVER as 0%. A real 0 (traffic in, none through) is a
+// true, alarming zero and reads as "0%". Confusing the two would send the owner
+// optimizing a stage nobody has reached yet, so the two are kept distinct here.
+const pctText = (rate) => (rate === null || rate === undefined ? "no data" : `${Math.round(rate * 1000) / 10}%`);
+
+// Money reads as whole dollars with grouping: 493 -> "$493", 1000 -> "$1,000".
+// One formatter so the bar, the headline, and the ledger never disagree.
+const usd = (n) => `$${Math.round(Number(n) || 0).toLocaleString("en-US")}`;
 
 const COLS = [
   { k: "queued", label: "Queued" },
@@ -38,13 +67,17 @@ function StatusDot({ status }) {
   );
 }
 
-// 30-day bars, no dependencies: the data is the decoration.
-function TrafficBars({ daily, color = "var(--navy)", unit = "view" }) {
+// 30-day bars, no dependencies: the data is the decoration. `fmt`, when given,
+// owns the whole tooltip value (e.g. money as "$99"); without it the bar keeps
+// its original count-noun label ("2 views"), so every existing caller is
+// unchanged.
+function TrafficBars({ daily, color = "var(--navy)", unit = "view", fmt }) {
   const max = Math.max(1, ...daily.map((d) => d.count));
+  const label = (d) => (fmt ? `${d.date} · ${fmt(d.count)}` : `${d.date} · ${d.count} ${unit}${d.count === 1 ? "" : "s"}`);
   return (
     <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 84, padding: "10px 2px 0" }}>
       {daily.map((d) => (
-        <div key={d.date} title={`${d.date} · ${d.count} ${unit}${d.count === 1 ? "" : "s"}`}
+        <div key={d.date} title={label(d)}
           style={{ flex: 1, minWidth: 4, height: `${Math.max(3, Math.round((d.count / max) * 100))}%`,
             background: d.count ? color : "var(--line)", borderRadius: "2px 2px 0 0" }} />
       ))}
@@ -67,6 +100,7 @@ export default function Admin() {
     setErr("");
     try {
       if (which === "overview") put("overview", await api.adminStats());
+      if (which === "revenue") put("revenue", await api.adminStats());
       if (which === "films") put("films", await api.adminSites());
       if (which === "orders") {
         const results = await Promise.all(COLS.map((c) => api.adminOrders(c.k).then((r) => [c.k, r.orders]).catch(() => [c.k, []])));
@@ -74,6 +108,7 @@ export default function Admin() {
       }
       if (which === "people") put("people", await api.adminUsers());
       if (which === "inbox") put("inbox", await api.adminContacts());
+      if (which === "funnel") put("funnel", await api.adminFunnel());
       if (which === "controls") put("controls", await api.adminPipeline());
     } catch (e) { setErr(friendly(e.message)); }
   };
@@ -107,12 +142,34 @@ export default function Admin() {
   };
 
   const ov = data.overview;
+  const rev = data.revenue?.revenue;
   const films = data.films;
   const board = data.orders;
   const people = data.people;
   const inbox = data.inbox;
+  const funnel = data.funnel;
   const breaker = data.controls;
+
+  // the funnel has ANY traffic only if some step recorded a count in 30 days.
+  // With none, the desk shows its honest empty state instead of a row of zeros.
+  const funnelHasData = !!funnel && funnel.steps.some((s) => s.total > 0);
+  // the worst REAL drop-off: the lowest conversion among stages that actually
+  // had traffic to convert (rate !== null). A null rate is unknown, not a drop,
+  // so it can never be flagged as the worst step. This is the one row the owner
+  // should act on tomorrow, so we find it once and flag exactly it.
+  const worstConv = funnelHasData
+    ? funnel.conversions
+        .filter((c) => c.rate !== null && c.rate !== undefined)
+        .sort((a, b) => a.rate - b.rate)[0] || null
+    : null;
+  // map worst drop to the "to" step it lands on, so the funnel row for that step
+  // wears the flag (that is the stage losing people relative to the one above).
+  const worstToStep = worstConv ? worstConv.to : null;
   const attention = ov ? (ov.orders.human_review || 0) + (ov.orders.dispatch_failed || 0) : 0;
+  // an unclaimed purchase is money taken with nothing delivered: surface the
+  // count on the tab from whichever payload we already loaded (revenue desk or
+  // the overview card, since both carry the same revenue block).
+  const unclaimed = (data.revenue?.revenue || ov?.revenue)?.unclaimed || 0;
 
   return (
     <>
@@ -129,6 +186,7 @@ export default function Admin() {
               padding: "10px 14px", borderBottom: tab === t.k ? "2px solid var(--gold-g)" : "2px solid transparent", marginBottom: -1 }}>
             {t.label}
             {t.k === "orders" && attention > 0 && <b style={{ color: "var(--red-lit)", marginLeft: 6 }}>{attention}</b>}
+            {t.k === "revenue" && unclaimed > 0 && <b style={{ color: "var(--red-lit)", marginLeft: 6 }}>{unclaimed}</b>}
           </button>
         ))}
         <button onClick={() => load(tab, true)} title="Refresh this desk"
@@ -151,6 +209,13 @@ export default function Admin() {
             <div className="metric"><b>{ov.orders.queued + ov.orders.filming}</b><span>Orders in motion</span></div>
             <div className="metric"><b style={{ color: attention ? "var(--red-lit)" : undefined }}>{attention}</b><span>Need attention</span></div>
             <div className="metric"><b>{ov.users.cutsSpent}</b><span>AI cuts spent</span></div>
+          </div>
+          {/* revenue on the overview: the chase is the headline number, and an
+              unclaimed purchase turns the customers metric into a red alarm. */}
+          <div className="metrics">
+            <div className="metric"><b>{usd(ov.revenue?.totalUsd || 0)}<i style={{ fontStyle: "normal", color: "var(--faint)", fontSize: "48%" }}> / {usd(ov.revenue?.goal?.targetUsd || 1000)}</i></b><span>Revenue · toward goal</span></div>
+            <div className="metric"><b>{usd(ov.revenue?.revenue30 || 0)}</b><span>Revenue · 30 days</span></div>
+            <div className="metric"><b style={{ color: unclaimed ? "var(--red-lit)" : undefined }}>{ov.revenue?.payingCustomers || 0}{unclaimed > 0 && <i style={{ fontStyle: "normal", fontSize: "48%", color: "var(--red-lit)" }}> · {unclaimed} unclaimed</i>}</b><span>Paying customers</span></div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 22, alignItems: "start" }}>
@@ -209,6 +274,106 @@ export default function Admin() {
                 </div>
               ))}
             </div>
+          </div>
+        </>
+      ))}
+
+      {/* ================= REVENUE ================= */}
+      {/* The chase: 1000 USD in 30 days. Lead with an honest progress bar, then
+          the headline money, the daily bars, and every real purchase. Zero
+          revenue reads as a true zero, never a blank or an invented number. */}
+      {tab === "revenue" && (!rev ? (
+        <>
+          <Skeleton h={112} style={{ marginBottom: 22 }} />
+          <div className="metrics" style={{ marginBottom: 22 }}><Skeleton h={92} /><Skeleton h={92} /><Skeleton h={92} /></div>
+          <Skeleton h={132} style={{ marginBottom: 22 }} />
+          <Skeleton h={220} />
+        </>
+      ) : (
+        <>
+          {/* unclaimed = money taken, credits never delivered: a customer-facing
+              emergency, so it shouts above everything else on the desk. */}
+          {rev.unclaimed > 0 && (
+            <div style={{ border: "1.5px solid var(--red-lit)", background: "rgba(200, 16, 46, .07)", borderRadius: 14, padding: "16px 18px", marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <i aria-hidden="true" className="recdot" style={{ marginTop: 6 }} />
+              <div>
+                <div style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 17, color: "var(--red-lit)", textTransform: "uppercase", letterSpacing: ".01em" }}>
+                  {rev.unclaimed} unclaimed purchase{rev.unclaimed === 1 ? "" : "s"}
+                </div>
+                <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--navy)", margin: "6px 0 0" }}>
+                  Someone paid and their credits never landed on an account. Find them in the ledger below, match the email to a studio account, and grant the credits by hand. Never leave a paying customer empty-handed.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* progress toward the goal: the bar is honest. A true zero reads as
+              an empty track with the real numbers spelled out beneath it. */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "18px 20px", marginBottom: 22 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+              <div style={mono9}>The chase · 1000 USD in 30 days</div>
+              <div style={{ ...mono9, color: "var(--navy)" }}>{rev.goal.pct}% there</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 12 }}>
+              <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: "clamp(1.8rem, 5vw, 2.8rem)", lineHeight: 1, color: "var(--navy)" }}>{usd(rev.goal.amountUsd)}</b>
+              <span style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: "1.1rem", color: "var(--faint)" }}>/ {usd(rev.goal.targetUsd)}</span>
+            </div>
+            <div style={{ height: 14, borderRadius: 99, background: "var(--line)", overflow: "hidden", position: "relative" }}>
+              <div style={{ height: "100%", width: `${rev.goal.pct}%`, background: rev.goal.pct >= 100 ? "var(--green)" : "var(--gold-g)", borderRadius: 99, transition: "width .5s cubic-bezier(.22,1,.36,1)" }} />
+            </div>
+            <div style={{ ...mono9, marginTop: 10 }}>
+              {rev.goal.amountUsd === 0
+                ? "No revenue yet. The register is armed and every real sale lands here the moment it clears."
+                : rev.goal.pct >= 100
+                  ? "Goal cleared. The chase is won. Every dollar past this is upside."
+                  : `${usd(Math.max(0, rev.goal.targetUsd - rev.goal.amountUsd))} to go`}
+            </div>
+          </div>
+
+          {/* headline money: total (real only), 30-day, paying customers */}
+          <div className="metrics" style={{ marginBottom: 22 }}>
+            <div className="metric"><b>{usd(rev.totalUsd)}</b><span>Total revenue · real money</span></div>
+            <div className="metric"><b>{usd(rev.revenue30)}</b><span>Revenue · last 30 days</span></div>
+            <div className="metric"><b>{rev.payingCustomers}</b><span>Paying customers</span></div>
+          </div>
+
+          {/* the test-mode line: a provider's validation charge is visible and
+              obviously not real money, so nobody mistakes a test for a sale. */}
+          <div style={{ ...mono9, marginBottom: 22, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: rev.testCount ? "var(--gold-g)" : "var(--line)" }} />
+            {rev.testCount > 0
+              ? `${rev.testCount} test-mode purchase${rev.testCount === 1 ? "" : "s"} on the books · provider validation, not real money, excluded from every total above`
+              : "No test-mode purchases · nothing to exclude from the totals"}
+          </div>
+
+          {/* 30-day revenue bars: same dependency-free component as the audience
+              chart, with money in the tooltip instead of a count. */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px", marginBottom: 22 }}>
+            <div style={mono9}>Revenue · last 30 days</div>
+            <TrafficBars daily={rev.daily} color="var(--green)" fmt={usd} />
+          </div>
+
+          {/* the ledger: every recent real purchase, unclaimed ones flagged loud */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", overflow: "hidden" }}>
+            <div style={{ ...mono9, padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
+              <span>Recent purchases</span><b style={{ color: "var(--navy)" }}>{rev.payingCustomers}</b>
+            </div>
+            {rev.recent.length === 0 && <div style={{ ...mono9, padding: 22 }}>No sales yet. When the first one clears, it lands here.</div>}
+            {rev.recent.map((p, i) => (
+              <div key={p.id || i} style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", alignItems: "baseline", padding: "13px 18px", borderTop: "1px solid var(--line)", background: p.claimed ? undefined : "rgba(200, 16, 46, .05)" }}>
+                <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                  <span style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 15, color: "var(--navy)" }}>{p.product || "Purchase"}</span>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {p.email || "no email on record"}{p.id ? ` · ${p.id}` : ""}
+                  </div>
+                </div>
+                <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 16, color: "var(--green-lit)" }}>{usd(p.amountUsd)}</b>
+                {p.claimed
+                  ? <span style={{ ...mono9, color: "var(--green-lit)" }}><i aria-hidden="true" style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: "var(--green)", marginRight: 6 }} />claimed</span>
+                  : <span style={{ ...mono9, color: "var(--red-lit)" }}><i aria-hidden="true" className="recdot" style={{ margin: "0 6px 0 0" }} />unclaimed</span>}
+                <span style={mono9}>{when(p.at)}</span>
+              </div>
+            ))}
           </div>
         </>
       ))}
@@ -312,6 +477,125 @@ export default function Admin() {
             </div>
           ))}
         </div>
+      ))}
+
+      {/* ================= FUNNEL ================= */}
+      {/* One question, answered at a glance: where are we losing people. Nine
+          stages top to bottom, each with its 30-day total and the conversion
+          from the stage above. The worst REAL drop is flagged so the owner
+          knows the single stage to fix tomorrow. A null rate reads "no data",
+          never 0%, because an empty top-of-funnel is not a catastrophic drop. */}
+      {tab === "funnel" && (!funnel ? (
+        <>
+          <Skeleton h={112} style={{ marginBottom: 22 }} />
+          <Skeleton h={132} style={{ marginBottom: 22 }} />
+          <Skeleton h={132} style={{ marginBottom: 22 }} />
+          <Skeleton h={200} />
+        </>
+      ) : !funnelHasData ? (
+        // honest empty state: no invented numbers, just what the funnel is and
+        // how it fills. Nothing has moved through the product in this window yet.
+        <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "26px 28px" }}>
+          <div style={{ ...mono9, marginBottom: 10 }}>Conversion funnel · last 30 days</div>
+          <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 20, color: "var(--navy)", textTransform: "uppercase", letterSpacing: ".01em", display: "block", marginBottom: 8 }}>
+            No funnel data yet
+          </b>
+          <p style={{ fontSize: 14, lineHeight: 1.7, color: "var(--dim)", maxWidth: "62ch", margin: 0 }}>
+            The funnel fills as visitors move through the product: a landing view, a sign-up started, an account confirmed, a portfolio saved, an AI cut, a published film, a pricing view, a checkout click, and finally a purchase. Nobody has crossed any of these steps in the last 30 days, so there is nothing to chart. The moment real traffic lands, each stage and the drop-off between stages appears here, no placeholder numbers.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* the answer, up top: the single worst real drop-off, named, so the
+              owner reads the action before the chart. Purely from real rates. */}
+          {worstConv && (
+            <div style={{ border: "1.5px solid var(--red-lit)", background: "rgba(200, 16, 46, .07)", borderRadius: 14, padding: "16px 18px", marginBottom: 22, display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <i aria-hidden="true" className="recdot" style={{ marginTop: 6 }} />
+              <div>
+                <div style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 17, color: "var(--red-lit)", textTransform: "uppercase", letterSpacing: ".01em" }}>
+                  Biggest drop-off · {FUNNEL_LABELS[worstConv.from]?.label || worstConv.from} → {FUNNEL_LABELS[worstConv.to]?.label || worstConv.to}
+                </div>
+                <p style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--navy)", margin: "6px 0 0" }}>
+                  Only {pctText(worstConv.rate)} of the {worstConv.fromCount.toLocaleString("en-US")} who reached {FUNNEL_LABELS[worstConv.from]?.label?.toLowerCase() || worstConv.from} carried on to {FUNNEL_LABELS[worstConv.to]?.label?.toLowerCase() || worstConv.to} ({worstConv.toCount.toLocaleString("en-US")}). This is the leakiest stage in the funnel and the one to fix first.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* the vertical funnel: nine stages top to bottom. Each row is the
+              stage label + meaning, its 30-day total, a width-proportional bar,
+              and the conversion FROM the stage above (the top stage has none).
+              The worst real drop wears a red flag; a null rate reads "no data". */}
+          {(() => {
+            // bar width is a stage's total relative to the widest stage (the top
+            // of funnel), guarded so an all-nonzero-but-tiny funnel still draws.
+            const maxTotal = Math.max(1, ...funnel.steps.map((s) => s.total));
+            // conversion INTO each step, keyed by the "to" step, so a row can
+            // show the rate from the stage directly above it. Index 0 has none.
+            const convTo = Object.fromEntries(funnel.conversions.map((c) => [c.to, c]));
+            return (
+              <div style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", overflow: "hidden", marginBottom: 22 }}>
+                <div style={{ ...mono9, padding: "12px 18px", borderBottom: "1px solid var(--line)", display: "flex", justifyContent: "space-between" }}>
+                  <span>Conversion funnel · last 30 days</span><span>where people drop</span>
+                </div>
+                {funnel.steps.map((s, i) => {
+                  const meta = FUNNEL_LABELS[s.step] || { label: s.step, note: "" };
+                  const conv = convTo[s.step]; // the step above -> this step
+                  const isWorst = s.step === worstToStep;
+                  const width = Math.max(2, Math.round((s.total / maxTotal) * 100));
+                  return (
+                    <div key={s.step} style={{ padding: "13px 18px", borderTop: i === 0 ? 0 : "1px solid var(--line)", background: isWorst ? "rgba(200, 16, 46, .05)" : undefined }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", alignItems: "baseline", marginBottom: 8 }}>
+                        <span style={{ ...mono9, color: "var(--gold)", width: 22 }}>{String(i + 1).padStart(2, "0")}</span>
+                        <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                          <span style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 15, color: "var(--navy)" }}>{meta.label}</span>
+                          {isWorst && <span style={{ ...mono9, color: "var(--red-lit)", marginLeft: 10 }}><i aria-hidden="true" className="recdot" style={{ margin: "0 5px 0 0" }} />biggest drop</span>}
+                          <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{meta.note}</div>
+                        </div>
+                        {/* conversion FROM the stage above: the top stage has no
+                            prior stage, so it reads "top of funnel", never a rate.
+                            A null rate reads "no data" (unknown), never "0%". */}
+                        {i === 0
+                          ? <span style={{ ...mono9 }}>top of funnel</span>
+                          : conv?.rate === null || conv?.rate === undefined
+                            ? <span style={{ ...mono9 }} title="The stage above had no traffic, so there is nothing to convert from. This is unknown, not a real 0%.">no data from prior step</span>
+                            : <span style={{ ...mono9, color: isWorst ? "var(--red-lit)" : "var(--navy)" }}>{pctText(conv.rate)} from prior step</span>}
+                        <b style={{ fontFamily: "var(--disp)", fontWeight: 800, fontSize: 16, color: "var(--navy)", minWidth: 54, textAlign: "right" }}>{s.total.toLocaleString("en-US")}</b>
+                      </div>
+                      {/* width-proportional bar: the stage's 30-day total against
+                          the widest stage. Real zero draws the faint track only. */}
+                      <div style={{ height: 12, borderRadius: 99, background: "var(--line)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${width}%`, background: s.total === 0 ? "var(--line)" : isWorst ? "var(--red-2)" : "var(--gold-g)", borderRadius: 99, transition: "width .5s cubic-bezier(.22,1,.36,1)" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* daily trend for the headline stages, reusing the dependency-free
+              bars: the top of funnel (visitors), the account milestone, and the
+              money step, so the owner sees WHEN as well as WHERE. */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 22, alignItems: "start" }}>
+            {[
+              { step: "landing_view", color: "var(--navy)", unit: "view" },
+              { step: "signup_complete", color: "var(--gold-g)", unit: "sign-up" },
+              { step: "purchase", color: "var(--green)", unit: "purchase" },
+            ].map(({ step, color, unit }) => {
+              const s = funnel.steps.find((x) => x.step === step);
+              const meta = FUNNEL_LABELS[step];
+              return (
+                <div key={step} style={{ border: "1px solid var(--line)", borderRadius: 14, background: "var(--card)", padding: "16px 18px" }}>
+                  <div style={{ ...mono9, display: "flex", justifyContent: "space-between" }}>
+                    <span>{meta.label} · last 30 days</span><b style={{ color: "var(--navy)" }}>{(s?.total || 0).toLocaleString("en-US")}</b>
+                  </div>
+                  <TrafficBars daily={s?.daily || []} color={color} unit={unit} />
+                </div>
+              );
+            })}
+          </div>
+        </>
       ))}
 
       {/* ================= CONTROLS ================= */}

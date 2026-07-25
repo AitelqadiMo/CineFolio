@@ -12,6 +12,7 @@ import Studio from "./pages/Studio.jsx";
 import Lounge from "./pages/Lounge.jsx";
 import Admin from "./pages/Admin.jsx";
 import Profile from "./pages/Profile.jsx";
+import Showcase from "./pages/Showcase.jsx";
 import Onboarding from "./pages/Onboarding.jsx";
 import Sidebar from "./shell/Sidebar.jsx";
 import CmdK from "./CmdK.jsx";
@@ -111,6 +112,7 @@ export default function App() {
   /* ---------- public: cinematic landing + login ---------- */
   if (!user) {
     if (route === "login") return <Login onBack={() => nav("")} />;
+    if (route === "showcase") return <Showcase onEnter={() => nav("login")} />;
     return <Landing onEnter={() => nav("login")} />;
   }
 
@@ -180,6 +182,7 @@ export default function App() {
   const PAGES = {
     "": Home, dashboard: Home, films: Films, resources: Resources,
     settings: Settings, account: Settings, admin: Admin, profile: Profile,
+    showcase: Showcase,
   };
   const Page = PAGES[head] || Home;
   const onCanvas = head === "admin" || head === "profile";
