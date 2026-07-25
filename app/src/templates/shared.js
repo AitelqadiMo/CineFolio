@@ -8,6 +8,14 @@
 // whose case-study cards link out, plus one standalone page per case study.
 
 import { buildShareHead, shareAssets, paletteColors } from "./head.js";
+import {
+  SECTION_RE as HEURISTIC_SECTION_RE, sectionKey,
+  EMAIL_RE as H_EMAIL_RE,
+  URL_RE_PROTOCOL, URL_RE_BARE, KNOWN_NON_TLD,
+  PRESENT_RE, NAME_STOPLIST,
+  ROLE_CONNECTOR_RE,
+  cleanWS, splitRoleCompany as hSplitRoleCompany, splitYears as hSplitYears, looksLikePublication,
+} from "./resumeHeuristics.js";
 
 export const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -42,8 +50,8 @@ export const caseHead = (p, pal, pr, colors, ctx = {}) => buildShareHead(p, pal,
 
 export const SKILL_BANK = ["aws","azure","gcp","kubernetes","docker","terraform","terragrunt","ansible","jenkins","github actions","gitlab","ci/cd","python","javascript","typescript","react","node","java","go","rust","sql","figma","photoshop","illustrator","after effects","premiere","blender","ui","ux","product design","branding","marketing","seo","sales","copywriting","analytics","excel","notion","prometheus","grafana","linux","agile","scrum","machine learning","ai","data","mongodb","postgres","redis","graphql","next.js","vue","angular","swift","kotlin","flutter","devops","sre","security","photography","film","editing","helm","spark","tableau","salesforce"];
 
-export const SECTION_RE = /^(experience|work experience|employment|professional experience|education|skills|technical skills|projects|selected projects|languages|certifications?|awards|summary|profile|about)\s*:?\s*$/i;
-export const PERIOD_RE = /((19|20)\d{2})\s*(?:[-\u2013\u2014]|to)\s*((19|20)\d{2}|present|now|current|ongoing)/i;
+export const SECTION_RE = HEURISTIC_SECTION_RE;
+export const PERIOD_RE = /((19|20)\d{2})\s*(?:[-\u2013\u2014]|to|bis|au)\s*((19|20)\d{2}|present|current|now|today|pr[e\u00e9]sent|actuellement|heute|aktuell|ongoing)/i;
 
 // ---------- resume text -> structured profile ----------
 export function parseProfile(text, overrides = {}) {
@@ -51,31 +59,45 @@ export function parseProfile(text, overrides = {}) {
   const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const lower = raw.toLowerCase();
 
-  const email = overrides.email || (raw.match(/[\w.+-]+@[\w-]+\.[\w.]{2,}/) || [""])[0];
+  const email = overrides.email || (raw.match(H_EMAIL_RE) || [""])[0];
+  const emailHost = email ? email.toLowerCase().split("@")[1] : "";
   const phone = (raw.match(/(\+?\d[\d ().-]{7,}\d)/) || [""])[0].trim();
+
+  // website: use the shared URL guards so "Node.js" and "Next.js" do not become
+  // the website field. Require a protocol or a well-known personal-site TLD.
+  let website = "";
+  const protoM = URL_RE_PROTOCOL.exec(raw);
+  if (protoM) {
+    const cand = protoM[0].replace(/^https?:\/\//, "").replace(/\/$/, "");
+    if (!/github\.com|linkedin\.com/.test(cand)) {
+      const bareHost = cand.replace(/^www\./, "").split("/")[0];
+      if (!emailHost || emailHost !== bareHost) website = cand;
+    }
+  }
+  if (!website) {
+    const bareM = URL_RE_BARE.exec(raw);
+    if (bareM) {
+      const cand = bareM[2];
+      if (!KNOWN_NON_TLD.test(cand) && !/github\.com|linkedin\.com/.test(cand)) {
+        const bareHost = cand.replace(/^www\./, "").split("/")[0];
+        if (!emailHost || emailHost !== bareHost) website = cand;
+      }
+    }
+  }
   const links = {
     github: (raw.match(/github\.com\/[\w.-]+/i) || [""])[0],
     linkedin: (raw.match(/linkedin\.com\/in\/[\w.-]+/i) || [""])[0],
-    // NOTE: no lookbehind. Safari < 16.4 throws SyntaxError at parse time and
-    // takes the whole bundle down. Group-match with a leading boundary instead.
-    website: (raw.match(/\bhttps?:\/\/(?!\S*(github|linkedin))[\w.-]+\.[a-z]{2,}\S*/i) || [""])[0] ||
-             ((raw.match(/(^|[\s|,;(])([\w-]+\.(dev|me|site|design|studio))\b/im) || [])[2] || ""),
+    website,
   };
 
-  // sectionize
+  // sectionize: use sectionKey from the shared heuristics so French and German
+  // headings route to the right bucket alongside English ones.
   const sections = { _head: [] };
   let cur = "_head";
   for (const l of lines) {
-    const m = l.match(SECTION_RE);
-    if (m) {
-      const k = m[1].toLowerCase();
-      cur = /experience|work|employment/.test(k) ? "experience"
-        : /education/.test(k) ? "education"
-        : /skill/.test(k) ? "skills"
-        : /project/.test(k) ? "projects"
-        : /language/.test(k) ? "languages"
-        : /certif|award/.test(k) ? "certs"
-        : /summary|profile|about/.test(k) ? "summary" : cur;
+    if (SECTION_RE.test(l)) {
+      const k = sectionKey(l) || cur;
+      cur = k === "certs" ? "certs" : k;
       sections[cur] = sections[cur] || [];
       continue;
     }
@@ -83,7 +105,12 @@ export function parseProfile(text, overrides = {}) {
   }
 
   const head = sections._head;
-  const notNamey = (l) => /@|http|\d{4}|\+\d|linkedin|github/i.test(l) || l.length > 48;
+  // notNamey: skip emails, URLs, years, phone-ish numbers, long lines.
+  // Also skip document-header stoplisted words (Curriculum Vitae, Resume, CV).
+  const notNamey = (l) =>
+    /@|http|\d{4}|\+\d|linkedin|github/i.test(l) ||
+    l.length > 48 ||
+    NAME_STOPLIST.test(l);
   const name = overrides.name || head.find((l) => !notNamey(l)) || "Your Name";
   const headline = overrides.headline ||
     head.filter((l) => !notNamey(l) && l !== name)[0] ||
@@ -94,19 +121,23 @@ export function parseProfile(text, overrides = {}) {
   const bankSkills = SKILL_BANK.filter((s) => lower.includes(s));
   const skills = [...new Set([...sectionSkills, ...bankSkills.map(cap)])].slice(0, 14);
 
-  // experience entries
+  // experience entries: use hSplitRoleCompany (which strips month names before
+  // the year) so "DataCorp, Jan 2020" yields company "DataCorp" not "DataCorp, Jan".
+  // Publication lines ("Author et al. (2022)") are filtered before opening entries.
   const experience = [];
   let entry = null;
   for (const l of sections.experience || sections._head || []) {
+    if (looksLikePublication(l)) continue;
     const pm = l.match(PERIOD_RE);
     if (pm) {
       if (entry) experience.push(entry);
-      const rest = l.replace(PERIOD_RE, "").replace(/^[\s,|·@-]+|[\s,|·-]+$/g, "");
-      entry = { period: pm[0].replace(/\s+/g, " "), title: rest.slice(0, 90) || "Role", org: "", points: [] };
-      const at = rest.match(/^(.*?)\s+(?:at|@|,|·|\||\u2014|-)\s+(.{2,60})$/i);
-      if (at) { entry.title = at[1].trim(); entry.org = at[2].trim(); }
+      const rc = hSplitRoleCompany(l);
+      const yr = hSplitYears(l);
+      const period = [yr.start, yr.end].filter(Boolean).join(" - ");
+      entry = { period, title: rc.role.slice(0, 90) || "Role", org: rc.company.slice(0, 80), points: [] };
     } else if (entry) {
-      const b = l.replace(/^[-•*▪◦→]\s*/, "");
+      // em-dash (U+2014) is now included so "— Built X" yields a highlight.
+      const b = l.replace(/^[-\u2013\u2014*•\u25aa◦→]\s*/, "");
       if (b !== l || (entry.points.length && l.length > 30)) entry.points.push(b.slice(0, 220));
       else if (!entry.org && l.length < 60) entry.org = l;
       if (entry.points.length > 5) entry.points.length = 5;
