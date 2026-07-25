@@ -202,7 +202,9 @@ export function initLanding(root, opts = {}) {
   tabs.forEach((b) => b.addEventListener("click", () => go(b.dataset.tab)));
   $$("[data-goto]").forEach((el) => el.addEventListener("click", (e) => { e.preventDefault(); go(el.dataset.goto); }));
   $("[data-nav]").addEventListener("click", (e) => { e.preventDefault(); go("home"); });
-  const route = () => { const h = location.hash.replace("#/", ""); go(["services", "contact"].includes(h) ? h : "home", false); };
+  // "examples" joins the allowlist so #/examples deep links and the back button
+  // land on the new gallery, exactly like services and contact.
+  const route = () => { const h = location.hash.replace("#/", ""); go(["services", "examples", "contact"].includes(h) ? h : "home", false); };
   on(window, "hashchange", route);
   route();
 
@@ -258,6 +260,71 @@ export function initLanding(root, opts = {}) {
     } catch { out.textContent = "Network hiccup, try again."; }
     btn.disabled = false; btn.textContent = "Send";
   });
+
+  /* ================= examples gallery (PUBLIC /showcase, no auth) =================
+     The landing's proof made visible. GET /showcase is unauthenticated and returns
+     { ok, count, films:[{slug,title,url,kind?,poster?}] }; we render one card per film
+     it actually returns and NEVER fabricate one. The section heading and the
+     build-your-own CTA live in static markup, so on any failure or empty result the
+     section still stands: we only ever touch #examplesStatus and #examplesGrid here. */
+  (function () {
+    const grid = $("#examplesGrid"), status = $("#examplesStatus");
+    if (!grid || !status) return; // section absent (older markup): nothing to do
+    // API values are untrusted strings; escape before they touch innerHTML so a
+    // title or slug can never inject markup into the page.
+    const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const hostOf = (url) => { try { return new URL(url).host; } catch { return String(url || ""); } };
+    fetch(`${API}/showcase`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("bad status"))))
+      .then((data) => {
+        const films = Array.isArray(data && data.films) ? data.films.filter((f) => f && f.url && f.slug) : [];
+        if (!films.length) {
+          // Honest empty state: consent is opt-in, so an empty wall means we are
+          // waiting on permission, not that the product has nothing to show. The
+          // static CTA below stays the way forward.
+          grid.innerHTML = "";
+          status.textContent = "NO PORTFOLIOS ARE ON PUBLIC DISPLAY YET · EVERY EXAMPLE IS OPT-IN · YOURS COULD BE THE FIRST";
+          return;
+        }
+        // Each card links to the REAL live site in a new tab. rel="noopener
+        // noreferrer" is mandatory on target=_blank links to untrusted origins.
+        grid.innerHTML = films.map((f) => {
+          const title = esc(f.title || f.slug);
+          const host = esc(hostOf(f.url));
+          const kind = typeof f.kind === "string" && f.kind.trim() ? `<span class="exkind">${esc(f.kind.trim())}</span>` : "";
+          // poster only when the record carries a real one; otherwise a clean
+          // on-brand placeholder naming the live address (no fabricated imagery).
+          const poster = f.poster
+            ? `<img src="${esc(f.poster)}" alt="Portfolio poster for ${title}" loading="lazy">`
+            : `<span class="exposterlbl">${host}</span>`;
+          return `<a class="excard" href="${esc(f.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open the live portfolio for ${title} at ${host} in a new tab">
+              <span class="exposter">${poster}<span class="exlive">LIVE</span></span>
+              ${kind}
+              <span class="extitle">${title}</span>
+              <span class="exhost">${host} ↗</span>
+            </a>`;
+        }).join("");
+        status.textContent = films.length + (films.length === 1 ? " LIVE PORTFOLIO ON DISPLAY" : " LIVE PORTFOLIOS ON DISPLAY");
+        // magnetic + cursor treatment for the freshly injected cards, matching the rest of the page
+        if (finePointer && !reduceMotion) {
+          grid.querySelectorAll(".excard").forEach((el) => {
+            el.addEventListener("mousemove", (e) => {
+              const r = el.getBoundingClientRect();
+              el.style.transform = `translate(${(e.clientX - (r.left + r.width / 2)) * 0.06}px,${(e.clientY - (r.top + r.height / 2)) * 0.06}px)`;
+            });
+            el.addEventListener("mouseleave", () => { el.style.transform = ""; });
+          });
+        }
+        // pinned-reel and reveal math changed height; let ScrollTrigger recompute
+        if (typeof ScrollTrigger !== "undefined") setTimeout(() => ScrollTrigger.refresh(), 60);
+      })
+      .catch(() => {
+        // Fail gracefully: never a broken shell, never a fabricated card. Keep the
+        // heading and CTA (static markup) and state plainly that the reel snagged.
+        grid.innerHTML = "";
+        status.textContent = "WE COULD NOT LOAD THE LIVE EXAMPLES JUST NOW · REFRESH IN A MOMENT · YOU CAN STILL BUILD YOUR OWN BELOW";
+      });
+  })();
 
   /* ================= live studio clock ================= */
   (function () {

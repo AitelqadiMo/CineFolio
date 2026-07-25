@@ -103,7 +103,15 @@ export async function publish(event, ctx) {
   }
   const pages = files.filter((f) => isPagePath(f.path));
   if (!pages.length || !pages.some((f) => f.path === "index.html")) return bad("bundle must include index.html");
-  const problem = validateBundle(pages, { maxTotal: 5 * 1024 * 1024 });
+  // the engine now rides its SHARE ASSETS (branded favicon, and the generated
+  // og:image card when the user has no photo) in the same files[] as base64
+  // entries, so every share/SEO URL the page heads reference actually 200s at the
+  // release origin. They are OPTIONAL (an older client, or an order cut, sends
+  // none) and never come from an order (assetCopies covers that byte-for-byte
+  // path). validateBundle understands both page and asset entries, so we validate
+  // the whole client bundle, not pages alone.
+  const bundleAssets = source === "direct" ? files.filter((f) => !isPagePath(f.path)) : [];
+  const problem = validateBundle([...pages, ...bundleAssets], { maxTotal: 5 * 1024 * 1024 });
   if (problem) return bad(problem, problem.includes("large") ? 413 : 400);
 
   // ---- premiere slots (pricing v3): drafts and staged releases are free, but
@@ -130,12 +138,26 @@ export async function publish(event, ctx) {
     }
   }
   const beaconBase = apiBaseOf(event, ctx);
-  files = pages.map((f) => ({ path: f.path, html: withBeacon(f.html, beaconBase, site.slug) })); // every page carries the audience beacon
+  // every page carries the audience beacon AND has its share-card origin token
+  // resolved to this site's real public address, so og:url / canonical /
+  // og:image / favicon are absolute (crawlers do not resolve relative URLs).
+  const shareOrigin = publicOrigin(ctx, site.slug);
+  files = pages.map((f) => ({ path: f.path, html: withBeacon(withShareOrigin(f.html, shareOrigin), beaconBase, site.slug) }));
 
   const n = (site.releases || 0) + 1;
   const releasePrefix = `sites/${site.siteId}/releases/${n}`;
-  const allPaths = [...files.map((f) => f.path), ...(assetCopies || [])];
+  const allPaths = [...files.map((f) => f.path), ...bundleAssets.map((a) => a.path), ...(assetCopies || [])];
   await Promise.all(files.map((f) => ctx.s3.putObject(ctx.config.publishedBucket, `${releasePrefix}/${f.path}`, f.html)));
+  if (bundleAssets.length) {
+    // the engine's share assets: decode the base64 and write real files with the
+    // right content-type, so the favicon and the generated og:image card 200 at
+    // the release origin. WHY here and not through text: an image is bytes; the
+    // page-store path above is for HTML only.
+    await Promise.all(bundleAssets.map((a) => ctx.s3.putObject(
+      ctx.config.publishedBucket, `${releasePrefix}/${a.path}`,
+      Buffer.from(a.content, "base64"), assetTypeOf(a.path)
+    )));
+  }
   if (assetCopies?.length) {
     // images/fonts/video from the cut: byte-for-byte cross-bucket copy, never through text
     await Promise.all(assetCopies.map((p) => ctx.s3.copyObjectAcross
@@ -167,7 +189,7 @@ export async function publish(event, ctx) {
       if (e?.name === "ConditionalCheckFailedException") throw Object.assign(new Error("concurrent publish, retry"), { statusCode: 409 });
       throw e;
     });
-    return ok({ ok: true, siteId: site.siteId, release: n, staged: true, pages: files.length, assets: (assetCopies || []).length, previewUrl: stagedUrl(ctx, site.siteId, n) });
+    return ok({ ok: true, siteId: site.siteId, release: n, staged: true, pages: files.length, assets: (assetCopies || []).length + bundleAssets.length, previewUrl: stagedUrl(ctx, site.siteId, n) });
   }
 
   const firstPremiere = !site.publishedAt; // captured BEFORE the update mutates the record
@@ -212,7 +234,7 @@ export async function publish(event, ctx) {
     ));
   }
 
-  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, pages: files.length, assets: (assetCopies || []).length, url: previewUrl(ctx, site.slug), trialEndsAt });
+  return ok({ ok: true, siteId: site.siteId, release: n, pointer: flip.mode, pages: files.length, assets: (assetCopies || []).length + bundleAssets.length, url: previewUrl(ctx, site.slug), trialEndsAt });
 }
 
 // GET /sites/{id}/source?release=n — download a release's HTML (owner/admin)
@@ -515,7 +537,22 @@ async function flipPointer(ctx, slug, releasePath, fallbackSlugPrefix, filePaths
   }
 }
 
-// GET /sites/{id}/stats — the film's audience, read from the daily hit counters
+// GET /sites/{id}/stats: the film's audience, read from the daily hit counters.
+// Owner (or admin) only; the ownedSite gate 403s anyone else so one film's
+// audience never leaks to another owner.
+//
+// What the number IS, so the UI can be honest about it: the publish-time beacon
+// POSTs /hit once per page LOAD, keyed s/{slug}, into one atomic DynamoDB counter
+// per day per site. So `views` is server-side page loads, NOT deduplicated
+// unique visitors: a reload or a return visit each add one. The window is a
+// fixed 30 days (the counters are daily rows) and the series is zero-filled so a
+// day with no traffic reads as an honest 0, not a gap.
+//
+// There is deliberately NO per-page breakdown here: the beacon posts the SAME
+// key (s/{slug}) from every page of a site, so the counters cannot tell an
+// owner's homepage from a case-study page. Reporting a per-page split would be
+// inventing a distinction the data does not carry, so we do not. The admin
+// Floor's "top pages" is across DIFFERENT sites (one key each), a different cut.
 export async function stats(event, ctx) {
   const claims = claimsOf(event);
   const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
@@ -526,7 +563,14 @@ export async function stats(event, ctx) {
   const daily = keys.map((date, i) => ({ date, count: rows[i]?.count || 0 })).reverse();
   const views = daily.reduce((a, x) => a + x.count, 0);
   const week = daily.slice(-7).reduce((a, x) => a + x.count, 0);
-  return ok({ ok: true, siteId: site.siteId, slug: site.slug, views, week, daily });
+  // `window`, `since`, and `today` let the console label the figure truthfully
+  // (a 30-day count, not "all time") without re-deriving the dates client-side.
+  return ok({
+    ok: true, siteId: site.siteId, slug: site.slug,
+    metric: "views", // server-side page loads, not unique visitors; say so in the UI
+    window: days, since: daily[0].date, today: daily[daily.length - 1].count,
+    views, week, daily,
+  });
 }
 
 // GET /sites/{id}/inspect — the film's release truth: for each release, the
@@ -581,6 +625,41 @@ export async function inspect(event, ctx) {
   return ok({ ok: true, siteId: site.siteId, slug: site.slug, liveRelease: site.liveRelease, releases, orderAssets });
 }
 
+// POST /sites/{id}/badge { badge: boolean }: the OWNER (or an admin) sets whether
+// the "Made with CineFolio" end credit rides this film's published pages. The
+// badge is ON by default and this is the ONE control that removes it. Removal is
+// free and immediate by construction: there is no plan check, no price, no gate.
+//
+// This mirrors setShowcase in showcase.mjs on purpose (same ownedSite ownership
+// gate, same strict-boolean body, same "return the persisted flag" contract) so
+// the two per-site preferences behave identically, with two deliberate
+// differences that fit the badge's promise:
+//   - the DEFAULT is ON, not off: a site with no stored flag shows the credit, so
+//     the meaningful write is turning it OFF. Both directions are accepted.
+//   - there is NO status gate. Turning the badge off must always work, in any
+//     status, at once (unlike showcase, which needs a live film to mean anything).
+// The credit itself is emitted client-side by the engine at publish time from
+// this flag, so the change takes effect on the film's NEXT publish. The console
+// copy says so plainly; nothing here holds the current live release hostage.
+// The response returns the persisted flag so an optimistic UI reconciles with
+// server truth and never shows a state the server did not confirm.
+export async function setBadge(event, ctx) {
+  const claims = claimsOf(event);
+  const { site, err } = await ownedSite(ctx, pathParam(event, "id"), claims);
+  if (err) return err;
+  const b = bodyOf(event);
+  if (!b) return bad("invalid json");
+  if (typeof b.badge !== "boolean") return bad("badge must be true or false");
+
+  await ctx.ddb.update({
+    Key: { PK: site.PK, SK: "META" },
+    UpdateExpression: "SET badge = :v, updatedAt = :t",
+    ConditionExpression: "attribute_exists(PK)",
+    ExpressionAttributeValues: { ":v": b.badge, ":t": now() },
+  });
+  return ok({ ok: true, siteId: site.siteId, slug: site.slug, badge: b.badge });
+}
+
 // POST /sites/{id}/domain { domain } — records domain intent; DNS guidance is
 // client-side and the TLS handshake finishes operator-side (dev scope).
 export async function connectDomain(event, ctx) {
@@ -617,6 +696,21 @@ function withBeacon(html, base, slug) {
   return html.includes("</body>") ? html.replace("</body>", `${s}</body>`) : html + s;
 }
 
+// The share-card origin seam. The engine compiles client-side, where the site's
+// final public address is not yet known, so it bakes this exact token wherever an
+// ABSOLUTE origin is required (og:url, canonical, og:image for the generated
+// card, the favicon). Crawlers never resolve relative URLs, so the publisher,
+// the one place that authoritatively knows the address, rewrites the token here
+// at publish time, exactly like the beacon injects its API base. Keep this
+// constant in lockstep with ORIGIN_TOKEN in app/src/templates/head.js.
+const ORIGIN_TOKEN = "__CF_ORIGIN__";
+// the site's absolute public origin, no trailing slash, so token + "/" + path
+// joins cleanly. Mirrors previewUrl's address (real subdomain, or the CDN
+// preview path in environments without a sites domain).
+const publicOrigin = (ctx, slug) => previewUrl(ctx, slug).replace(/\/+$/, "");
+const withShareOrigin = (html, origin) =>
+  origin && html.includes(ORIGIN_TOKEN) ? html.split(ORIGIN_TOKEN).join(origin) : html;
+
 // The film's public address. With the custom domain live, every live link is
 // the real subdomain; the CDN /_preview/ path stays only as the fallback for
 // environments without a domain. Staged previews keep the CDN path on purpose:
@@ -635,6 +729,10 @@ const pub = (s, ctx) => ({
   // public showcase consent, so the toggle reflects stored state across reloads
   // rather than resetting to off. Strict true only: consent is never inferred.
   showcase: s.showcase === true,
+  // the "Made with CineFolio" end credit. ON by default, so the flag is true
+  // unless the owner explicitly stored false. This lets the console show the
+  // real state and lets the next publish honor the current preference.
+  badge: s.badge !== false,
   customDomain: s.customDomain || null, domainStatus: s.domainStatus || null,
   createdAt: s.createdAt, publishedAt: s.publishedAt,
   previewUrl: previewUrl(ctx, s.slug),
