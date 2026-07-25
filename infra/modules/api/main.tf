@@ -56,6 +56,7 @@ locals {
   # route_key => requires JWT
   routes = {
     "GET /health"                   = false
+    "GET /showcase"                 = false # public proof wall: opted-in live films, no auth
     "POST /waitlist"                = false
     "GET /waitlist/count"           = false
     "POST /contact"                 = false
