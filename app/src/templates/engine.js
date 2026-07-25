@@ -60,6 +60,10 @@ export const TEMPLATES = [
 ];
 
 export const DEFAULT_SECTIONS = { about: true, skills: true, experience: true, projects: true, education: true, services: false, testimonials: false, contact: true };
+// metricsBlocks and METRICS_CAP are exported so the test suite can exercise the
+// helper directly without going through a full compile, and so callers that
+// build custom templates outside the five families can reuse the shared renderer.
+export { metricsBlocks, METRICS_CAP } from "./shared.js";
 
 // opts.badge: the "Made with CineFolio" end credit. ON by default; pass false to
 // omit it (the owner turned it off, for free, in Films.jsx). It is a per-render

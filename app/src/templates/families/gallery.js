@@ -1,6 +1,6 @@
 // The gallery family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, cap, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, noHref } from "../shared.js";
+import { esc, indexHead, caseHead, cap, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, noHref, metricsBlocks, hasMetrics } from "../shared.js";
 
 export function gallery(p, pal, sec, ctx = {}) {
   const [canvas, ink, accent, soft, rule] = pal.vars;
@@ -74,7 +74,12 @@ figure.work .sum{font-size:1.25rem;color:${ink};margin-top:10px}
 footer{padding:14vh 0 6vh;text-align:center}
 footer .big{font-family:'Fraunces',serif;font-style:italic;font-weight:300;font-size:clamp(2rem,5vw,3.4rem)}
 footer .links{margin-top:26px}
-</style></head><body>
+${hasMetrics(p.projects) ? `.wmet{display:flex;justify-content:center;gap:0;flex-wrap:wrap;margin:20px auto 0;max-width:58ch}
+.wmet div{flex:1;min-width:90px;text-align:center;padding:14px 10px;border-left:1px solid ${rule};display:flex;flex-direction:column;gap:5px}
+.wmet div:first-child{border-left:0}
+.wmet div span:first-child{font-family:'Fraunces',serif;font-weight:500;font-size:1.8rem;color:${accent};line-height:1}
+.wmet div span:last-child{font-family:Inter,sans-serif;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:${soft}}
+\n` : ""}</style></head><body>
 <header class="wrap">
 <div class="cap fade">Portfolio</div>
 <h1 class="fade" style="animation-delay:.1s;margin-top:18px">${esc(p.name.split(" ")[0])} <em>${esc(p.name.split(" ").slice(1).join(" ") || "")}</em></h1>
@@ -87,7 +92,7 @@ ${sec.about && p.summary ? `<section class="wrap"><p class="lede">${esc(p.summar
 ${sec.projects && p.projects.length ? `<section class="wrap"><div class="shead"><h2>Selected work</h2></div>
 ${p.projects.filter(isCaseStudy).map((pr) => { const href = caseHref(pr); return href
   ? `<figure class="work">${pr.cover ? `<a href="${href}"><img class="cover" src="${pr.cover}" alt="${esc(pr.name)}"></a>` : ""}<div class="plaque"><h3><a href="${href}">${esc(pr.name)}</a></h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "wmeta")}<a class="more" href="${href}">View the case study</a></div></figure>`
-  : `<figure class="work">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="plaque"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "wmeta")}</div>${["problem", "process", "results"].filter((k) => pr[k]).length ? `<div class="wblk">${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p>`).join("")}</div>` : ""}</figure>`; }).join("")}
+  : `<figure class="work">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="plaque"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "wmeta")}</div>${["problem", "process", "results"].filter((k) => pr[k]).length ? `<div class="wblk">${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p>`).join("")}</div>` : ""}${metricsBlocks(pr, "wmet")}</figure>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).length ? `<div class="plain">${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="row"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</div>` : ""}</section><div class="hair"></div>` : ""}
 ${sec.experience && exp.length ? `<section class="wrap"><div class="shead"><h2>Experience</h2></div>${exp.map((x) => `<div class="xp">${x.period ? `<div class="per">${esc(x.period)}</div>` : ""}<h3>${esc(x.title)}</h3>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}<ul style="list-style:none">${x.points.map((pt) => `<li>${esc(pt)}</li>`).join("")}</ul></div>`).join("")}</section><div class="hair"></div>` : ""}
 ${sec.skills && p.skills.length ? `<section class="wrap"><div class="shead"><h2>Practice</h2></div><div class="skl">${p.skills.map((s) => `<span>${esc(s)}</span>`).join("")}</div></section><div class="hair"></div>` : ""}
@@ -129,9 +134,14 @@ h1{font-family:'Fraunces',serif;font-weight:300;font-size:clamp(2.4rem,7vw,4.8re
 .next{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:7vh 0;border-top:1px solid ${rule};font-family:Inter,sans-serif}
 .next a{color:${ink};text-decoration:none;font-size:11px;letter-spacing:.14em;border-bottom:1px solid ${rule}}
 .next a:hover{border-color:${accent}}
-</style></head><body>
+${Array.isArray(pr.metrics) && pr.metrics.length ? `.csmet{display:flex;justify-content:center;gap:0;flex-wrap:wrap;margin:28px auto 0;max-width:60ch}
+.csmet div{flex:1;min-width:90px;text-align:center;padding:14px 10px;border-left:1px solid ${rule};display:flex;flex-direction:column;gap:5px}
+.csmet div:first-child{border-left:0}
+.csmet div span:first-child{font-family:'Fraunces',serif;font-weight:500;font-size:1.9rem;color:${accent};line-height:1}
+.csmet div span:last-child{font-family:Inter,sans-serif;font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:${soft}}
+\n` : ""}</style></head><body>
 <div class="wrap"><a class="back" href="../index.html">Back to the portfolio</a>
-<div class="plaque"><div class="cap">Case study</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p style="font-size:1.35rem;max-width:44ch;margin:16px auto 0;color:${ink}">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</div></div>
+<div class="plaque"><div class="cap">Case study</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p style="font-size:1.35rem;max-width:44ch;margin:16px auto 0;color:${ink}">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}${metricsBlocks(pr, "csmet")}</div></div>
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 <div class="wrap">
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
