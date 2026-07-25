@@ -17,6 +17,7 @@ import { campaign, campaignCase, campaignPalettes } from "./families/campaign.js
 import { report, reportCase, reportPalettes } from "./families/report.js";
 import { plan, planCase, planPalettes } from "./families/plan.js";
 import { byline, bylineCase, bylinePalettes } from "./families/byline.js";
+import { room, roomCase, roomPalettes } from "./families/room.js";
 import { console_, consoleCase, consolePalettes } from "./families/console.js";
 import { ledger, ledgerCase, ledgerPalettes } from "./families/ledger.js";
 
@@ -100,6 +101,11 @@ export const TEMPLATES = [
     id: "byline", name: "The Byline", blurb: "Author page. Headlines and mastheads, built for reading.",
     compile: byline, caseCompile: bylineCase,
     palettes: bylinePalettes,
+  },
+  {
+    id: "room", name: "The Room", blurb: "Shelter magazine. Full-scale rooms, chrome out of the way.",
+    compile: room, caseCompile: roomCase,
+    palettes: roomPalettes,
   },
   {
     id: "console", name: "The Console", blurb: "Developer tool. Shipped things you can click, stack per project.",
