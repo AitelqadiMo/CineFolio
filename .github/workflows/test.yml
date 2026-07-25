@@ -44,3 +44,17 @@ jobs:
       - name: build SPA
         run: npm run build
         working-directory: app
+
+  # The resume parser tests live beside the code they cover, under app/src, so the
+  # three jobs above never reach them. Without this job the parser regressions (an
+  # email read as a degree, Node.js read as a website, a French CV losing its dates)
+  # pass locally and gate nothing on a push.
+  parser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node:test resume parser suite
+        run: node --test app/src/templates/profileParse.test.mjs
