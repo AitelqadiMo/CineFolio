@@ -1,0 +1,28 @@
+# robots.txt for CineFolio (https://www.cinefolio.dev)
+# Public marketing and legal pages are open to crawlers.
+# Signed-in app console routes carry no crawlable content, so they are disallowed.
+
+User-agent: *
+Allow: /$
+Allow: /showcase
+Allow: /terms.html
+Allow: /privacy.html
+Allow: /refunds.html
+Allow: /acceptable-use.html
+Allow: /og-image.png
+
+# App console (auth-only, nothing useful to index)
+Disallow: /login
+Disallow: /dashboard
+Disallow: /studio
+Disallow: /welcome
+Disallow: /films
+Disallow: /resources
+Disallow: /settings
+Disallow: /account
+Disallow: /admin
+Disallow: /profile
+Disallow: /film/
+Disallow: /order/
+
+Sitemap: https://www.cinefolio.dev/sitemap.xml
