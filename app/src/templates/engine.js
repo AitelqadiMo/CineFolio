@@ -10,6 +10,15 @@ import { editorial, editorialCase } from "./families/editorial.js";
 import { terminal, terminalCase } from "./families/terminal.js";
 import { gallery, galleryCase } from "./families/gallery.js";
 import { bento, bentoCase } from "./families/bento.js";
+import { brief, briefCase, briefPalettes } from "./families/brief.js";
+import { outcome, outcomeCase, outcomePalettes } from "./families/outcome.js";
+import { authority, authorityCase, authorityPalettes } from "./families/authority.js";
+import { campaign, campaignCase, campaignPalettes } from "./families/campaign.js";
+import { report, reportCase, reportPalettes } from "./families/report.js";
+import { plan, planCase, planPalettes } from "./families/plan.js";
+import { byline, bylineCase, bylinePalettes } from "./families/byline.js";
+import { console_, consoleCase, consolePalettes } from "./families/console.js";
+import { ledger, ledgerCase, ledgerPalettes } from "./families/ledger.js";
 
 export const TEMPLATES = [
   {
@@ -56,6 +65,51 @@ export const TEMPLATES = [
       { id: "graphite", label: "Graphite", vars: ["#0D0F12", "#191C21", "#5EC8C0", "#EDEFF2", "#9AA3AD"] },
       { id: "citrus", label: "Citrus", vars: ["#FFFFFF", "#F5F6F8", "#F2591E", "#181A1D", "#6C727A"] },
     ],
+  },
+  {
+    id: "brief", name: "The Brief", blurb: "Product brief. Challenge, process, outcome, stated plainly.",
+    compile: brief, caseCompile: briefCase,
+    palettes: briefPalettes,
+  },
+  {
+    id: "outcome", name: "The Outcome", blurb: "Dashboard clarity. The numbers you moved, first and largest.",
+    compile: outcome, caseCompile: outcomeCase,
+    palettes: outcomePalettes,
+  },
+  {
+    id: "authority", name: "The Authority", blurb: "Consulting one-pager. Credentials and engagements, quiet gravitas.",
+    compile: authority, caseCompile: authorityCase,
+    palettes: authorityPalettes,
+  },
+  {
+    id: "campaign", name: "The Campaign", blurb: "Agency pitch book. Results-led, channel-fluent, bold hierarchy.",
+    compile: campaign, caseCompile: campaignCase,
+    palettes: campaignPalettes,
+  },
+  {
+    id: "report", name: "The Report", blurb: "Analyst report. Explicit grid, tabular figures, method first.",
+    compile: report, caseCompile: reportCase,
+    palettes: reportPalettes,
+  },
+  {
+    id: "plan", name: "The Plan", blurb: "Submission board. Composed white space, annotations, drawing logic.",
+    compile: plan, caseCompile: planCase,
+    palettes: planPalettes,
+  },
+  {
+    id: "byline", name: "The Byline", blurb: "Author page. Headlines and mastheads, built for reading.",
+    compile: byline, caseCompile: bylineCase,
+    palettes: bylinePalettes,
+  },
+  {
+    id: "console", name: "The Console", blurb: "Developer tool. Shipped things you can click, stack per project.",
+    compile: console_, caseCompile: consoleCase,
+    palettes: consolePalettes,
+  },
+  {
+    id: "ledger", name: "The Ledger", blurb: "Annual report. Ruled figures, aligned columns, operational rigour.",
+    compile: ledger, caseCompile: ledgerCase,
+    palettes: ledgerPalettes,
   },
 ];
 
