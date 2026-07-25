@@ -6,7 +6,7 @@
 ![Terraform](https://img.shields.io/badge/Terraform-100%25_IaC-7B42BC?logo=terraform&logoColor=white)
 ![Step Functions](https://img.shields.io/badge/Step_Functions-event--driven-E7157B?logo=awslambda&logoColor=white)
 ![React](https://img.shields.io/badge/React-Vite-61DAFB?logo=react&logoColor=black)
-![Tests](https://img.shields.io/badge/node%3Atest-21%2F21-0E9E62)
+![Tests](https://img.shields.io/badge/node%3Atest-44%2F44-0E9E62)
 
 ---
 
@@ -25,7 +25,7 @@ Paid orders flow SQS → EventBridge Pipes → Step Functions. The state machine
 Nine composable modules (data, identity, api, hosting, pipeline, kms, cicd, observability, appshell) with S3-native state locking. CI deploys assume an IAM role via GitHub OIDC; no access keys exist in the pipeline.
 
 **5. A serverless API designed for testability.**
-API Gateway (HTTP API) with a Cognito JWT authorizer fronts a single Lambda router. Every AWS side effect lives behind one injected context object, so the full route surface (27 routes: sites, releases, orders, revisions, profile dossier, stats, domains, admin) runs against in-memory fakes: **21 route-level tests on `node:test`, no mocking frameworks, sub-second suite**.
+API Gateway (HTTP API) with a Cognito JWT authorizer fronts a single Lambda router. Every AWS side effect lives behind one injected context object, so the full route surface (44 routes: sites, releases, orders, revisions, profile dossier, stats, domains, admin) runs against in-memory fakes: **44 route-level tests on `node:test`, no mocking frameworks, sub-second suite**.
 
 **6. Operations built in, not bolted on.**
 Structured JSON logs, an SSM-backed circuit breaker for the pipeline, DLQ with redrive, budget alarms, fail-soft SES transactional email (an unconfigured sender degrades gracefully, never breaks an order), per-page audience beacons feeding daily DynamoDB counters surfaced as site analytics, honeypot fields on public forms, and constant-time secret comparison on webhook callbacks.
@@ -98,7 +98,7 @@ Clients build a portfolio in the Studio Console: upload a resume once (a determi
 | Messaging | SQS + DLQ, SNS operator paging, SES transactional email (fail-soft) |
 | CI/CD | GitHub Actions via OIDC role assumption, plan-on-PR |
 | Frontend | React 18 + Vite SPA, zero UI framework, design-token CSS system |
-| Testing | node:test route-level suite against in-memory fakes (21 tests) |
+| Testing | node:test route-level suite against in-memory fakes (44 tests) |
 
 ## Repository layout
 
@@ -112,8 +112,8 @@ infra/
     data/ identity/ kms/ cicd/ observability/ appshell/
 app/                   # Studio Console SPA (React + Vite)
   src/pages/           # My Films, The Set, My Profile, Account, Floor (admin)
+  src/marketing/       # public marketing landing (Landing.jsx)
   src/templates/       # deterministic site engine: 5 families, bundle compiler
-index.html             # public marketing landing
 ```
 
 ## Run it
