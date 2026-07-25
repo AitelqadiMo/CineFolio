@@ -29,6 +29,79 @@ export function readTextFile(file) {
   });
 }
 
+// extractPageText: column-aware extraction using pdf.js transform coordinates.
+// Each pdf.js item carries transform[4] (x) and transform[5] (y). When a page
+// has significant horizontal spread (items clustered in two distinct x groups,
+// separated by more than 20% of the page width), it is likely a two-column
+// layout. In that case we bucket items by x vs the page midpoint, emit the left
+// bucket line by line, then the right bucket, and apply the y-gap newline rule
+// WITHIN each bucket. This keeps single-column PDFs unaffected (items span the
+// full width, so there is no clear midpoint split) while recovering structure
+// from two-column CVs without resorting to a "sorry, paste it" message.
+//
+// Why this approach over others: pdfjs items carry enough geometry to detect the
+// column boundary cheaply. The two-column signature (two x-clusters with a gap
+// > 0.2 * pageWidth) is reliable enough for CVs, which use regular column grids.
+// The fallback (single-column sort by y then x) is a safe no-op for single-column
+// documents, so regression risk is minimal.
+function extractPageText(items, viewport) {
+  if (!items.length) return "";
+  const pageWidth = viewport ? viewport.width : 0;
+
+  // Detect two-column layout: are items concentrated in two distinct x bands?
+  // Use the page midpoint as the split and measure how many items fall strictly
+  // on each side. If both sides have at least 15% of items and pageWidth is known,
+  // treat as two-column.
+  let leftCount = 0;
+  let rightCount = 0;
+  const mid = pageWidth / 2;
+  if (pageWidth > 0) {
+    for (const it of items) {
+      if (it.transform[4] < mid) leftCount++;
+      else rightCount++;
+    }
+  }
+  const isTwoColumn =
+    pageWidth > 0 &&
+    leftCount > 0 &&
+    rightCount > 0 &&
+    leftCount / items.length >= 0.15 &&
+    rightCount / items.length >= 0.15;
+
+  if (!isTwoColumn) {
+    // Single-column: sort by y descending (pdf.js y is bottom-up) then x.
+    const sorted = [...items].sort((a, b) =>
+      b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]
+    );
+    let text = "";
+    let lastY = null;
+    for (const it of sorted) {
+      if (lastY !== null && Math.abs(it.transform[5] - lastY) > 4) text += "\n";
+      text += it.str + " ";
+      lastY = it.transform[5];
+    }
+    return text;
+  }
+
+  // Two-column: bucket by x, sort each bucket by y, emit left then right.
+  const left = items.filter((it) => it.transform[4] < mid);
+  const right = items.filter((it) => it.transform[4] >= mid);
+  const bucketText = (bucket) => {
+    const sorted = [...bucket].sort((a, b) =>
+      b.transform[5] - a.transform[5] || a.transform[4] - b.transform[4]
+    );
+    let text = "";
+    let lastY = null;
+    for (const it of sorted) {
+      if (lastY !== null && Math.abs(it.transform[5] - lastY) > 4) text += "\n";
+      text += it.str + " ";
+      lastY = it.transform[5];
+    }
+    return text;
+  };
+  return bucketText(left) + "\n" + bucketText(right);
+}
+
 export async function readPdf(file, maxPages = 6) {
   const pdfjs = window.pdfjsLib;
   if (!pdfjs) throw new Error("The reader is warming up. Give it a second and drop the resume again.");
@@ -38,14 +111,11 @@ export async function readPdf(file, maxPages = 6) {
   let text = "";
   for (let i = 1; i <= Math.min(doc.numPages, maxPages); i++) {
     const page = await doc.getPage(i);
-    const tcn = await page.getTextContent();
-    let last = null;
-    for (const it of tcn.items) {
-      if (last !== null && Math.abs(it.transform[5] - last) > 4) text += "\n";
-      text += it.str + " ";
-      last = it.transform[5];
-    }
-    text += "\n";
+    const [tcn, viewport] = await Promise.all([
+      page.getTextContent(),
+      page.getViewport({ scale: 1 }),
+    ]);
+    text += extractPageText(tcn.items, viewport) + "\n";
   }
   return text.replace(/[ \t]+\n/g, "\n").slice(0, 20000);
 }

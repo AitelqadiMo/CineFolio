@@ -10,6 +10,7 @@ import { api } from "../api.js";
 import { useAuth } from "../App.jsx";
 import { SplitTitle, Skeleton, friendly, confetti } from "../ui.jsx";
 import { parseResumeToProfile, EMPTY_PROFILE, mergeProfile } from "../templates/profileParse.js";
+import { readPdf } from "../media.js";
 import { printResume, RESUME_LAYOUTS } from "../templates/resume.js";
 import { track, STEP } from "../funnel.js";
 
@@ -100,40 +101,57 @@ export default function Profile() {
   const setId = (patch) => setProfile((p) => ({ ...p, identity: { ...p.identity, ...patch } }));
   const setLink = (patch) => setProfile((p) => ({ ...p, links: { ...p.links, ...patch } }));
 
-  const applyParsed = (text) => {
-    const parsed = parseResumeToProfile(text);
-    setProfile((p) => mergeProfile(p, parsed));
-    setFillNote(
+  // buildFillNote: post-parse heuristic to warn when the result looks wrong.
+  // This is a best-effort check, not a guarantee: if it fires, the message says
+  // "may not have parsed correctly" rather than claiming certainty.
+  const buildFillNote = (parsed, rawText) => {
+    const warnings = [];
+    const DOC_HEADER = /^(curriculum vitae|cv|resume|resumé)$/i;
+    if (!parsed.identity.name || DOC_HEADER.test(parsed.identity.name.trim())) {
+      warnings.push("the name field looks like a document header rather than a person name");
+    }
+    // Zero experience entries but the raw text contains year-range patterns
+    // is a strong signal that the section headings were not recognised (e.g. a
+    // French CV with "Expérience professionnelle" before the fix was applied).
+    if (
+      parsed.experience.length === 0 &&
+      /(19|20)\d{2}\s*[-–—]\s*((19|20)\d{2}|present|pr.sent)/i.test(rawText)
+    ) {
+      warnings.push("0 experience entries were found even though the text contains date ranges");
+    }
+    // website looks like a technology name: short, ends in .js or similar
+    const w = parsed.links.website;
+    if (w && /\.(js|ts|py|rb|rs|go)$/i.test(w)) {
+      warnings.push(`the website field was set to "${w}", which looks like a technology name rather than a URL`);
+    }
+    const base =
       `Filled ${parsed.experience.length} experience ${parsed.experience.length === 1 ? "entry" : "entries"}, ` +
-      `${parsed.skills.length} skills, ${parsed.certifications.length} certifications. Blanks only; your edits stayed.`
+      `${parsed.skills.length} skills, ${parsed.certifications.length} certifications. Blanks only; your edits stayed.`;
+    if (!warnings.length) return base;
+    return (
+      base +
+      ` Warning: this may not have parsed correctly (${warnings.join("; ")}). ` +
+      "If something looks wrong, try pasting the resume text directly instead of uploading the PDF."
     );
   };
 
-  // ---------- resume smart-fill (PDF text extraction copied from Studio) ----------
+  const applyParsed = (text) => {
+    const parsed = parseResumeToProfile(text);
+    setProfile((p) => mergeProfile(p, parsed));
+    setFillNote(buildFillNote(parsed, text));
+  };
+
+  // ---------- resume smart-fill: PDF extraction from the shared media.js readPdf.
+  // The duplicate inline extractor was removed in favour of the shared one so any
+  // improvements (e.g. column-aware extraction) take effect here automatically.
   const onResume = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     setErr(""); setFillNote("");
     if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
       setPdfBusy(true);
       try {
-        const pdfjs = window.pdfjsLib;
-        if (!pdfjs) throw new Error("PDF reader still loading. Try again in a second.");
-        pdfjs.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-        const buf = await f.arrayBuffer();
-        const doc = await pdfjs.getDocument({ data: buf }).promise;
-        let text = "";
-        for (let i = 1; i <= Math.min(doc.numPages, 6); i++) {
-          const page = await doc.getPage(i);
-          const tcn = await page.getTextContent();
-          let last = null;
-          for (const it of tcn.items) {
-            if (last !== null && Math.abs(it.transform[5] - last) > 4) text += "\n";
-            text += it.str + " ";
-            last = it.transform[5];
-          }
-          text += "\n";
-        }
-        applyParsed(text.replace(/[ \t]+\n/g, "\n").slice(0, 20000));
+        const text = await readPdf(f);
+        applyParsed(text);
       } catch (e2) { setErr(friendly(e2.message)); }
       finally { setPdfBusy(false); }
     } else {
