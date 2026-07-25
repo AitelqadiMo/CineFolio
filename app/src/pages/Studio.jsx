@@ -5,7 +5,7 @@
 // The paid Director's Cut is a priced creative-direction card, never a
 // template drop-down; set dressing is one slate, not a theater.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api.js";
+import { api, registerClosed } from "../api.js";
 import { useEntitlement, setEnt, refreshEnt, watchForCredits } from "../entitlement.js";
 import { useAuth } from "../App.jsx";
 import { confetti, friendly, ConfirmDialog, Dialog } from "../ui.jsx";
@@ -409,10 +409,17 @@ export default function Studio() {
     } catch (e2) {
       if (e2.status === 402) {
         if (e2.body?.entitlement) setEnt(e2.body.entitlement); // the 402 carries the truth too
-        setErr("Your free AI renders are spent. The Director's Cut is $49 founding for three productions; the register is right below.");
+        // no hardcoded price in error copy: the unlock button beside this message
+        // shows the LIVE price from the entitlement snapshot, and a number here
+        // would drift the moment the founding window closes.
+        setErr("Your free AI renders are spent. The Director's Cut unlock is right below.");
         track(STEP.checkoutClick); // funnel: buyer sent to checkout
-        api.billingCheckout().then((c) => setBuy(c.url))
-          .catch(() => setErr("Your free AI renders are spent. The Director's Cut is $49 founding for three productions; the register opens soon."));
+        // 503 is a STATE (the register is not open yet), not a failure: honest
+        // opens-soon copy, same doctrine as Account. Never seed a missing url.
+        api.billingCheckout().then((c) => setBuy(c.url || null))
+          .catch((ce) => setErr(registerClosed(ce)
+            ? "Your free AI renders are spent. The paid register opens soon; The Set keeps filming free in the meantime."
+            : "Your free AI renders are spent. The register hiccuped fetching your checkout link; try again in a moment."));
       } else if (e2.status === 401) {
         setErr("Sign in again to order an AI cut.");
       } else setErr(friendly(e2.message));
@@ -472,7 +479,7 @@ export default function Studio() {
         <span className="edpagesel" style={{ cursor: "default" }} title="Where this film premieres">{(pub.slug.trim() || slug)}.cinefolio.dev</span>
         <div className="grow" />
         <span className="bkchip plain">{(profile.skills || []).length} SKILLS CAST</span>
-        {ent && <span className={`bkchip plain ${ent.freeCutsLeft ? "gold" : ""}`}>◈ {ent.freeCutsLeft} FREE AI CUT{ent.freeCutsLeft === 1 ? "" : "S"} LEFT</span>}
+        {ent && <span className={`bkchip plain ${ent.freeCutsLeft ? "gold" : ""}`}>◈ {ent.freeCutsLeft} FREE AI FILM{ent.freeCutsLeft === 1 ? "" : "S"} LEFT</span>}
         <button className={`edicon ${view === "desktop" ? "on" : ""}`} title="Desktop" aria-label="Desktop preview" onClick={() => setView("desktop")}>▭</button>
         <button className={`edicon ${view === "mobile" ? "on" : ""}`} title="Mobile" aria-label="Mobile preview" onClick={() => setView("mobile")}>▯</button>
         <button className="edicon" title="Re-render preview" aria-label="Re-render preview" onClick={() => setPreviewKey((k) => k + 1)}>⟳</button>
@@ -771,7 +778,7 @@ export default function Studio() {
                 <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <a className="btn ghost" href={pub.done.url} target="_blank" rel="noopener noreferrer">Open live URL</a>
                   <button className="btn ghost" onClick={() => navigator.clipboard?.writeText(pub.done.url)}>Copy link</button>
-                  <button type="button" className="btn ghost" onClick={() => nav("dashboard")}>My Films</button>
+                  <button type="button" className="btn ghost" onClick={() => nav("films")}>My Films</button>
                 </div>
               </div>
             )}

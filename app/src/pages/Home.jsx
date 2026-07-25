@@ -3,7 +3,7 @@
 // shots, add a note, hit Roll. Everything lands in The Set prefilled. The
 // gallery below carries the vault.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../api.js";
+import { api, registerClosed } from "../api.js";
 import { useEntitlement, setEnt, refreshEnt, watchForCredits } from "../entitlement.js";
 import { useAuth } from "../App.jsx";
 import { TEMPLATES, compile, parseProfile } from "../templates/engine.js";
@@ -95,8 +95,13 @@ export default function Home() {
         setLane("set");
         setErr("Your free AI films are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
         track(STEP.checkoutClick); // funnel: buyer sent to Lemon Squeezy checkout
-        api.billingCheckout().then((c) => setBuy(c.url))
-          .catch(() => setErr("Your free AI films are spent. The Set is open for manual filming; the paid register opens soon."));
+        // 503 is a STATE (the register is not open yet), not a failure: show the
+        // honest opens-soon copy Account established. Anything else is a real
+        // hiccup worth a retry. And never seed the buy button with a missing url.
+        api.billingCheckout().then((c) => setBuy(c.url || null))
+          .catch((ce) => setErr(registerClosed(ce)
+            ? "Your free AI films are spent. The paid register opens soon; The Set keeps filming free in the meantime."
+            : "Your free AI films are spent. The register hiccuped fetching your checkout link; try again in a moment."));
       }
       else setErr(friendlyMsg(e));
     } finally { setSending(false); }

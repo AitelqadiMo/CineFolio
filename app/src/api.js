@@ -77,3 +77,9 @@ export const api = {
 // True when an endpoint is missing or not deployed yet (route absent from the
 // HTTP API returns 404, JWT-scoped stages can answer 401/403 for unknown paths).
 export const notWired = (e) => [401, 403, 404, 405, 501].includes(e?.status);
+
+// True when the billing register is not open yet: /billing/checkout answers an
+// honest 503 until a payment provider is configured. This is a STATE, not an
+// error, and every buy surface must show the same honest copy for it (the
+// pattern Account established) instead of a generic failure message.
+export const registerClosed = (e) => e?.status === 503;

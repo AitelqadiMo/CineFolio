@@ -5,11 +5,13 @@
 import { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { usePopover } from "../media.js";
+import { useEntitlement } from "../entitlement.js";
 
 export default function Sidebar({ user, route, nav, onSignOut, onCmdK }) {
   const wsPop = usePopover();
   const userPop = usePopover();
   const [recents, setRecents] = useState([]);
+  const ent = useEntitlement(); // server truth: plan, free films, live founding price
 
   useEffect(() => {
     api.sites().then((r) => {
@@ -65,10 +67,22 @@ export default function Sidebar({ user, route, nav, onSignOut, onCmdK }) {
         <span><b>Share a premiere</b><i>Your films, one link each</i></span>
         <span className="pic" aria-hidden="true">↗</span>
       </button>
-      <button className="bkpromo gold" onClick={() => nav("studio")}>
-        <span><b>The Director&apos;s Cut</b><i>A free AI render on us, then $49 founding</i></span>
-        <span className="pic" aria-hidden="true">◈</span>
-      </button>
+      {/* The rail promo reads the entitlement snapshot instead of pitching blind:
+          a paying director or coach owns the Cut already (no upsell), a user with
+          an unspent free film gets nudged to spend it (the funnel's first step),
+          and only a user with nothing left to spend sees the founding pitch, at
+          the LIVE price so the rail can never contradict the register. */}
+      {(ent?.plan === "director" || ent?.plan === "coach") ? null : (ent?.freeCutsLeft ?? 0) > 0 ? (
+        <button className="bkpromo gold" onClick={() => nav("studio")}>
+          <span><b>Your first film is on us</b><i>{ent.freeCutsLeft === 1 ? "A free AI render is waiting" : `${ent.freeCutsLeft} free AI renders are waiting`}</i></span>
+          <span className="pic" aria-hidden="true">◈</span>
+        </button>
+      ) : (
+        <button className="bkpromo gold" onClick={() => nav("studio")}>
+          <span><b>The Director&apos;s Cut</b><i>{`3 productions · $${ent?.foundingSeatsLeft > 0 ? (ent?.foundingPrice ?? 49) : (ent?.cutPrice ?? 99)}${ent?.foundingSeatsLeft > 0 ? " founding" : ""} · one time`}</i></span>
+          <span className="pic" aria-hidden="true">◈</span>
+        </button>
+      )}
 
       <div className="bkuser">
         <button className="uava" onClick={userPop.toggle} aria-haspopup="menu" aria-expanded={userPop.open} aria-label="Account menu">{initial}</button>
