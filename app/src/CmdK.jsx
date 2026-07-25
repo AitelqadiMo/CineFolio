@@ -36,7 +36,7 @@ export default function CmdK({ nav, admin }) {
 
   const items = useMemo(() => {
     const base = [
-      { k: "nav", label: "My Films", hint: "G then F", run: () => nav("dashboard") },
+      { k: "nav", label: "My Films", hint: "G then F", run: () => nav("films") },
       { k: "nav", label: "New Film · roll camera", hint: "G then N", run: () => nav("studio") },
       { k: "nav", label: "My Profile · the dossier", run: () => nav("profile") },
       { k: "nav", label: "Account settings", run: () => nav("account") },

@@ -133,7 +133,7 @@ export default function App() {
       {/* gate and label on the SAME number: gating on cuts while labelling revisions
           showed a paying customer "0 REVISIONS LEFT" while their cut was still filming. */}
       {credits.revisions > 0 && (
-        <button className="bkchip gold" onClick={() => nav("settings")} title="Studio credits">◈ {credits.revisions} REVISION{credits.revisions === 1 ? "" : "S"} LEFT</button>
+        <button className="bkchip gold" onClick={() => nav("settings")} title="Director's notes left on delivered cuts">◈ {credits.revisions} DIRECTOR&apos;S NOTE{credits.revisions === 1 ? "" : "S"} LEFT</button>
       )}
       <span className="bkchip plain">{CONFIG.env.toUpperCase()}</span>
       {edge && (edge.ms >= 0
