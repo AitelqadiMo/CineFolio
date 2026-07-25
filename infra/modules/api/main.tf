@@ -60,6 +60,8 @@ locals {
     "GET /waitlist/count"           = false
     "POST /contact"                 = false
     "POST /hit"                     = false
+    "POST /funnel"                  = false # public first-party funnel beacon (honeypot-guarded, no PII)
+    "GET /funnel/report"            = true  # the Floor: funnel drop-off report (admin group in-handler)
     "POST /studio/generate"         = false # anonymous rough cut only; production runs moved to /studio/order
     "POST /studio/order"            = true  # AI cuts: an account entitlement (3 free, then paid)
     "GET /studio/status"            = false
