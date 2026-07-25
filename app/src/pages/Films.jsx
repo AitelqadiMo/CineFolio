@@ -156,7 +156,7 @@ export default function Films() {
     <div className="bkpad">
       <div className="bkpagehead">
         <h1>Films</h1>
-        <button className="bkbtn lite" onClick={() => nav("studio")}>Create ▾</button>
+        <button className="bkbtn lite" onClick={() => nav("studio")}>New film</button>
       </div>
 
       {delivery && (
@@ -201,9 +201,9 @@ export default function Films() {
       )}
       {sites?.length === 0 && (
         <div className="bkempty">
-          <span className="mono">NOTHING IN PRODUCTION</span>
-          Your first film is one brief away.
-          <div style={{ marginTop: 16 }}><button className="bkbtn primary" onClick={() => nav("studio")}>Open The Set</button></div>
+          <span className="mono">NO FILMS YET</span>
+          Build your first one on The Set: type and it renders live, then publish in one click. No resume needed.
+          <div style={{ marginTop: 16 }}><button className="bkbtn primary" onClick={() => nav("studio")}>Open The Set · build your first film</button></div>
         </div>
       )}
 
