@@ -17,6 +17,7 @@ export const ROUTES = {
   "GET /seats": billing.getSeats,
   "GET /me": misc.getMe,
   "PUT /me": misc.putMe,
+  "DELETE /account": misc.deleteAccount,
   "POST /media": misc.mediaUpload,
   "POST /media/direct": misc.mediaDirect,
   "GET /draft": misc.getDraft,
@@ -70,6 +71,7 @@ async function buildCtx() {
   const aws = await import("./aws.mjs");
   realCtx = {
     ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn, presign: aws.presign, ses: aws.ses,
+    cognitoAdmin: aws.cognitoAdmin,
     secrets: aws.secrets, params: aws.params, fetchFn: aws.fetchFn,
     config: {
       appEnv: process.env.APP_ENV || "dev",
@@ -84,6 +86,10 @@ async function buildCtx() {
       ordersQueueUrl: process.env.ORDERS_QUEUE_URL,
       sesFrom: process.env.SES_FROM || "",
       appOrigin: (process.env.APP_ORIGIN || "").replace(/\/$/, ""),
+      // the Cognito pool id is the last path segment of the issuer URL
+      // (https://cognito-idp.{region}.amazonaws.com/{poolId}); deriving it here
+      // means account deletion needs no new env var beyond the issuer we set.
+      userPoolId: (process.env.COGNITO_ISSUER || "").split("/").pop() || "",
     },
   };
   return realCtx;
