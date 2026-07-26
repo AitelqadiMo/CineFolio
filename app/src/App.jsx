@@ -125,9 +125,9 @@ export default function App() {
   const statusChips = (
     <div className="bkstatus">
       {prod && (
-        <button className={`bkchip ${prod.status === "ready" ? "green" : ["human_review", "dispatch_failed"].includes(prod.status) ? "red" : "gold"}`}
+        <button className={`bkchip ${prod.status === "ready" ? "green" : ["human_review", "dispatch_failed", "rejected"].includes(prod.status) ? "red" : "gold"}`}
           onClick={() => nav(prod.status === "ready" ? "films" : "settings")} title="Director's cut order status">
-          {prod.status === "ready" ? "🎬 CUT READY" : ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" : prod.status === "filming" ? "● CAMERAS ROLLING" : "● IN THE QUEUE"}
+          {prod.status === "ready" ? "🎬 CUT READY" : prod.status === "rejected" ? "⚠ NOT FILMED" : ["human_review", "dispatch_failed"].includes(prod.status) ? "⚠ NEEDS ATTENTION" : prod.status === "filming" ? "● CAMERAS ROLLING" : "● IN THE QUEUE"}
         </button>
       )}
       {/* gate and label on the SAME number: gating on cuts while labelling revisions

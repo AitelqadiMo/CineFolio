@@ -299,6 +299,29 @@ export function needsAttentionEmail(order, appOrigin) {
   };
 }
 
+// the content-rejection note: fires when moderation terminally declines a brief
+// (validate or dossier surface). The pipeline pages the operator on this, but
+// the CUSTOMER was told nothing before this existed, so a rejected order looked
+// identical to a healthy render forever. Total honesty: what happened, that the
+// credit is back, and a path to try again. No jargon, no blame, no fake ETA.
+export function orderRejectedEmail(order, appOrigin, refunded = true) {
+  const id = shortId(order.orderId);
+  const cta = appOrigin ? { url: `${appOrigin}/#/studio`, label: "Start a new film" } : null;
+  return {
+    subject: `Order ${id}: this brief could not be filmed.`,
+    ...build("Production note", "We could not film this one.", [
+      `Order <b>${id}</b> did not pass our content review, so the studio did not produce a film from it. This is automatic, it happens before any footage is generated, and it is how we keep the studio safe for everyone.`,
+      refunded
+        ? "Your production credit has been returned to your account, so you have lost nothing. Adjust the brief and run it again whenever you are ready."
+        : "If a credit was spent on this order, it has been returned to your account. Adjust the brief and run it again whenever you are ready.",
+      "If you believe this was a mistake, reply to this email and a human at the studio will take a look.",
+    ], cta, {
+      preheader: `Order ${id} did not pass content review. Your credit is back; adjust the brief and try again.`,
+      details: [["Order", id], ["Status", "Not filmed"], ["Your credit", "Returned"]],
+    }),
+  };
+}
+
 // ---------- site lifecycle ----------
 
 // the share kit: fires once, on a film's FIRST premiere (engine builds and

@@ -790,12 +790,12 @@ test("contact: works without a sender, survives a mail outage, honeypot stays si
 });
 
 test("emails: every builder ships a subject, branded html, and a plaintext part", async () => {
-  const { orderReceivedEmail, premiereReadyEmail, revisionReceivedEmail, revisionPremiereEmail, needsAttentionEmail, firstPremiereEmail, welcomeEmail, verifyCodeEmail, resetCodeEmail } = await import("../email.mjs");
+  const { orderReceivedEmail, premiereReadyEmail, revisionReceivedEmail, revisionPremiereEmail, needsAttentionEmail, orderRejectedEmail, firstPremiereEmail, welcomeEmail, verifyCodeEmail, resetCodeEmail } = await import("../email.mjs");
   const order = { orderId: "abc12345-0000", name: "Nadia Benali", email: "n@x.io" };
   const app = "https://app.test";
   const builds = [
     orderReceivedEmail(order, app), premiereReadyEmail(order, app), revisionReceivedEmail(order, app),
-    revisionPremiereEmail(order, app), needsAttentionEmail(order, app),
+    revisionPremiereEmail(order, app), needsAttentionEmail(order, app), orderRejectedEmail(order, app),
     firstPremiereEmail({ slug: "nadia", title: "Nadia in Motion", url: "https://nadia.cinefolio.dev/" }, app),
     welcomeEmail({ email: "n@x.io" }, app), verifyCodeEmail("{####}"), resetCodeEmail("{####}"),
   ];
@@ -807,15 +807,19 @@ test("emails: every builder ships a subject, branded html, and a plaintext part"
   }
   // order emails deep-link to the lounge; the premiere kit carries the live address in BOTH parts
   assert.ok(builds[1].html.includes("https://app.test/order/abc12345-0000"), "cut-ready email links the lounge");
-  assert.ok(builds[5].html.includes("https://nadia.cinefolio.dev/"));
-  assert.ok(builds[5].text.includes("https://nadia.cinefolio.dev/"), "live url survives into the text part");
+  assert.ok(builds[6].html.includes("https://nadia.cinefolio.dev/"));
+  assert.ok(builds[6].text.includes("https://nadia.cinefolio.dev/"), "live url survives into the text part");
   // a revision landing must not read like a first delivery
   assert.notEqual(builds[3].subject, builds[1].subject);
+  // the rejection note tells the customer their credit is back (the whole point:
+  // a rejected order used to be a silent dead-end with a silent refund)
+  assert.match(builds[5].html, /credit/i, "rejection email names the returned credit");
+  assert.notEqual(builds[5].subject, builds[4].subject, "rejection reads differently from a human_review delay");
   // Cognito CustomMessage bodies must carry the literal code placeholder for substitution
-  assert.ok(builds[7].html.includes("{####}"), "verification email carries the code slot");
-  assert.ok(builds[8].html.includes("{####}"), "reset email carries the code slot");
+  assert.ok(builds[8].html.includes("{####}"), "verification email carries the code slot");
+  assert.ok(builds[9].html.includes("{####}"), "reset email carries the code slot");
   // the welcome CTA opens the console
-  assert.ok(builds[6].html.includes(`href="${app}"`), "welcome email opens the studio");
+  assert.ok(builds[7].html.includes(`href="${app}"`), "welcome email opens the studio");
   // user-supplied values are escaped in the html (the text part is text/plain, verbatim is correct there)
   const hostile = orderReceivedEmail({ orderId: "x1", name: "Eve <script>alert(1)</script>", email: "e@x.io" }, app);
   assert.ok(hostile.html.includes("Eve &lt;script&gt;"), "name is escaped in html");

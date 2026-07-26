@@ -94,7 +94,7 @@ export default function Home() {
         if (e.body?.entitlement) setEnt(e.body.entitlement); // the 402 carries the truth too
         setLane("set");
         setErr("Your free AI films are spent. Unlock the Director's Cut below, or keep filming free on The Set.");
-        track(STEP.checkoutClick); // funnel: buyer sent to Lemon Squeezy checkout
+        track(STEP.checkoutClick); // funnel: buyer sent to Creem checkout
         // 503 is a STATE (the register is not open yet), not a failure: show the
         // honest opens-soon copy Account established. Anything else is a real
         // hiccup worth a retry. And never seed the buy button with a missing url.

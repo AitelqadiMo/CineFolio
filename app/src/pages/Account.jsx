@@ -12,11 +12,13 @@ import { SplitTitle, Skeleton, friendly, Dialog, PromptDialog } from "../ui.jsx"
 import { ledger } from "../orders.js";
 import { track, STEP } from "../funnel.js";
 
-const LS_ORDERS_URL = "https://app.lemonsqueezy.com/my-orders";
-const STATUS_CLASS = { ready: "live", queued: "queued", filming: "filming", dispatch_failed: "dispatch_failed", human_review: "human_review", preview_only: "draft" };
+// Creem is the live merchant of record. Receipts live in Creem's customer
+// portal, not Lemon Squeezy (which rejected our store and was never launched).
+const RECEIPTS_URL = "https://www.creem.io/my-orders";
+const STATUS_CLASS = { ready: "live", queued: "queued", filming: "filming", dispatch_failed: "dispatch_failed", human_review: "human_review", rejected: "human_review", preview_only: "draft" };
 const STATUS_LABEL = {
   ready: "delivered", queued: "in the queue", filming: "cameras rolling",
-  dispatch_failed: "with the crew", human_review: "with the crew", preview_only: "preview only",
+  dispatch_failed: "with the crew", human_review: "with the crew", rejected: "not filmed · credit returned", preview_only: "preview only",
 };
 
 const domainIntents = () => { try { return JSON.parse(localStorage.getItem("cf.domainIntent") || "{}"); } catch { return {}; } };
@@ -79,7 +81,7 @@ export default function Account() {
   const goFounding = async () => {
     setErr(""); setCheckingOut(true);
     try {
-      track(STEP.checkoutClick); // funnel: buyer sent to Lemon Squeezy checkout
+      track(STEP.checkoutClick); // funnel: buyer sent to Creem checkout
       const c = await api.billingCheckout();
       watchForCredits();
       window.open(c.url, "_blank", "noopener");
@@ -250,7 +252,7 @@ export default function Account() {
                   </p>
                 )}
                 <p className="dlgtext" style={{ marginTop: 4 }}>
-                  Purchases run through our merchant of record. <a href={LS_ORDERS_URL} target="_blank" rel="noopener noreferrer">Billing &amp; receipts ↗</a>
+                  Purchases run through our merchant of record. <a href={RECEIPTS_URL} target="_blank" rel="noopener noreferrer">Billing &amp; receipts ↗</a>
                 </p>
               </div>
             </section>
@@ -296,9 +298,9 @@ export default function Account() {
             <section className="asec" aria-label="Billing">
               <div className="scene-hd">BILLING &amp; RECEIPTS</div>
               <div className="panel">
-                <p className="dlgtext">Payments run through Lemon Squeezy, our merchant of record. Every receipt and invoice lives in their portal, tied to {user.email}.</p>
+                <p className="dlgtext">Payments run through Creem, our merchant of record. Every receipt and invoice lives in their portal, tied to {user.email}. Creem also emails you a receipt at purchase.</p>
                 <div className="btnrow" style={{ marginTop: 12 }}>
-                  <a className="btn ghost" href={LS_ORDERS_URL} target="_blank" rel="noopener noreferrer">Open my receipts ↗</a>
+                  <a className="btn ghost" href={RECEIPTS_URL} target="_blank" rel="noopener noreferrer">Open my receipts ↗</a>
                 </div>
               </div>
             </section>

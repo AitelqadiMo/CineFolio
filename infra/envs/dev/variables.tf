@@ -52,9 +52,12 @@ variable "sites_domain" {
   default = "cinefolio.dev"
 }
 
-# API CORS. Dev: "*" (SPA distribution domain only exists after first apply).
-# Prod: pin to the real app origins.
+# API CORS. Pinned to the real app origins: a wildcard let any site drive the
+# API with a stolen token. Both apex and www are live (both 200), and the SPA is
+# served at cinefolio.dev, so these two cover every legitimate browser origin.
+# If a preview or staging origin is ever added, extend this list rather than
+# widening to "*".
 variable "api_cors_origins" {
   type    = list(string)
-  default = ["*"]
+  default = ["https://cinefolio.dev", "https://www.cinefolio.dev"]
 }

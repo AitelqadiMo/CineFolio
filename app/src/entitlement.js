@@ -47,7 +47,7 @@ export async function refreshEnt() {
   return current;
 }
 
-// after the buyer heads to Lemon Squeezy: watch /me until the webhook lands
+// after the buyer heads to Creem checkout: watch /me until the webhook lands
 // the credits, then every subscribed surface updates itself. Self-stopping.
 let watcher = null;
 export function watchForCredits({ intervalMs = 5000, timeoutMs = 180000 } = {}) {
