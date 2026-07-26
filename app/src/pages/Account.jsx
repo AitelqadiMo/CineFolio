@@ -338,8 +338,14 @@ export default function Account() {
                     </div>
                     <div className="ordacts">
                       {s.status === "live" && <a className="btn ghost ordbtn" href={s.previewUrl} target="_blank" rel="noopener noreferrer">Open</a>}
-                      <button type="button" className="btn ghost ordbtn" onClick={() => (domains[s.siteId] ? setCnameFor({ site: s, domain: domains[s.siteId] }) : setDomainFor(s))}>
-                        {domains[s.siteId] ? "Domain setup" : "Connect domain"}
+                      {/* Custom domains are marked coming soon on purpose: the edge
+                          cannot serve a custom host yet (no CloudFront alias, no
+                          per-domain cert), so wiring a CNAME today would 404 in the
+                          customer's face. The button returns when aliases + certs land.
+                          The connect/CNAME dialogs stay in the file, just unreachable,
+                          so re-enabling is a one-line flip. */}
+                      <button type="button" className="btn ghost ordbtn" disabled title="Point your own domain here. Landing soon." style={{ opacity: 0.55, cursor: "not-allowed" }}>
+                        Custom domain · soon
                       </button>
                     </div>
                   </div>
