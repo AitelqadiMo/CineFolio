@@ -38,6 +38,7 @@ export const ROUTES = {
   "GET /admin/contacts": admin.contacts,
   "GET /admin/pipeline": admin.pipelineGet,
   "POST /admin/pipeline": admin.pipelineSet,
+  "POST /admin/users/{sub}/credits": admin.grantCredits,
   "POST /studio/generate": studio.generate,
   "POST /studio/order": studio.order,
   "GET /studio/status": studio.status,
