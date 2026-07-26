@@ -35,6 +35,7 @@ function friendly(code, fallback) {
     UserNotFoundException: "No account with this email. Create one first.",
     CodeMismatchException: "That code doesn't match. Check the email and try again.",
     ExpiredCodeException: "Code expired. We can send a fresh one.",
+    InvalidParameterException: "Check the details and try again.",
     InvalidPasswordException: "Password too weak: 10+ characters with upper, lower and a number.",
     LimitExceededException: "Too many attempts. Wait a minute and retry.",
     TooManyRequestsException: "Too many attempts. Wait a minute and retry.",
@@ -74,6 +75,19 @@ export async function confirm(email, code) {
 
 export async function resendCode(email) {
   await call("ResendConfirmationCode", { ClientId: CONFIG.clientId, Username: email });
+}
+
+// password recovery, two steps over the same JSON API. The Cognito pool is
+// configured for verified-email recovery and a branded reset-code email is
+// already wired (CustomMessage_ForgotPassword), so this is the only piece that
+// was missing: a user who forgets a password could not self-serve at all.
+// ForgotPassword emails the code; ConfirmForgotPassword sets the new password.
+export async function forgotPassword(email) {
+  await call("ForgotPassword", { ClientId: CONFIG.clientId, Username: email });
+}
+
+export async function confirmForgotPassword(email, code, newPassword) {
+  await call("ConfirmForgotPassword", { ClientId: CONFIG.clientId, Username: email, ConfirmationCode: code, Password: newPassword });
 }
 
 export async function signIn(email, password) {
