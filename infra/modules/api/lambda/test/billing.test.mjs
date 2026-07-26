@@ -62,6 +62,37 @@ function fakeCtx(overrides = {}) {
       return item;
     },
     async del(Key) { store.delete(`${Key.PK}|${Key.SK}`); },
+    // all-or-nothing: check EVERY condition first, then apply. A failed
+    // condition cancels the whole transaction (nothing applied), exactly like
+    // DynamoDB, so a replay's failed Put also rolls back the credit ADD.
+    async transact(items) {
+      for (const it of items) {
+        if (it.Put?.ConditionExpression === "attribute_not_exists(PK)" && store.has(kv(it.Put.Item))) {
+          throw Object.assign(new Error("cancelled"), { name: "TransactionCanceledException" });
+        }
+      }
+      for (const it of items) {
+        if (it.Put) { store.set(kv(it.Put.Item), structuredClone(it.Put.Item)); continue; }
+        if (it.Update) {
+          const { Key, UpdateExpression, ExpressionAttributeValues = {}, ExpressionAttributeNames = {} } = it.Update;
+          const k = `${Key.PK}|${Key.SK}`;
+          const item = store.get(k) || { ...Key };
+          const resolve = (n) => ExpressionAttributeNames[n] || n;
+          for (const clause of UpdateExpression.split(/SET|ADD/).filter(Boolean).map((c) => c.trim())) {
+            for (const part of clause.split(/,(?![^(]*\))/).map((p) => p.trim()).filter(Boolean)) {
+              if (part.includes("=")) {
+                const [lhs, rhs] = part.split("=").map((x) => x.trim());
+                item[resolve(lhs)] = ExpressionAttributeValues[rhs];
+              } else {
+                const m = part.match(/^(\S+)\s+(:\S+)$/);
+                if (m) item[resolve(m[1])] = (item[resolve(m[1])] || 0) + ExpressionAttributeValues[m[2]];
+              }
+            }
+          }
+          store.set(k, item);
+        }
+      }
+    },
     _store: store,
   };
   const ctx = {
@@ -446,4 +477,35 @@ test("order: a counter read failure degrades to null without failing the purchas
   assert.equal(r.code, 200, "a counter hiccup never breaks a purchase");
   assert.equal(r.body.entitlement.foundingSeatsLeft, null, "degraded to unknown, not a fabricated or zero number");
   assert.equal(r.body.entitlement.foundingPrice, FOUNDING_PRICE, "null holds the founding price open");
+});
+
+test("crash safety: the purchase claim and the credit grant are ATOMIC (all or nothing)", async () => {
+  // the crash window this closes: the claim used to commit before the grant, so
+  // a failure between them left a paid purchase marked claimed with no credit.
+  // We prove atomicity two ways against the transactional path.
+  const secretsBag = { BILLING_PROVIDER: "creem", CREEM_BUY_URL_DC: "https://creem.io/pay/dc", CREEM_WEBHOOK_SECRET: CREEM_SECRET };
+
+  // 1) success: the purchase row AND the credit both land, together.
+  const ctx = fakeCtx({ secrets: async () => secretsBag });
+  const raw = JSON.stringify(creemPayload("ATOM1", { sub: "u-atom" }));
+  const ok1 = parse(await webhook(webhookEv(raw, { "creem-signature": creemSig(raw) }), ctx));
+  assert.equal(ok1.code, 200);
+  assert.ok(ctx.ddb._store.has("PURCHASE#creem#ATOM1|META"), "purchase row landed");
+  assert.equal(ctx.ddb._store.get("USER#u-atom|PROFILE").paidCredits, DC_CREDITS, "credit landed with it");
+
+  // 2) if the transaction itself throws (a real DDB transact failure, not a
+  //    replay), NEITHER the purchase nor the credit is written: the webhook
+  //    surfaces the error (provider retries) rather than half-applying.
+  const ctx2 = fakeCtx({ secrets: async () => secretsBag });
+  ctx2.ddb.transact = async () => { throw Object.assign(new Error("ProvisionedThroughputExceeded"), { name: "ProvisionedThroughputExceededException" }); };
+  const raw2 = JSON.stringify(creemPayload("ATOM2", { sub: "u-atom2" }));
+  await assert.rejects(webhook(webhookEv(raw2, { "creem-signature": creemSig(raw2) }), ctx2), /ProvisionedThroughput/);
+  assert.ok(!ctx2.ddb._store.has("PURCHASE#creem#ATOM2|META"), "no purchase row on a transaction failure");
+  assert.equal(ctx2.ddb._store.get("USER#u-atom2|PROFILE"), undefined, "no orphaned credit on a transaction failure");
+
+  // 3) a replay cancels the transaction on the idempotency condition: still
+  //    exactly one credit, and the second call reports already.
+  const replay = parse(await webhook(webhookEv(raw, { "creem-signature": creemSig(raw) }), ctx));
+  assert.equal(replay.body.already, true, "replay is idempotent");
+  assert.equal(ctx.ddb._store.get("USER#u-atom|PROFILE").paidCredits, DC_CREDITS, "still exactly one grant after replay");
 });

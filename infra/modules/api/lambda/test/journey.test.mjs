@@ -83,6 +83,30 @@ function fakeCtx(overrides = {}) {
       if (KeyConditionExpression?.includes("begins_with")) return items.filter((i) => i.PK === v[":p"] && String(i.SK).startsWith(v[":s"]));
       return items.filter((i) => i.PK === v[":p"]);
     },
+    async transact(items) {
+      const keyOf = (o) => `${o.PK}|${o.SK}`;
+      for (const it of items) {
+        if (it.Put?.ConditionExpression === "attribute_not_exists(PK)" && store.has(keyOf(it.Put.Item))) {
+          throw Object.assign(new Error("cancelled"), { name: "TransactionCanceledException" });
+        }
+      }
+      for (const it of items) {
+        if (it.Put) { store.set(keyOf(it.Put.Item), structuredClone(it.Put.Item)); continue; }
+        if (it.Update) {
+          const { Key, UpdateExpression, ExpressionAttributeValues = {}, ExpressionAttributeNames = {} } = it.Update;
+          const k = `${Key.PK}|${Key.SK}`;
+          const item = store.get(k) || { ...Key };
+          const resolve = (n) => ExpressionAttributeNames[n] || n;
+          for (const clause of UpdateExpression.split(/SET|ADD/).filter(Boolean).map((c) => c.trim())) {
+            for (const part of clause.split(/,(?![^(]*\))/).map((p) => p.trim()).filter(Boolean)) {
+              if (part.includes("=")) { const [lhs, rhs] = part.split("=").map((x) => x.trim()); item[resolve(lhs)] = ExpressionAttributeValues[rhs]; }
+              else { const m = part.match(/^(\S+)\s+(:\S+)$/); if (m) item[resolve(m[1])] = (item[resolve(m[1])] || 0) + ExpressionAttributeValues[m[2]]; }
+            }
+          }
+          store.set(k, item);
+        }
+      }
+    },
     _store: store,
   };
   const s3store = new Map();

@@ -1,7 +1,7 @@
 // aws.mjs — ALL AWS SDK access lives here. index.mjs injects this as ctx into routes;
 // tests inject fakes instead, so nothing else in the codebase imports the SDK.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
@@ -27,6 +27,16 @@ export const ddb = {
   update: (params) => doc.send(new UpdateCommand({ TableName: TABLE, ...params })).then((r) => r.Attributes),
   del: (Key) => doc.send(new DeleteCommand({ TableName: TABLE, Key })),
   query: (params) => doc.send(new QueryCommand({ TableName: TABLE, ...params })).then((r) => r.Items || []),
+  // all-or-nothing multi-item write. Callers pass bare { Put } / { Update }
+  // shapes (no TableName); we stamp the table on each so a caller can never
+  // target the wrong table. Used by the billing webhook to claim a purchase and
+  // grant its credit atomically (no crash window between the two).
+  transact: (items) => doc.send(new TransactWriteCommand({
+    TransactItems: items.map((it) => {
+      const [[op, body]] = Object.entries(it);
+      return { [op]: { TableName: TABLE, ...body } };
+    }),
+  })),
   // paginated scan for the admin surfaces. Correct at demand-test scale
   // (hundreds of rows); past ~10k items, move the callers to a type-overloaded GSI.
   scan: (params) => doc.send(new ScanCommand({ TableName: TABLE, ...params }))
