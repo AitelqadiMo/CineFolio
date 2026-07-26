@@ -81,6 +81,7 @@ locals {
     "POST /studio/asset"            = false # same X-CF-Secret gate; the agent ships generated binaries here
     "GET /me"                       = true
     "PUT /me"                       = true
+    "DELETE /account"               = true # GDPR erasure: purge sites/orders/dossier/media + the Cognito identity
     "POST /media"                   = true
     "POST /media/direct"            = true # CORS-immune upload fallback through the API
     "GET /draft"                    = true
@@ -93,6 +94,7 @@ locals {
     "GET /admin/contacts"           = true # the Floor: visitor inbox
     "GET /admin/pipeline"           = true # the Floor: circuit-breaker state
     "POST /admin/pipeline"          = true # the Floor: the kill switch
+    "POST /admin/users/{sub}/credits" = true # the Floor: operator credit-grant lever (+ admin group check in-handler)
     "POST /sites"                   = true
     "GET /sites"                    = true
     "GET /sites/{id}"               = true
