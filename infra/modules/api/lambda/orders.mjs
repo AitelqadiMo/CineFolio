@@ -80,6 +80,15 @@ export async function requestRevision(event, ctx) {
       await ctx.queue.send(ctx.config.ordersQueueUrl, { orderId });
     } catch (e) {
       console.error(JSON.stringify({ level: "error", msg: "revision enqueue failed", orderId, err: e?.message }));
+      // same silent-failure class as a first-order enqueue: a revision that
+      // cannot enqueue starts no pipeline run, so page a human. Best effort.
+      if (ctx.sns && ctx.config.alarmTopicArn) {
+        await ctx.sns.publish(
+          ctx.config.alarmTopicArn,
+          `CineFolio: revision ${String(orderId).slice(0, 8)} FAILED TO ENQUEUE`,
+          `A revision on order ${orderId} could not be enqueued, so no build run starts and nothing is processing it. Recover from the admin console -> Orders -> retry. Error: ${e?.message || "unknown"}`,
+        ).catch(() => {});
+      }
     }
   }
   await sendOrderEmail(ctx, "revision", { ...order, revisionNotes: notes });

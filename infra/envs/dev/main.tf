@@ -165,6 +165,12 @@ module "api" {
   cors_allowed_origins = var.api_cors_origins # "*" in dev: app CF domain is minted after first apply. Pin in prod.
   ses_from             = var.ses_from
   app_origin           = var.app_origin
+  # the operator-paging topic. Passed as a CONSTRUCTED ARN, not module.observability's
+  # output, on purpose: observability already consumes module.api outputs (api_id,
+  # function_name), so referencing its output here would form an api -> observability
+  # -> api cycle. The topic name is deterministic (${name_prefix}-alarms), so the ARN
+  # is safe to build from the account + region we already have.
+  alarm_topic_arn      = "arn:aws:sns:${var.region}:${local.account_id}:${local.name_prefix}-alarms"
   tags                 = local.tags
 }
 

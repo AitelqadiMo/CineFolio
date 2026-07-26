@@ -198,6 +198,19 @@ export async function order(event, ctx) {
     } catch (e) {
       console.error(JSON.stringify({ level: "error", msg: "enqueue failed", orderId, err: e?.message }));
       await setStatus(ctx, orderId, "dispatch_failed");
+      // PAGE THE OPERATOR. This is the one order-failure the pipeline's own SNS
+      // alerts cannot catch: a failed SQS send means no Step Functions execution
+      // ever starts, so the human_review path never fires. The customer has a
+      // receipt and no cut; without this the order sits in dispatch_failed
+      // silently. Best effort: a page that itself fails must not mask the enqueue
+      // failure, and the order is already dispatch_failed for the retry UI.
+      if (ctx.sns && ctx.config.alarmTopicArn) {
+        await ctx.sns.publish(
+          ctx.config.alarmTopicArn,
+          `CineFolio: order ${String(orderId).slice(0, 8)} FAILED TO ENQUEUE`,
+          `Order ${orderId} took a credit but could not be enqueued to the build pipeline, so no Step Functions run starts and the human_review fallback will NOT fire. Marked dispatch_failed. Recover from the admin console -> Orders -> retry. Error: ${e?.message || "unknown"}`,
+        ).catch(() => {});
+      }
     }
     await sendOrderEmail(ctx, "received", { orderId, email, name: parsed.name });
   }
