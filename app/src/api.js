@@ -72,6 +72,7 @@ export const api = {
   siteStats: (id) => req(`/sites/${id}/stats`, { auth: true }),
   inspect: (id) => req(`/sites/${id}/inspect`, { auth: true }), // release truth vs manifest
   connectDomain: (id, domain) => req(`/sites/${id}/domain`, { method: "POST", body: { domain }, auth: true }),
+  deleteAccount: (confirm) => req("/account", { method: "DELETE", body: { confirm }, auth: true }), // GDPR erasure: purges sites, orders, dossier, media, and the auth identity
 };
 
 // True when an endpoint is missing or not deployed yet (route absent from the

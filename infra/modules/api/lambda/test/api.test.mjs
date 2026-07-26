@@ -1259,3 +1259,65 @@ test("trial sweep: darkens the expired, warns the final day exactly once, leaves
   assert.equal(r2.body.warned, 0);
   assert.equal(ctx.ses.sent.length, 1, "one final-screening call, ever");
 });
+
+test("account deletion: erases the user's sites, releases, orders, dossier, media, and auth identity", async () => {
+  // a fake that adds listPrefix (media) and a recording cognitoAdmin to the base ctx
+  const mediaStore = new Map();
+  const cognitoCalls = [];
+  const ctx = fakeCtx({
+    cognitoAdmin: { async deleteUser(pool, user) { cognitoCalls.push([pool, user]); } },
+    config: { appEnv: "test", apiBase: "https://api.test", artifactsBucket: "arts", publishedBucket: "pub", kvsArn: "arn:kvs", distributionId: "DIST", cdnDomain: "cdn.test", ordersQueueUrl: "q", ssmPrefix: "/cinefolio/test", userPoolId: "eu-central-1_pool" },
+  });
+  // teach the s3 fake to list a media prefix
+  ctx.s3.listPrefix = async (_b, prefix) => [...mediaStore.keys()].filter((k) => k.startsWith(prefix)).map((k) => ({ key: k }));
+  ctx.s3.deleteObject = async (_b, k) => { mediaStore.delete(k); ctx.s3._store.delete(`pub/${k}`); };
+  const h = makeHandler(async () => ctx);
+
+  const sub = "sub-del";
+  // seed: a site with one release + slug claim, an order, and the three identity rows, plus a media object
+  ctx.ddb._store.set("SITE#s1|META", { PK: "SITE#s1", SK: "META", type: "site", siteId: "s1", slug: "nadia", status: "live", GSI1PK: `USER#${sub}`, GSI1SK: "SITE#2026", releases: 1 });
+  ctx.ddb._store.set("SITE#s1|RELEASE#00001", { PK: "SITE#s1", SK: "RELEASE#00001", n: 1, filePaths: ["index.html"] });
+  ctx.ddb._store.set("SLUG#nadia|CLAIM", { PK: "SLUG#nadia", SK: "CLAIM", type: "slugclaim", siteId: "s1" });
+  ctx.ddb._store.set(`ORDER#o1|META`, { PK: "ORDER#o1", SK: "META", type: "order", orderId: "o1", GSI1PK: `USER#${sub}`, GSI1SK: "ORDER#2026" });
+  ctx.ddb._store.set(`USER#${sub}|PROFILE`, { PK: `USER#${sub}`, SK: "PROFILE", type: "profile" });
+  ctx.ddb._store.set(`USER#${sub}|DRAFT`, { PK: `USER#${sub}`, SK: "DRAFT", type: "draft" });
+  ctx.ddb._store.set(`USER#${sub}|PORTFOLIO`, { PK: `USER#${sub}`, SK: "PORTFOLIO", type: "portfolio" });
+  ctx.s3._store.set("pub/sites/s1/releases/1/index.html", "<html>");
+  mediaStore.set(`media/${sub}/head.jpg`, "bytes");
+  // a PURCHASE row is intentionally retained (financial record)
+  ctx.ddb._store.set("PURCHASE#creem#p1|META", { PK: "PURCHASE#creem#p1", SK: "META", type: "purchase", userSub: sub });
+
+  // wrong-email confirm is refused
+  const wrong = parse(await h(ev("DELETE /account", { claims: sub, body: { confirm: "typo@x.io" } })));
+  assert.equal(wrong.code, 400, "a mismatched confirmation email is refused");
+  assert.ok(ctx.ddb._store.has(`USER#${sub}|PROFILE`), "nothing deleted on a failed confirm");
+
+  // correct confirm erases everything
+  const r = parse(await h(ev("DELETE /account", { claims: sub, body: { confirm: `${sub}@x.io` } })));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.deleted, true);
+  assert.equal(r.body.sitesPurged, 1);
+  assert.equal(r.body.ordersPurged, 1);
+  assert.equal(r.body.authDeleted, true);
+
+  assert.ok(!ctx.ddb._store.has("SITE#s1|META"), "site META gone");
+  assert.ok(!ctx.ddb._store.has("SITE#s1|RELEASE#00001"), "release row gone");
+  assert.ok(!ctx.ddb._store.has("SLUG#nadia|CLAIM"), "slug claim released");
+  assert.ok(!ctx.ddb._store.has("ORDER#o1|META"), "order gone");
+  assert.ok(!ctx.ddb._store.has(`USER#${sub}|PROFILE`), "profile gone");
+  assert.ok(!ctx.ddb._store.has(`USER#${sub}|DRAFT`), "draft gone");
+  assert.ok(!ctx.ddb._store.has(`USER#${sub}|PORTFOLIO`), "portfolio gone");
+  assert.ok(!ctx.s3._store.has("pub/sites/s1/releases/1/index.html"), "release S3 object gone");
+  assert.ok(!mediaStore.has(`media/${sub}/head.jpg`), "media object gone");
+  assert.ok(ctx.kvs.dels.includes("nadia"), "edge pointer darkened");
+  assert.deepEqual(cognitoCalls, [["eu-central-1_pool", `${sub}@x.io`]], "cognito identity deleted with the pool id");
+  assert.ok(ctx.ddb._store.has("PURCHASE#creem#p1|META"), "financial purchase record is retained");
+});
+
+test("account deletion: a session with no sub is refused", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  // no claims -> claimsOf yields no sub
+  const r = parse(await h(ev("DELETE /account", { body: { confirm: "x@x.io" } })));
+  assert.equal(r.code, 401);
+});

@@ -190,6 +190,100 @@ export async function putProfile(event, ctx) {
   return ok({ ok: true, updatedAt: now() });
 }
 
+// DELETE /account — real erasure, the thing the old "Delete my account" button
+// only pretended to do (it opened a support email). GDPR/CCPA erasure is a hard
+// requirement once we take money from strangers. This purges everything keyed
+// to the user, in an order that is safe to re-run (a retry after a partial
+// failure finishes the job rather than erroring):
+//   1. every site the user owns: dark the edge pointer, drop every release's S3
+//      objects, the release rows, the slug claim, and the META row;
+//   2. the user's media objects under media/{sub}/;
+//   3. their orders (GSI1 USER#{sub} / ORDER#);
+//   4. the identity records: PROFILE, DRAFT, PORTFOLIO;
+//   5. the Cognito auth identity (fail-soft: the account is already dataless, so
+//      an AdminDeleteUser hiccup must not fail the erasure the user asked for).
+// PURCHASE rows are intentionally retained: they are financial/tax records with
+// a legitimate retention basis, they carry no dossier or site content, and they
+// have no per-user index to query. The response reports authDeleted so an
+// operator can see whether the Cognito side completed.
+//
+// Guardrail: the caller must echo their own email in the body, so a stray
+// DELETE can never erase an account without the user typing their address.
+const relSKForDelete = (n) => `RELEASE#${String(n).padStart(5, "0")}`;
+export async function deleteAccount(event, ctx) {
+  const claims = claimsOf(event) || {};
+  const sub = claims.sub;
+  if (!sub) return bad("no account on this session", 401);
+  const b = bodyOf(event) || {};
+  const typed = String(b.confirm || "").trim().toLowerCase();
+  if (!claims.email || typed !== String(claims.email).toLowerCase()) {
+    return bad("type your account email exactly to confirm deletion", 400);
+  }
+
+  let sitesPurged = 0, ordersPurged = 0, mediaPurged = 0;
+
+  // 1) sites: owned via GSI1 USER#{sub} / SITE#
+  const sites = await ctx.ddb.query({
+    IndexName: "GSI1",
+    KeyConditionExpression: "GSI1PK = :p AND begins_with(GSI1SK, :s)",
+    ExpressionAttributeValues: { ":p": `USER#${sub}`, ":s": "SITE#" },
+  });
+  for (const site of sites) {
+    const releases = await ctx.ddb.query({
+      KeyConditionExpression: "PK = :p AND begins_with(SK, :s)",
+      ExpressionAttributeValues: { ":p": site.PK, ":s": "RELEASE#" },
+    });
+    for (const rel of releases) {
+      const paths = rel.filePaths?.length ? rel.filePaths : ["index.html"];
+      await Promise.all(paths.map((p) =>
+        ctx.s3.deleteObject(ctx.config.publishedBucket, `sites/${site.siteId}/releases/${rel.n}/${p}`).catch(() => {})
+      ));
+      await ctx.ddb.del({ PK: site.PK, SK: relSKForDelete(rel.n) });
+    }
+    if (site.slug) {
+      try { await ctx.kvs.del(ctx.config.kvsArn, site.slug); } catch { /* already dark */ }
+      await ctx.ddb.del({ PK: `SLUG#${site.slug}`, SK: "CLAIM" }).catch(() => {});
+    }
+    await ctx.ddb.del({ PK: site.PK, SK: "META" });
+    sitesPurged++;
+  }
+
+  // 2) media objects for this user (best-effort; listPrefix + delete)
+  try {
+    const objs = await ctx.s3.listPrefix(ctx.config.publishedBucket, `media/${sub}/`);
+    await Promise.all(objs.map((o) => ctx.s3.deleteObject(ctx.config.publishedBucket, o.key).catch(() => {})));
+    mediaPurged = objs.length;
+  } catch { /* listing unavailable: leave media, everything else still purges */ }
+
+  // 3) orders (GSI1 USER#{sub} / ORDER#)
+  const orders = await ctx.ddb.query({
+    IndexName: "GSI1",
+    KeyConditionExpression: "GSI1PK = :p AND begins_with(GSI1SK, :s)",
+    ExpressionAttributeValues: { ":p": `USER#${sub}`, ":s": "ORDER#" },
+  });
+  for (const o of orders) {
+    if (o.PK && o.SK) { await ctx.ddb.del({ PK: o.PK, SK: o.SK }); ordersPurged++; }
+  }
+
+  // 4) identity records
+  for (const sk of ["PROFILE", "DRAFT", "PORTFOLIO"]) {
+    await ctx.ddb.del({ PK: `USER#${sub}`, SK: sk }).catch(() => {});
+  }
+
+  // 5) Cognito identity, fail-soft (the account is already dataless)
+  let authDeleted = false;
+  try {
+    if (ctx.cognitoAdmin && ctx.config.userPoolId) {
+      await ctx.cognitoAdmin.deleteUser(ctx.config.userPoolId, claims.email);
+      authDeleted = true;
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ level: "error", msg: "cognito delete failed (data already purged)", sub, err: e?.message }));
+  }
+
+  return ok({ ok: true, deleted: true, sitesPurged, ordersPurged, mediaPurged, authDeleted });
+}
+
 // POST /media { contentType, ext? } — presigned upload for project covers /
 // headshots. Media lives in the PUBLISHED bucket under media/{sub}/ and is
 // served through the sites CDN (router passes /media/* straight through).

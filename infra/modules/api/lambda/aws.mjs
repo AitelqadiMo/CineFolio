@@ -6,6 +6,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, Delete
 import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
+import { CognitoIdentityProviderClient, AdminDeleteUserCommand } from "@aws-sdk/client-cognito-identity-provider";
 
 const region = process.env.AWS_REGION || "eu-central-1";
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), {
@@ -15,6 +16,7 @@ const s3c = new S3Client({ region });
 const sqs = new SQSClient({ region });
 const ssm = new SSMClient({ region });
 const cf = new CloudFrontClient({ region: "us-east-1" });
+const cognito = new CognitoIdentityProviderClient({ region });
 
 const TABLE = process.env.TABLE_NAME;
 
@@ -75,6 +77,14 @@ export const presign = {
 export const queue = {
   send: (QueueUrl, payload) =>
     sqs.send(new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify(payload) })),
+};
+
+// admin-only Cognito operations. adminDeleteUser removes the auth identity when
+// a user erases their account; the DDB/S3 purge runs regardless, so this is the
+// last step and is allowed to fail soft (the account is already dataless).
+export const cognitoAdmin = {
+  deleteUser: (UserPoolId, Username) =>
+    cognito.send(new AdminDeleteUserCommand({ UserPoolId, Username })),
 };
 
 // ---- CloudFront KVS (pointer flips). SigV4a support in the bundled SDK is the one

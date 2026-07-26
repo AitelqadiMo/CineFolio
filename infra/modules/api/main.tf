@@ -215,6 +215,13 @@ data "aws_iam_policy_document" "api" {
     actions   = ["cloudfront:CreateInvalidation"]
     resources = ["arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${var.distribution_id}"]
   }
+  statement {
+    # account erasure removes the Cognito identity after the data purge. Scoped
+    # to this env's user pool; the pool id is the issuer URL's last path segment.
+    sid       = "AccountDeletion"
+    actions   = ["cognito-idp:AdminDeleteUser"]
+    resources = ["arn:aws:cognito-idp:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:userpool/${element(split("/", var.cognito_issuer), length(split("/", var.cognito_issuer)) - 1)}"]
+  }
 }
 
 resource "aws_iam_role_policy" "api" {
@@ -255,6 +262,9 @@ resource "aws_lambda_function" "api" {
       SES_FROM         = var.ses_from
       APP_ORIGIN       = var.app_origin
       SES_CONFIG_SET   = var.ses_config_set
+      # account deletion derives the Cognito pool id from the issuer's last path
+      # segment, so no new variable is needed beyond the issuer we already have.
+      COGNITO_ISSUER   = var.cognito_issuer
     }
   }
   depends_on = [aws_cloudwatch_log_group.api]

@@ -8,6 +8,7 @@ import { api, notWired } from "../api.js";
 import { useEntitlement, refreshEnt, watchForCredits } from "../entitlement.js";
 import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
+import { signOut } from "../cognito.js";
 import { SplitTitle, Skeleton, friendly, Dialog, PromptDialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
 import { track, STEP } from "../funnel.js";
@@ -40,6 +41,21 @@ export default function Account() {
   const [revising, setRevising] = useState(null);    // orderId | null
   const [domainFor, setDomainFor] = useState(null);  // site | null
   const [cnameFor, setCnameFor] = useState(null);    // { site, domain } | null
+  const [deleting, setDeleting] = useState(false);   // account-erasure confirm dialog
+
+  // real erasure: DELETE /account purges sites, orders, dossier, media, and the
+  // auth identity, then we drop the local session and land on the marketing
+  // site. The dialog makes the user type their email, and the server re-checks
+  // it against the token, so an accidental click can never erase an account.
+  const eraseAccount = async () => {
+    setBusy(true); setErr("");
+    try {
+      await api.deleteAccount(user.email);
+      signOut();
+      nav("");
+    } catch (e2) { setErr(friendly(e2.message)); setDeleting(false); }
+    finally { setBusy(false); }
+  };
 
   useEffect(() => {
     track(STEP.pricingView); // funnel: the register / pricing surface was seen
@@ -384,10 +400,11 @@ export default function Account() {
                   </div>
                 ))}
                 <div className="btnrow" style={{ marginTop: 14 }}>
-                  <button type="button" className="btn danger ordbtn" onClick={() => setSupport({ subject: "Delete my account", message: "Please delete my account and all my data." })}>
+                  <button type="button" className="btn danger ordbtn" onClick={() => setDeleting(true)}>
                     Delete my account
                   </button>
                 </div>
+                <p className="dlgtext" style={{ marginTop: 8, opacity: 0.7, fontSize: 12 }}>Permanently erases your dossier, films, orders and uploads. This cannot be undone. Export anything you want to keep first.</p>
               </div>
             </section>
 
@@ -424,6 +441,14 @@ export default function Account() {
         body="Tell the studio what should change. Be specific: sections, tone, imagery, anything."
         placeholder="What should we change in this cut?" submitLabel="Send revision request" busy={busy}
         onSubmit={requestRevision} onClose={() => setRevising(null)}
+      />
+
+      <PromptDialog
+        open={deleting} kicker="PERMANENT" title="Delete your account"
+        body={`This erases your dossier, every film and release, your orders and uploads, and your sign-in, for good. It cannot be undone. Type your email (${user.email}) to confirm.`}
+        placeholder={user.email} busy={busy}
+        validate={(v) => (v.trim().toLowerCase() === String(user.email).toLowerCase() ? "" : "Type your account email exactly to confirm")}
+        submitLabel="Erase everything" onSubmit={eraseAccount} onClose={() => setDeleting(false)}
       />
 
       <PromptDialog
