@@ -354,30 +354,54 @@ export async function webhook(event, ctx) {
   // real amount so the seat tally can never drift from the money actually taken.
   const isFounding = Number(shape.totalUsd) === FOUNDING_PRICE;
 
-  // replay-proof: the provider order id is the idempotency key. Every provider
-  // retries on non-200s and humans click "resend"; neither may ever mint a
-  // second credit. The PK is namespaced per provider (PURCHASE#creem#<id>) so a
-  // "1" from one provider can never collide with a "1" from another.
-  try {
-    await ctx.ddb.put(
-      {
-        PK: provider.pk(providerOrderId), SK: "META", type: "purchase",
-        provider: name, providerOrderId, identifier: shape.identifier || null,
-        email, userSub, product: shape.productName || shape.product || null, credits,
-        totalUsd: Number.isFinite(shape.totalUsd) ? shape.totalUsd : null,
-        testMode: !!shape.testMode, claimed: !!userSub, founding: isFounding,
-        createdAt: now(),
+  // replay-proof AND crash-safe: claim the purchase and land the credit in ONE
+  // atomic transaction. Previously these were two writes (put the purchase, then
+  // ADD the credit); a crash between them left a paid purchase marked claimed
+  // with no credit on the account, invisible because the unclaimed report only
+  // lists claimed:false. TransactWriteItems makes "record the purchase" and
+  // "grant the credit" all-or-nothing, so the window cannot exist. The
+  // idempotency guard rides the same transaction: a replay fails the Put's
+  // attribute_not_exists(PK) condition, the whole transaction cancels, and no
+  // second credit is minted. The PK is namespaced per provider
+  // (PURCHASE#creem#<id>) so ids never collide across providers.
+  const purchaseItem = {
+    PK: provider.pk(providerOrderId), SK: "META", type: "purchase",
+    provider: name, providerOrderId, identifier: shape.identifier || null,
+    email, userSub, product: shape.productName || shape.product || null, credits,
+    totalUsd: Number.isFinite(shape.totalUsd) ? shape.totalUsd : null,
+    testMode: !!shape.testMode, claimed: !!userSub, founding: isFounding,
+    createdAt: now(),
+  };
+  const tx = [{ Put: { Item: purchaseItem, ConditionExpression: "attribute_not_exists(PK)" } }];
+  if (userSub) {
+    // land the credits on the buyer's account in the SAME transaction. The
+    // profile row may not exist yet (fresh account, webhook won the race); ADD
+    // upserts either way.
+    tx.push({
+      Update: {
+        Key: { PK: `USER#${userSub}`, SK: "PROFILE" },
+        UpdateExpression: "SET updatedAt = :u ADD paidCredits :credits",
+        ExpressionAttributeValues: { ":credits": credits, ":u": now() },
       },
-      "attribute_not_exists(PK)"
-    );
+    });
+  }
+  try {
+    await ctx.ddb.transact(tx);
   } catch (e) {
-    if (e?.name === "ConditionalCheckFailedException") return ok({ ok: true, already: true });
+    // a cancelled transaction on the idempotency condition is a replay: the
+    // purchase already exists, so the credit already landed atomically with it.
+    // Never a second grant. (DynamoDB reports the cancel as
+    // TransactionCanceledException; the fakes and a bare conditional put report
+    // ConditionalCheckFailedException, so accept both.)
+    if (e?.name === "TransactionCanceledException" || e?.name === "ConditionalCheckFailedException") {
+      return ok({ ok: true, already: true });
+    }
     throw e;
   }
 
-  // the purchase row landed for the first time (idempotency won above), so it is
-  // now safe to advance the founding counter exactly once. A live purchase is
-  // the only thing that moves this number, which is why the seat count is honest.
+  // the purchase landed for the first time (idempotency won above), so it is now
+  // safe to advance the founding counter exactly once. Not credit-critical, so
+  // it stays a plain write after the atomic claim+credit.
   if (isFounding && !shape.testMode) {
     await ctx.ddb.update({
       Key: { PK: "COUNTER", SK: "FOUNDING" },
@@ -388,17 +412,11 @@ export async function webhook(event, ctx) {
   }
 
   if (userSub) {
-    // land the credits on the buyer's account. The profile row may not exist
-    // yet (fresh account, webhook won the race); ADD upserts either way.
-    const updated = await ctx.ddb.update({
-      Key: { PK: `USER#${userSub}`, SK: "PROFILE" },
-      UpdateExpression: "SET updatedAt = :u ADD paidCredits :credits",
-      ExpressionAttributeValues: { ":credits": credits, ":u": now() },
-      ReturnValues: "ALL_NEW",
-    });
     // a purchase upgrades the plan (and its premiere slots): the flagship makes a
     // director. Upgrades only, never down; a coach who buys a single flagship cut
-    // stays a coach.
+    // stays a coach. TransactWriteItems cannot return the post-ADD values, so we
+    // read the profile back and upgrade the plan if the purchase earned a higher
+    // one.
     //
     // LEGACY ONLY: "coach" was the Coach's Slate, retired in pricing v4 and no
     // longer sellable. There is no coach buy URL and checkout always serves the
@@ -407,8 +425,9 @@ export async function webhook(event, ctx) {
     // seven-pack ever settles (a CREDITS_MAP still maps its product to >= 7), it
     // must still land as a coach, and an existing coach must keep the plan and
     // slots they already hold. Do not repurpose this to sell a coach tier again.
+    const profile = await ctx.ddb.get({ PK: `USER#${userSub}`, SK: "PROFILE" });
     const plan = credits >= 7 ? "coach" : "director";
-    if (updated?.plan !== "coach" && updated?.plan !== plan) {
+    if (profile?.plan !== "coach" && profile?.plan !== plan) {
       await ctx.ddb.update({
         Key: { PK: `USER#${userSub}`, SK: "PROFILE" },
         UpdateExpression: "SET #p = :p, updatedAt = :u",
