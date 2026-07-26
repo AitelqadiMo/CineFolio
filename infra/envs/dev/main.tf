@@ -170,7 +170,7 @@ module "api" {
   # function_name), so referencing its output here would form an api -> observability
   # -> api cycle. The topic name is deterministic (${name_prefix}-alarms), so the ARN
   # is safe to build from the account + region we already have.
-  alarm_topic_arn      = "arn:aws:sns:${var.region}:${local.account_id}:${local.name_prefix}-alarms"
+  alarm_topic_arn      = "arn:aws:sns:${var.region}:${data.aws_caller_identity.current.account_id}:${local.name_prefix}-alarms"
   tags                 = local.tags
 }
 
