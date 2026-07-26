@@ -9,10 +9,15 @@ import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
 import { friendly, confetti, PromptDialog, slugProblem } from "../ui.jsx";
 import { ledger } from "../orders.js";
+import { refreshEnt } from "../entitlement.js";
 import { usePopover } from "../media.js";
 import { track, STEP } from "../funnel.js";
 
 const POLL_MS = 7000;
+// a terminal render can still sit un-delivered if the pipeline is wedged short
+// of a status flip; stop the on-screen clock after this so it never implies an
+// eternal render. ~40 min is well past the 30-min SFN ceiling.
+const STALL_S = 2400;
 
 // the production timeline, staged by real status plus elapsed time
 const STAGES = [
@@ -32,13 +37,25 @@ export default function Lounge({ orderId }) {
   const [naming, setNaming] = useState(false);
   const [busy, setBusy] = useState(false);
   const projPop = usePopover();
-  const t0 = useRef(Date.now());
 
   const order = useMemo(() => ledger.list().find((o) => o.orderId === orderId) || null, [orderId]);
+  // elapsed is anchored to the order's CREATION time (ledger `at`, the moment
+  // the order was placed), not this component's mount time. A refresh or a
+  // return-visit therefore shows the true elapsed and the correct stage, instead
+  // of resetting to 00:00 and regressing the timeline to SCENE 01.
+  const t0 = useRef(order?.at ? new Date(order.at).getTime() : Date.now());
 
-  // status truth: poll the pipeline
+  const ready = status === "ready";
+  const rejected = status === "rejected";
+  const failed = ["human_review", "dispatch_failed"].includes(status);
+  const terminal = ready || rejected || failed;
+
+  // status truth: poll the pipeline until a terminal state, then stop. Leaving
+  // the poll running forever (the old behavior) meant a rejected or stuck order
+  // hammered the API every 7s for as long as the tab was open.
   useEffect(() => {
     let alive = true;
+    let stop = null;
     const tick = async () => {
       try {
         const s = await api.orderStatus(orderId);
@@ -46,20 +63,29 @@ export default function Lounge({ orderId }) {
         setStatus(s.status);
         setFailCause(s.failCause || null);
         ledger.setStatus(orderId, s.status);
+        // a rejected order restored the customer's credit server-side; pull the
+        // fresh entitlement so the balance the customer sees reflects the refund.
+        if (s.status === "rejected") refreshEnt();
+        if (["ready", "rejected", "human_review", "dispatch_failed"].includes(s.status) && stop) stop();
       } catch { /* transient */ }
     };
     tick();
     const t = setInterval(tick, POLL_MS);
-    // the elapsed clock only matters while filming; stop it once delivered so a
-    // per-second re-render never disturbs the premiere dialog's input focus
+    // the elapsed clock runs from order creation; freeze it once terminal (and
+    // past the stall cutoff) so a per-second re-render never disturbs the
+    // premiere dialog's input focus and never implies an eternal render.
     const clock = setInterval(() => {
-      setStatus((s) => { if (s === "ready") return s; setElapsed(Math.floor((Date.now() - t0.current) / 1000)); return s; });
+      setStatus((s) => {
+        if (["ready", "rejected", "human_review", "dispatch_failed"].includes(s)) return s;
+        const e = Math.floor((Date.now() - t0.current) / 1000);
+        setElapsed(e > STALL_S ? STALL_S : e);
+        return s;
+      });
     }, 1000);
+    stop = () => { clearInterval(t); clearInterval(clock); };
     return () => { alive = false; clearInterval(t); clearInterval(clock); };
   }, [orderId]);
 
-  const ready = status === "ready";
-  const failed = ["human_review", "dispatch_failed"].includes(status);
   const stage = [...STAGES].reverse().find((s) => elapsed >= s.at) || STAGES[0];
 
   const premiere = async (slug) => {
@@ -97,7 +123,7 @@ export default function Lounge({ orderId }) {
         </div>
         <span className="bkchip plain gold">◈ AI DIRECTOR</span>
         <div className="grow" />
-        <span className="bkchip plain">{ready ? "DELIVERED" : failed ? "NEEDS A HUMAN" : `RENDERING · ${mm}:${ss}`}</span>
+        <span className="bkchip plain">{ready ? "DELIVERED" : rejected ? "NOT FILMED" : failed ? "NEEDS A HUMAN" : `RENDERING · ${mm}:${ss}`}</span>
         <button className="bkbtn primary" style={{ padding: "6px 16px" }} disabled={!ready || busy} onClick={() => setNaming(true)}>
           {busy ? "Premiering…" : "Publish"}
         </button>
@@ -107,17 +133,22 @@ export default function Lounge({ orderId }) {
         <div className="edcfg">
           <div className="edfeed" aria-live="polite">
             <div className="fentry">
-              <div className="fwhen"><span className={`dot ${ready ? "green" : failed ? "red" : ""}`} />ORDER {String(orderId).slice(0, 8).toUpperCase()}</div>
-              <b>{ready ? "Your film is in." : failed ? "The render paged a studio human." : "Your render is running."}</b>
+              <div className="fwhen"><span className={`dot ${ready ? "green" : (rejected || failed) ? "red" : ""}`} />ORDER {String(orderId).slice(0, 8).toUpperCase()}</div>
+              <b>{ready ? "Your film is in." : rejected ? "This brief could not be filmed." : failed ? "The render paged a studio human." : "Your render is running."}</b>
               <p>
                 {ready
                   ? "Watch it on the right. When it feels like you, hit Publish and pick your address; it premieres in seconds."
-                  : failed
-                    ? `The pipeline hit a snag and paged the studio. Your cut will land here and by email.${failCause ? ` (${failCause})` : ""}`
-                    : "The pipeline is rendering a scroll-story from your resume and photos: generated scenes, at least one film sequence, your story told act by act. Typical delivery is under 20 minutes. You can leave; it will be waiting in All films."}
+                  : rejected
+                    ? `This brief did not pass our content review, so no film was produced and your production credit has been returned to your account. Adjust the brief and run it again from The Set.${failCause ? ` (${failCause})` : ""}`
+                    : failed
+                      ? `The pipeline hit a snag and paged the studio. Your cut will land here and by email.${failCause ? ` (${failCause})` : ""}`
+                      : "The pipeline is rendering a scroll-story from your resume and photos: generated scenes, at least one film sequence, your story told act by act. Typical delivery is under 20 minutes. You can leave; it will be waiting in All films."}
               </p>
+              {rejected && (
+                <div className="facts"><button className="flink" onClick={() => nav("studio")}>Start a new film →</button></div>
+              )}
             </div>
-            {!ready && !failed && (
+            {!terminal && (
               <div className="fentry" style={{ borderColor: "rgba(217,164,65,.35)" }}>
                 <div className="fwhen"><span className="dot" />{stage.kicker} · NOW</div>
                 <b>{stage.line}</b>

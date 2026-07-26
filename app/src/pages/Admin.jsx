@@ -30,7 +30,7 @@ const FUNNEL_LABELS = {
   film_generated: { label: "AI cut returned", note: "An AI cut came back from the director." },
   film_published: { label: "Film published", note: "A film went live for an audience." },
   pricing_view: { label: "Pricing seen", note: "The register or pricing surface was viewed." },
-  checkout_click: { label: "Checkout clicked", note: "The buyer clicked through to Lemon Squeezy." },
+  checkout_click: { label: "Checkout clicked", note: "The buyer clicked through to Creem checkout." },
   purchase: { label: "Purchase cleared", note: "A paid credit landed, webhook-confirmed." },
 };
 

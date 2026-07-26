@@ -13,7 +13,7 @@ import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 // the SHARED template library: terraform stitches infra/modules/api/lambda/email.mjs
 // into this bundle, so pipeline and api emails can never drift apart.
-import { premiereReadyEmail, revisionPremiereEmail, needsAttentionEmail } from "./email.mjs";
+import { premiereReadyEmail, revisionPremiereEmail, needsAttentionEmail, orderRejectedEmail } from "./email.mjs";
 // the content-moderation screen. Creem mandates prompt moderation for any
 // product that generates images or video, and this pipeline generates both, so
 // EVERY brief is screened here before it can reach the AI director. The verdict
@@ -332,6 +332,11 @@ export const handler = async (event) => {
         `CineFolio order ${String(orderId).slice(0, 8)} REJECTED by content moderation`,
         `Order ${orderId} was blocked before dispatch.\nSeverity: ${verdict.severity}\nReasons: ${verdict.reasons.join("; ")}\nSource: ${verdict.source}\nCredit restored: ${refund.refunded ? refund.kind : `no (${refund.reason})`}\nOpen the admin console -> Orders -> rejected to review.`,
       );
+      // tell the CUSTOMER, not only the operator: a rejected order used to be a
+      // silent dead-end (no email, no in-app state) that looked like a healthy
+      // render forever. Fail-soft on the mail, exactly like every other side
+      // effect here: a mail hiccup must never mask the block.
+      if (order?.email) await mailCustomer(orderId, order.email, orderRejectedEmail(order, APP_ORIGIN, refund.refunded)).catch(() => {});
       throw new OrderInvalid(failCause); // -> InvalidNoop (terminal, never dispatches)
     }
 
@@ -424,6 +429,9 @@ export const handler = async (event) => {
           return { refunded: false, reason: "error" };
         });
         await pageOperator("CineFolio: dossier blocked by moderation", `Order ${orderId} was rejected before dispatch. Reasons: ${(dv.reasons || []).join(", ") || "policy"}\nCredit restored: ${refund.refunded ? refund.kind : `no (${refund.reason})`}`).catch(() => {});
+        // same customer-facing honesty as the validate surface: tell them the
+        // brief was declined and the credit is back. Fail-soft on the mail.
+        if (order?.email) await mailCustomer(orderId, order.email, orderRejectedEmail(order, APP_ORIGIN, refund.refunded)).catch(() => {});
         throw new OrderInvalid(cause);
       }
     }

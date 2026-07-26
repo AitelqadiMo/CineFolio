@@ -148,10 +148,12 @@ export default function Editor({ siteId }) {
       body: `Cut ${fmt(r.createdAt)}. ${site?.liveRelease === r.n ? "Rolling back is one click in More · Releases." : "Screen it from the release selector above the canvas."}`,
     }));
     orders.forEach((o) => f.push({
-      t: o.at || "", dot: o.status === "ready" ? "green" : ["human_review", "dispatch_failed"].includes(o.status) ? "red" : "",
+      t: o.at || "", dot: o.status === "ready" ? "green" : ["human_review", "dispatch_failed", "rejected"].includes(o.status) ? "red" : "",
       kicker: `DIRECTOR'S CUT · ${String(o.status || "").replace("_", " ").toUpperCase()}`,
-      title: o.status === "ready" ? "The Director's Cut is delivered." : o.status === "filming" ? "Cameras rolling on your cut." : "Order in the studio pipeline.",
-      body: `Order ${String(o.orderId || "").slice(0, 8).toUpperCase()} · track it in All films.`,
+      title: o.status === "ready" ? "The Director's Cut is delivered." : o.status === "rejected" ? "This brief could not be filmed." : o.status === "filming" ? "Cameras rolling on your cut." : "Order in the studio pipeline.",
+      body: o.status === "rejected"
+        ? `Order ${String(o.orderId || "").slice(0, 8).toUpperCase()} did not pass content review. Your credit was returned; adjust the brief and try again.`
+        : `Order ${String(o.orderId || "").slice(0, 8).toUpperCase()} · track it in All films.`,
     }));
     if (site?.status === "taken_down") f.push({ t: "9999", dot: "red", kicker: "OFF THE MARQUEE", title: "This film is taken down.", body: "Every release is safe. Relight from More · Releases." });
     return f.sort((a, b) => String(b.t).localeCompare(String(a.t)));
