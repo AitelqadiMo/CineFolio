@@ -72,7 +72,7 @@ async function buildCtx() {
   const aws = await import("./aws.mjs");
   realCtx = {
     ddb: aws.ddb, s3: aws.s3, kvs: aws.kvs, cdn: aws.cdn, queue: aws.queue, sfn: aws.sfn, presign: aws.presign, ses: aws.ses,
-    cognitoAdmin: aws.cognitoAdmin,
+    cognitoAdmin: aws.cognitoAdmin, sns: aws.sns,
     secrets: aws.secrets, params: aws.params, fetchFn: aws.fetchFn,
     config: {
       appEnv: process.env.APP_ENV || "dev",
@@ -91,6 +91,7 @@ async function buildCtx() {
       // (https://cognito-idp.{region}.amazonaws.com/{poolId}); deriving it here
       // means account deletion needs no new env var beyond the issuer we set.
       userPoolId: (process.env.COGNITO_ISSUER || "").split("/").pop() || "",
+      alarmTopicArn: process.env.ALARM_TOPIC_ARN || "",
     },
   };
   return realCtx;

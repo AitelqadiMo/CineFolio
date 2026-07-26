@@ -7,6 +7,7 @@ import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { SSMClient, GetParametersByPathCommand } from "@aws-sdk/client-ssm";
 import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 import { CognitoIdentityProviderClient, AdminDeleteUserCommand } from "@aws-sdk/client-cognito-identity-provider";
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 
 const region = process.env.AWS_REGION || "eu-central-1";
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({ region }), {
@@ -17,6 +18,7 @@ const sqs = new SQSClient({ region });
 const ssm = new SSMClient({ region });
 const cf = new CloudFrontClient({ region: "us-east-1" });
 const cognito = new CognitoIdentityProviderClient({ region });
+const snsc = new SNSClient({ region });
 
 const TABLE = process.env.TABLE_NAME;
 
@@ -95,6 +97,15 @@ export const queue = {
 export const cognitoAdmin = {
   deleteUser: (UserPoolId, Username) =>
     cognito.send(new AdminDeleteUserCommand({ UserPoolId, Username })),
+};
+
+// operator paging over SNS. Used when a money-adjacent side effect fails
+// silently (an order that took payment but could not be enqueued), so a human
+// is alerted instead of the order sitting dead. Callers treat this as best
+// effort: a page that itself fails must never mask the original failure.
+export const sns = {
+  publish: (TopicArn, Subject, Message) =>
+    snsc.send(new PublishCommand({ TopicArn, Subject: Subject.slice(0, 100), Message })),
 };
 
 // ---- CloudFront KVS (pointer flips). SigV4a support in the bundled SDK is the one

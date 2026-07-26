@@ -42,6 +42,14 @@ variable "log_retention_days" {
   type    = number
   default = 14
 }
+# SNS topic the API pages when a money-adjacent side effect fails silently (an
+# order that took a credit but could not be enqueued). Optional: empty disables
+# paging and the handler no-ops the publish, so the module still applies in an
+# env without observability wired.
+variable "alarm_topic_arn" {
+  type    = string
+  default = ""
+}
 variable "tags" {
   type    = map(string)
   default = {}
@@ -222,6 +230,16 @@ data "aws_iam_policy_document" "api" {
     actions   = ["cognito-idp:AdminDeleteUser"]
     resources = ["arn:aws:cognito-idp:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:userpool/${element(split("/", var.cognito_issuer), length(split("/", var.cognito_issuer)) - 1)}"]
   }
+  # paging on a silent enqueue failure. Only added when an alarm topic is wired,
+  # scoped to that one topic.
+  dynamic "statement" {
+    for_each = var.alarm_topic_arn == "" ? [] : [var.alarm_topic_arn]
+    content {
+      sid       = "OperatorPaging"
+      actions   = ["sns:Publish"]
+      resources = [statement.value]
+    }
+  }
 }
 
 resource "aws_iam_role_policy" "api" {
@@ -265,6 +283,7 @@ resource "aws_lambda_function" "api" {
       # account deletion derives the Cognito pool id from the issuer's last path
       # segment, so no new variable is needed beyond the issuer we already have.
       COGNITO_ISSUER   = var.cognito_issuer
+      ALARM_TOPIC_ARN  = var.alarm_topic_arn
     }
   }
   depends_on = [aws_cloudwatch_log_group.api]

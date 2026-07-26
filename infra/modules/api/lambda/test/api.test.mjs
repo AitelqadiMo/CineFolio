@@ -1377,3 +1377,33 @@ test("admin credit grant: an admin adds credits, writes an audit row, and non-ad
   assert.equal(parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "u1" }, body: { delta: 2 } }))).code, 400);
   assert.equal(parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "ghost" }, body: { delta: 2, reason: "no such user" } }))).code, 404);
 });
+
+test("silent-failure page: an order that cannot enqueue pages the operator and is marked dispatch_failed", async () => {
+  const ctx = lsCtx();
+  const h = makeHandler(async () => ctx);
+  const pages = [];
+  ctx.sns = { async publish(arn, subject, message) { pages.push({ arn, subject, message }); } };
+  ctx.config.alarmTopicArn = "arn:aws:sns:eu-central-1:975050163168:cinefolio-dev-alarms";
+  // the SQS send fails: no Step Functions run will ever start, so the pipeline's
+  // own human_review SNS path cannot fire. This is the gap the page closes.
+  ctx.queue.send = async () => { throw new Error("SQS unavailable"); };
+  ctx.ddb._store.set("USER#buyer|PROFILE", { PK: "USER#buyer", SK: "PROFILE", type: "user", email: "buyer@x.io", aiCuts: 0 });
+
+  const body = { email: "buyer@x.io", name: "Buyer Test", role: "engineer", cvText: "Buyer Test\n2019 Terraform and AWS platform work at Example Co." };
+  const r = parse(await h(ev("POST /studio/order", { claims: "buyer", body })));
+  assert.equal(r.code, 200, "the order is still accepted; the enqueue failure is after the credit spend");
+  const orderId = r.body.orderId;
+  assert.equal(ctx.ddb._store.get(`ORDER#${orderId}|META`).status, "dispatch_failed", "marked for the retry UI");
+  assert.equal(pages.length, 1, "the operator is paged exactly once");
+  assert.match(pages[0].subject, /FAILED TO ENQUEUE/, "the page names the failure");
+  assert.equal(pages[0].arn, "arn:aws:sns:eu-central-1:975050163168:cinefolio-dev-alarms");
+
+  // and without an alarm topic wired, the same failure simply no-ops the page
+  // (no throw), so an env without observability still takes orders.
+  const ctx2 = lsCtx();
+  const h2 = makeHandler(async () => ctx2);
+  ctx2.queue.send = async () => { throw new Error("SQS unavailable"); };
+  ctx2.ddb._store.set("USER#b2|PROFILE", { PK: "USER#b2", SK: "PROFILE", type: "user", email: "b2@x.io", aiCuts: 0 });
+  const r2 = parse(await h2(ev("POST /studio/order", { claims: "b2", body: { ...body, email: "b2@x.io" } })));
+  assert.equal(r2.code, 200, "no alarm topic: the order still processes, the page is skipped");
+});
