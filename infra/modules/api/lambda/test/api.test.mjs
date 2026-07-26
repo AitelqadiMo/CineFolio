@@ -1321,3 +1321,35 @@ test("account deletion: a session with no sub is refused", async () => {
   const r = parse(await h(ev("DELETE /account", { body: { confirm: "x@x.io" } })));
   assert.equal(r.code, 401);
 });
+
+test("admin credit grant: an admin adds credits, writes an audit row, and non-admins are refused", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  ctx.ddb._store.set("USER#u1|PROFILE", { PK: "USER#u1", SK: "PROFILE", type: "user", email: "u1@x.io", paidCredits: 0 });
+
+  // a non-admin is refused and nothing changes
+  const denied = parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "sub-x", path: { sub: "u1" }, body: { delta: 3, reason: "lost credit recovery" } })));
+  assert.equal(denied.code, 403);
+  assert.equal(ctx.ddb._store.get("USER#u1|PROFILE").paidCredits, 0, "no grant on a denied call");
+
+  // an admin grants 3, balance moves, audit row written, response reports from/to
+  const r = parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "u1" }, body: { delta: 3, reason: "webhook crash: credit never landed" } })));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.from, 0);
+  assert.equal(r.body.to, 3);
+  assert.equal(ctx.ddb._store.get("USER#u1|PROFILE").paidCredits, 3, "balance updated");
+  const audit = [...ctx.ddb._store.values()].find((i) => i.type === "creditgrant");
+  assert.ok(audit && audit.delta === 3 && audit.by === "boss" && /crash/.test(audit.reason), "immutable audit row records who/how much/why");
+
+  // a negative delta claws back but is floored at zero (never negative)
+  const back = parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "u1" }, body: { delta: -10, reason: "refund processed in creem" } })));
+  assert.equal(back.code, 200);
+  assert.equal(back.body.to, 0, "floored at zero, never negative");
+  assert.equal(ctx.ddb._store.get("USER#u1|PROFILE").paidCredits, 0);
+
+  // guardrails: zero delta, an over-cap grant, a missing reason, and an unknown user are all refused
+  assert.equal(parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "u1" }, body: { delta: 0, reason: "noop" } }))).code, 400);
+  assert.equal(parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "u1" }, body: { delta: 999, reason: "too big" } }))).code, 400);
+  assert.equal(parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "u1" }, body: { delta: 2 } }))).code, 400);
+  assert.equal(parse(await h(ev("POST /admin/users/{sub}/credits", { claims: "boss", groups: ["admin"], path: { sub: "ghost" }, body: { delta: 2, reason: "no such user" } }))).code, 404);
+});

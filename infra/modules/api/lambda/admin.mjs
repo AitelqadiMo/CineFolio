@@ -6,7 +6,7 @@
 // Listings run paginated scans filtered by item type. At demand-test scale
 // (hundreds of rows) a scan is the correct tradeoff, not a shortcut; past
 // ~10k items, move these callers to a type-overloaded GSI and delete scanAll.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, clampStr, now } from "./lib.mjs";
 import { previewUrl } from "./sites.mjs";
 
 const deny = (event) => (isAdmin(claimsOf(event)) ? null : json(403, { ok: false, error: "admin only" }));
@@ -255,6 +255,54 @@ export async function pipelineGet(event, ctx) {
   if (denied) return denied;
   const p = await ctx.params.get(breakerName(ctx));
   return ok({ ok: true, enabled: p.value !== "false", raw: p.value });
+}
+
+// POST /admin/users/{sub}/credits { delta, reason } — the operator's manual
+// credit lever. The audit found there was NO way to fulfil "where is my credit"
+// from the console: an operator had to hand-edit DynamoDB. This is also the
+// recovery path for the known claim/grant crash window (a paid purchase whose
+// credit never landed): the operator grants the owed credit here, once the
+// Creem receipt is confirmed. Every grant writes an immutable GRANT# audit row
+// under the user AND logs the operating admin, so a manual credit is never
+// silent. delta is clamped to a sane band so a fat-fingered grant cannot mint a
+// fortune; a NEGATIVE delta is allowed (to claw back after a refund is
+// processed in Creem), floored so paidCredits can never go below zero.
+const GRANT_MAX = 20;
+export async function grantCredits(event, ctx) {
+  const denied = deny(event);
+  if (denied) return denied;
+  const sub = event.pathParameters?.sub;
+  if (!sub) return bad("bad user id");
+  const b = bodyOf(event) || {};
+  const delta = Number(b.delta);
+  if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > GRANT_MAX) {
+    return bad(`delta must be a non-zero integer within +/-${GRANT_MAX}`);
+  }
+  const reason = clampStr(b.reason, 300).trim();
+  if (reason.length < 3) return bad("a reason is required for the audit trail");
+
+  const profile = await ctx.ddb.get({ PK: `USER#${sub}`, SK: "PROFILE" });
+  if (!profile) return bad("unknown user", 404);
+  const by = claimsOf(event)?.sub || null;
+
+  // apply the delta, floored at zero, then read back the true balance. We do a
+  // conditional floor by computing the target instead of a raw ADD so a -N can
+  // never drive the balance negative.
+  const current = Number(profile.paidCredits || 0);
+  const next = Math.max(0, current + delta);
+  await ctx.ddb.update({
+    Key: { PK: `USER#${sub}`, SK: "PROFILE" },
+    UpdateExpression: "SET paidCredits = :n, updatedAt = :u",
+    ExpressionAttributeValues: { ":n": next, ":u": now() },
+  });
+  // immutable audit row: who, how much, why, when. Sortable under the user.
+  const at = now();
+  await ctx.ddb.put({
+    PK: `USER#${sub}`, SK: `GRANT#${at}`, type: "creditgrant",
+    delta, from: current, to: next, reason, by, at,
+  });
+  console.log(JSON.stringify({ level: "info", msg: "admin credit grant", sub, delta, from: current, to: next, by, reason }));
+  return ok({ ok: true, sub, delta, from: current, to: next, reason });
 }
 
 export async function pipelineSet(event, ctx) {
