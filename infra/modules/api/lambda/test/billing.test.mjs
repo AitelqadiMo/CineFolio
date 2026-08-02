@@ -93,6 +93,13 @@ function fakeCtx(overrides = {}) {
         }
       }
     },
+    async query({ IndexName, ExpressionAttributeValues: v, ScanIndexForward }) {
+      const items = [...store.values()];
+      let out = items;
+      if (IndexName === "GSI1") out = items.filter((i) => i.GSI1PK === v[":p"] && (!v[":s"] || String(i.GSI1SK).startsWith(v[":s"])));
+      out = out.sort((a, b) => String(a.GSI1SK || "").localeCompare(String(b.GSI1SK || "")));
+      return ScanIndexForward === false ? out.reverse() : out;
+    },
     _store: store,
   };
   const ctx = {
@@ -508,4 +515,37 @@ test("crash safety: the purchase claim and the credit grant are ATOMIC (all or n
   const replay = parse(await webhook(webhookEv(raw, { "creem-signature": creemSig(raw) }), ctx));
   assert.equal(replay.body.already, true, "replay is idempotent");
   assert.equal(ctx.ddb._store.get("USER#u-atom|PROFILE").paidCredits, DC_CREDITS, "still exactly one grant after replay");
+});
+
+test("purchase history: the buyer sees their own purchases, never anyone else's, and the webhook writes the GSI keys", async () => {
+  const { purchases } = await import("../billing.mjs");
+  const secretsBag = { BILLING_PROVIDER: "creem", CREEM_BUY_URL_DC: "https://creem.io/pay/dc", CREEM_WEBHOOK_SECRET: CREEM_SECRET };
+  const ctx = fakeCtx({ secrets: async () => secretsBag });
+
+  // a real webhook purchase writes the buyer's GSI keys (the paper-trail index)
+  const raw = JSON.stringify(creemPayload("HIST1", { sub: "u-hist" }));
+  await webhook(webhookEv(raw, { "creem-signature": creemSig(raw) }), ctx);
+  const row = ctx.ddb._store.get("PURCHASE#creem#HIST1|META");
+  assert.equal(row.GSI1PK, "USER#u-hist", "purchase row is indexed under the buyer");
+  assert.match(row.GSI1SK, /^PURCHASE#/, "sortable under the PURCHASE# prefix");
+
+  // a second buyer's purchase lands under their own partition
+  const raw2 = JSON.stringify(creemPayload("HIST2", { sub: "u-other" }));
+  await webhook(webhookEv(raw2, { "creem-signature": creemSig(raw2) }), ctx);
+
+  // the route returns only the caller's purchases, shaped for the ledger UI
+  const ev2 = { requestContext: { routeKey: "GET /billing/purchases", authorizer: { jwt: { claims: { sub: "u-hist", email: "u-hist@x.io" } } } }, headers: {} };
+  const r = JSON.parse((await purchases(ev2, ctx)).body);
+  assert.equal(r.ok, true);
+  assert.equal(r.purchases.length, 1, "only the caller's own rows");
+  assert.equal(r.purchases[0].reference, "HIST1");
+  assert.equal(r.purchases[0].credits, DC_CREDITS);
+  assert.equal(r.purchases[0].amountUsd, FOUNDING_PRICE);
+  assert.equal(r.purchases[0].provider, "creem");
+
+  // an anonymous purchase (no user_sub) is recorded but never indexed to a user
+  const rawAnon = JSON.stringify(creemPayload("HIST3", { sub: "" }));
+  await webhook(webhookEv(rawAnon, { "creem-signature": creemSig(rawAnon) }), ctx);
+  const anonRow = ctx.ddb._store.get("PURCHASE#creem#HIST3|META");
+  assert.equal(anonRow?.GSI1PK, undefined, "anonymous purchases carry no user index");
 });

@@ -49,16 +49,28 @@ export async function refreshEnt() {
 
 // after the buyer heads to Creem checkout: watch /me until the webhook lands
 // the credits, then every subscribed surface updates itself. Self-stopping.
+// The watcher used to time out SILENTLY after 3 minutes: a buyer whose webhook
+// was slow stared at an unchanged page with no signal either way. Callers can
+// now pass onLanded / onTimeout so the surface can say something honest when
+// the window closes without a credit (the money is safe with the provider; the
+// webhook can lag; the operator can grant manually if it truly got stuck).
 let watcher = null;
-export function watchForCredits({ intervalMs = 5000, timeoutMs = 180000 } = {}) {
+export function watchForCredits({ intervalMs = 5000, timeoutMs = 180000, onLanded, onTimeout } = {}) {
   const before = current?.paidCredits || 0;
   if (watcher) clearInterval(watcher);
   const started = Date.now();
   watcher = setInterval(async () => {
     const e = await refreshEnt();
-    if ((e?.paidCredits || 0) > before || Date.now() - started > timeoutMs) {
+    if ((e?.paidCredits || 0) > before) {
       clearInterval(watcher);
       watcher = null;
+      if (onLanded) try { onLanded(e); } catch { /* caller's problem, never the watcher's */ }
+      return;
+    }
+    if (Date.now() - started > timeoutMs) {
+      clearInterval(watcher);
+      watcher = null;
+      if (onTimeout) try { onTimeout(); } catch { /* noop */ }
     }
   }, intervalMs);
 }

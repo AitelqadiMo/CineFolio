@@ -42,6 +42,8 @@ export default function Account() {
   const [domainFor, setDomainFor] = useState(null);  // site | null
   const [cnameFor, setCnameFor] = useState(null);    // { site, domain } | null
   const [deleting, setDeleting] = useState(false);   // account-erasure confirm dialog
+  const [purchases, setPurchases] = useState(null);  // the buyer's own purchase ledger (null = loading)
+  const [creditsLate, setCreditsLate] = useState(false); // checkout watcher timed out without a credit
 
   // real erasure: DELETE /account purges sites, orders, dossier, media, and the
   // auth identity, then we drop the local session and land on the marketing
@@ -64,6 +66,9 @@ export default function Account() {
       .catch((e) => setErr(friendly(e.message)));
     refreshEnt();
     api.sites().then((r) => setSites(r.sites)).catch(() => setSites([]));
+    // the buyer's own purchase ledger; a not-yet-deployed route degrades to an
+    // empty list rather than an error (never a dead end on the money page)
+    api.billingPurchases().then((r) => setPurchases(r.purchases || [])).catch(() => setPurchases([]));
     ledger.sync().then((r) => { setOrders(r.orders); setOrdersWired(r.wired); }).catch(() => {});
     if (sessionStorage.getItem("cf.openSupport")) {
       sessionStorage.removeItem("cf.openSupport");
@@ -99,7 +104,14 @@ export default function Account() {
     try {
       track(STEP.checkoutClick); // funnel: buyer sent to Creem checkout
       const c = await api.billingCheckout();
-      watchForCredits();
+      // honest either way: refresh the ledger when the credit lands, and say so
+      // plainly if the watcher window closes without one (money is with Creem,
+      // the webhook can lag, support can settle by hand).
+      setCreditsLate(false);
+      watchForCredits({
+        onLanded: () => { setCreditsLate(false); api.billingPurchases().then((r) => setPurchases(r.purchases || [])).catch(() => {}); },
+        onTimeout: () => setCreditsLate(true),
+      });
       window.open(c.url, "_blank", "noopener");
     } catch {
       setErr("The register opens soon. Your films keep premiering free in the meantime.");
@@ -314,10 +326,39 @@ export default function Account() {
             <section className="asec" aria-label="Billing">
               <div className="scene-hd">BILLING &amp; RECEIPTS</div>
               <div className="panel">
-                <p className="dlgtext">Payments run through Creem, our merchant of record. Every receipt and invoice lives in their portal, tied to {user.email}. Creem also emails you a receipt at purchase.</p>
+                <p className="dlgtext">Payments run through Creem, our merchant of record. Creem emails you a receipt at purchase; the record below is the studio's own ledger of your purchases.</p>
+                {/* the in-product paper trail: what you paid, when, with what
+                    reference. Server truth from the buyer's own PURCHASE rows. */}
+                {purchases === null ? (
+                  <div className="mono" style={{ marginTop: 10, fontSize: 11, opacity: 0.7 }}>LOADING PURCHASES…</div>
+                ) : purchases.length === 0 ? (
+                  <div className="mono" style={{ marginTop: 10, fontSize: 11, opacity: 0.7 }}>NO PURCHASES YET · YOUR RECORD APPEARS HERE THE MOMENT ONE LANDS</div>
+                ) : (
+                  <div style={{ marginTop: 10 }}>
+                    {purchases.map((p) => (
+                      <div key={`${p.provider}-${p.reference}`} className="ordrow">
+                        <div>
+                          <b className="ordid">{p.product || "The Director's Cut"}{p.testMode ? " · TEST" : ""}</b>
+                          <span className="mono ordmeta">
+                            {p.at ? String(p.at).slice(0, 10) : ""} · {p.amountUsd != null ? `$${p.amountUsd}` : "amount with provider"} · {p.credits} credit{p.credits === 1 ? "" : "s"} · ref {String(p.reference || "").slice(0, 18)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {creditsLate && (
+                  <p className="dlgtext" style={{ marginTop: 10, color: "var(--bk-gold, #D9A441)" }}>
+                    Your payment went through but the credits have not landed yet. They usually arrive within seconds; this can lag a few minutes. Your money is safe with Creem. If nothing shows after a coffee, use the refund or support buttons below and the studio will settle it by hand.
+                  </p>
+                )}
                 <div className="btnrow" style={{ marginTop: 12 }}>
                   <a className="btn ghost" href={RECEIPTS_URL} target="_blank" rel="noopener noreferrer">Open my receipts ↗</a>
+                  <button type="button" className="btn ghost" onClick={() => setSupport({ subject: "Refund request", message: `I would like to request a refund.\n\nAccount: ${user.email}\nOrder reference (from the list above or your Creem receipt): \nReason: ` })}>
+                    Request a refund
+                  </button>
                 </div>
+                <p className="dlgtext" style={{ marginTop: 8, opacity: 0.7, fontSize: 12 }}>Refunds follow the published policy: full refund before a render is dispatched, and a 14-day good-faith window after delivery when the cut materially misses the brief. A human reads every request.</p>
               </div>
             </section>
 

@@ -319,6 +319,35 @@ export async function getSeats(event, ctx) {
   }, publicCacheHeaders(60));
 }
 
+// GET /billing/purchases (JWT): the signed-in buyer's own purchase history, the
+// in-product paper trail the audit found missing (the Billing section only
+// linked the provider's portal). Reads the buyer's PURCHASE rows off GSI1,
+// newest first. Every field shown is what the webhook recorded at sale time:
+// date, product, amount, provider reference, credits, and whether it was a
+// provider test purchase. Strangers cannot read anyone else's rows: the
+// partition is the caller's own sub from the verified JWT, never an input.
+export async function purchases(event, ctx) {
+  const claims = claimsOf(event);
+  const rows = await ctx.ddb.query({
+    IndexName: "GSI1",
+    KeyConditionExpression: "GSI1PK = :p AND begins_with(GSI1SK, :s)",
+    ExpressionAttributeValues: { ":p": `USER#${claims.sub}`, ":s": "PURCHASE#" },
+    ScanIndexForward: false,
+  });
+  return ok({
+    ok: true,
+    purchases: rows.map((p) => ({
+      reference: p.identifier || p.providerOrderId || null,
+      provider: p.provider || null,
+      product: p.product || null,
+      credits: p.credits || 0,
+      amountUsd: typeof p.totalUsd === "number" ? p.totalUsd : null,
+      testMode: !!p.testMode,
+      at: p.createdAt || null,
+    })),
+  });
+}
+
 // POST /billing/webhook; the active provider calls here. The raw body is signed;
 // constant-time compare, same doctrine as the agent callback. Only a paid-order
 // creation event mints a credit, and only once per provider order id.
@@ -371,6 +400,12 @@ export async function webhook(event, ctx) {
     totalUsd: Number.isFinite(shape.totalUsd) ? shape.totalUsd : null,
     testMode: !!shape.testMode, claimed: !!userSub, founding: isFounding,
     createdAt: now(),
+    // the buyer's own paper trail: GSI1 keys let GET /billing/purchases query a
+    // user's purchases directly (same USER# partition as sites and orders, its
+    // own PURCHASE# sort prefix). Added before the FIRST real sale on purpose:
+    // every purchase row ever written carries the keys, so no backfill exists.
+    // Anonymous purchases (no userSub) stay unindexed; the Floor reconciles those.
+    ...(userSub ? { GSI1PK: `USER#${userSub}`, GSI1SK: `PURCHASE#${now()}` } : {}),
   };
   const tx = [{ Put: { Item: purchaseItem, ConditionExpression: "attribute_not_exists(PK)" } }];
   if (userSub) {
