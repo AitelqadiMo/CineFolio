@@ -173,7 +173,7 @@ resource "aws_cognito_user_pool" "main" {
     content {
       email_sending_account = "DEVELOPER"
       source_arn            = var.ses_identity_arn
-      from_email_address    = "CineFolio Studios <${var.ses_from}>"
+      from_email_address    = "CineFolio <${var.ses_from}>"
     }
   }
   depends_on = [aws_ses_identity_policy.cognito_send]
