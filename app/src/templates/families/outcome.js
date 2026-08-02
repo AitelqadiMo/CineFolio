@@ -43,7 +43,7 @@ import {
   metaRow,
   isCaseStudy,
   hasMetrics,
-  metricsBlocks,
+  metricsBlocks, projectLinks,
   DIRECTION_GLYPH,
   noHref,
 } from "../shared.js";
@@ -266,7 +266,7 @@ ${hasM ? `.om-ms{padding:5vh 0;border-bottom:1px solid ${rule}}
 ${pr.summary || pr.desc ? `<p class="om-hs">${esc(pr.summary || pr.desc)}</p>` : ""}
 </div>
 ${metaRow(pr, "om-meta")}
-${hasM ? `<section class="om-ms"><div class="om-mono" style="margin-bottom:20px">Outcomes</div>${metricsBlocks(pr, "om-mg")}</section>` : ""}
+${hasM ? `<section class="om-ms"><div class="om-mono" style="margin-bottom:20px">Outcomes</div>${metricsBlocks(pr, "om-mg")}${projectLinks(pr, "plinks")}</section>` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="om-blk"><div class="om-bll">${k === "problem" ? "The problem" : k === "process" ? "The approach" : "The results"}</div><p class="om-blp">${esc(pr[k])}</p></div>`).join("")}
 ${nav ? `<nav class="om-nav" aria-label="Case study navigation"><a href="../index.html">All case studies</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} &#8594;</a>` : ""}</nav>` : ""}
 </div>

@@ -6,7 +6,7 @@
 // is entered through a full-bleed threshold and the caption follows underneath the
 // way a shelter magazine sets a caption under its photograph. Chrome gets out of
 // the way; the imagery carries the page.
-import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, noHref, metricsBlocks, hasMetrics } from "../shared.js";
+import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, noHref, metricsBlocks, projectLinks, hasMetrics } from "../shared.js";
 
 export function room(p, pal, sec, ctx = {}) {
   const badge = ctx.badge;
@@ -96,7 +96,7 @@ ${pr.problem ? `<p><b>The brief</b>${esc(pr.problem)}</p>` : ""}
 ${pr.process ? `<p><b>The approach</b>${esc(pr.process)}</p>` : ""}
 ${pr.results ? `<p><b>The outcome</b>${esc(pr.results)}</p>` : ""}
 </div>
-${metricsBlocks(pr, "rmet")}
+${metricsBlocks(pr, "rmet")}${projectLinks(pr, "plinks")}
 ${href ? `<a class="more" href="${esc(href)}">See the full project</a>` : ""}
 </div></article>`;
 }).join("")}` : ""}
@@ -161,7 +161,7 @@ ${metaRow(pr, "meta")}
 ${pr.problem ? `<div class="blk"><b>The brief</b><p>${esc(pr.problem)}</p></div>` : ""}
 ${pr.process ? `<div class="blk"><b>The approach</b><p>${esc(pr.process)}</p></div>` : ""}
 ${pr.results ? `<div class="blk"><b>The outcome</b><p>${esc(pr.results)}</p></div>` : ""}
-${metricsBlocks(pr, "rmet")}
+${metricsBlocks(pr, "rmet")}${projectLinks(pr, "plinks")}
 ${nav ? `<div class="next"><a href="../index.html">All spaces</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)}</a>` : ""}</div>` : ""}
 </div>${credit(badge, { fg: ink, accent: umber })}</body></html>`;
 }

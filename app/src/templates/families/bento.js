@@ -1,6 +1,6 @@
 // The bento family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, cap, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, noHref, metricsBlocks, METRICS_CAP, hasMetrics } from "../shared.js";
+import { esc, indexHead, caseHead, cap, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, noHref, metricsBlocks, projectLinks, METRICS_CAP, hasMetrics } from "../shared.js";
 
 export function bento(p, pal, sec, ctx = {}) {
   const [canvas, tile, accent, ink, muted] = pal.vars;
@@ -130,7 +130,7 @@ ${Array.isArray(pr.metrics) && pr.metrics.length ? `.metgrid{display:flex;gap:12
 <h1 style="margin-top:10px">${esc(pr.name)}</h1>
 ${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}
 ${["role", "timeline", "tools"].filter((k) => pr[k]).length ? `<div class="chiprow">${["role", "timeline", "tools"].filter((k) => pr[k]).map((k) => `<span><b>${k.toUpperCase()}</b>${esc(pr[k])}</span>`).join("")}</div>` : ""}
-${metricsBlocks(pr, "metgrid")}${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
+${metricsBlocks(pr, "metgrid")}${projectLinks(pr, "plinks")}${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 </div>
 <div class="next"><a class="pill" href="../index.html">All projects</a>${nav && nav.next ? `<a class="pill" href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)}</a>` : ""}</div>

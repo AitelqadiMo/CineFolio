@@ -22,7 +22,7 @@ import {
   metaRow,
   csBlocks,
   noHref,
-  metricsBlocks,
+  metricsBlocks, projectLinks,
   hasMetrics,
 } from "../shared.js";
 
@@ -185,7 +185,7 @@ ${(richPieces.length ? richPieces : []).map((pr) => {
   <div class="piece-head">${href ? `<a href="${href}">${esc(pr.name)}</a>` : esc(pr.name)}</div>
   ${pub || date ? `<div class="piece-pub">${pub ? `<span class="pub-name">${pub}</span>` : ""}${pub && date ? `<span class="pub-sep" aria-hidden="true">·</span>` : ""}${date ? `<span class="pub-date">${date}</span>` : ""}</div>` : ""}
   ${standfirst ? `<p class="standfirst">${esc(standfirst)}</p>` : ""}
-  ${href ? `<a class="read-link" href="${href}">Read the piece</a>` : `${csBlocks(pr, "piece-blocks")}${metricsBlocks(pr, "met-row")}`}
+  ${href ? `<a class="read-link" href="${href}">Read the piece</a>` : `${csBlocks(pr, "piece-blocks")}${metricsBlocks(pr, "met-row")}${projectLinks(pr, "plinks")}`}
 </li>`;
 }).join("")}
 ${plainPieces.map((pr) => {
@@ -312,7 +312,7 @@ ${pr.cover ? `<img class="art-cover" src="${pr.cover}" alt="${esc(pr.name)}">` :
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="body-block">
   <div class="block-label">${k === "problem" ? "The brief" : k === "process" ? "Reporting &amp; process" : "Findings"}</div>
   <p class="block-text">${esc(pr[k])}</p>
-</div>`).join("")}${metricsBlocks(pr, "met-row")}
+</div>`).join("")}${metricsBlocks(pr, "met-row")}${projectLinks(pr, "plinks")}
 
 <div class="art-nav">
   <a href="../index.html">← All work</a>

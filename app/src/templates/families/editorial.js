@@ -1,6 +1,6 @@
 // The editorial family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, hasMetrics } from "../shared.js";
+import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, projectLinks, hasMetrics } from "../shared.js";
 
 export function editorial(p, pal, sec, ctx = {}) {
   const [paper, ink, accent, soft] = pal.vars;
@@ -86,7 +86,7 @@ ${sec.skills && p.skills.length ? `<section><div class="sechead"><span class="no
 ${sec.projects && p.projects.length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Selected work</h2></div>
 ${p.projects.filter(isCaseStudy).map((pr) => { const href = caseHref(pr); return href
   ? `<div class="cs2"><h3><a href="${href}">${esc(pr.name)}</a></h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}<a class="more" href="${href}">Read the case study →</a></div>`
-  : `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}${metricsBlocks(pr, "csmet2")}</div>`; }).join("")}
+  : `<div class="cs2">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta2")}${csBlocks(pr, "csb2")}${metricsBlocks(pr, "csmet2")}${projectLinks(pr, "plinks")}</div>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="pr"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</section>` : ""}
 ${sec.services && (p.services || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Services</h2></div><div class="svc2">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</section>` : ""}
 ${sec.testimonials && (p.testimonials || []).length ? `<section><div class="sechead"><span class="no">${n(ix++)}</span><h2>Kind words</h2></div>${p.testimonials.map((t) => `<div class="tst2"><p>“${esc(t.quote)}”</p><span>· ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
@@ -131,7 +131,7 @@ ${Array.isArray(pr.metrics) && pr.metrics.length ? `.csmet2{display:grid;grid-te
 <a class="back" href="../index.html">← Back to the film</a>
 <header><div class="mono">Case Study</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</header>
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
-${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}${metricsBlocks(pr, "csmet2")}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}${metricsBlocks(pr, "csmet2")}${projectLinks(pr, "plinks")}
 ${nav ? `<div class="next"><a href="../index.html">← All work</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
 </div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }

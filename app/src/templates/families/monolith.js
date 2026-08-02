@@ -1,6 +1,6 @@
 // The monolith family. Moved verbatim out of engine.js so each family can be
 // edited without contending on one module. Behaviour is unchanged.
-import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, hasMetrics } from "../shared.js";
+import { esc, indexHead, caseHead, initialsAvatar, linkRow, credit, normExperience, hasCerts, hasLangObjs, eduLabel, langLabel, isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, projectLinks, hasMetrics } from "../shared.js";
 
 export function monolith(p, pal, sec, ctx = {}) {
   const [bg, panel, accent, accent2, text] = pal.vars;
@@ -94,7 +94,7 @@ ${sec.experience && exp.length ? `<section><h2>Selected scenes</h2>${exp.map((x)
 ${sec.projects && p.projects.length ? `<section><h2>Productions</h2>
 ${p.projects.filter(isCaseStudy).map((pr, i) => { const href = caseHref(pr); return href
   ? `<div class="cs" id="cs${i}"><div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}<a class="prc-more" style="display:inline-block;margin-top:18px;font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:${accent2};text-decoration:none;border-bottom:1px solid ${accent2}66" href="${href}">View the full case study →</a></div></div>`
-  : `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}${metricsBlocks(pr, "csmet")}</div></div>`; }).join("")}
+  : `<div class="cs" id="cs${i}">${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}<div class="body"><h3>${esc(pr.name)}</h3>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "csmeta")}${csBlocks(pr, "csb")}${metricsBlocks(pr, "csmet")}${projectLinks(pr, "plinks")}</div></div>`; }).join("")}
 ${p.projects.filter((pr) => !isCaseStudy(pr)).length ? `<div class="pr">${p.projects.filter((pr) => !isCaseStudy(pr)).map((pr) => `<div class="prc"><b>${esc(pr.name)}</b><p>${esc(pr.summary || pr.desc)}</p></div>`).join("")}</div>` : ""}</section>` : ""}
 ${sec.services && (p.services || []).length ? `<section><h2>Services</h2><div class="svc">${p.services.map((sv) => `<div><b>${esc(sv.name)}</b><p>${esc(sv.desc)}</p></div>`).join("")}</div></section>` : ""}
 ${sec.testimonials && (p.testimonials || []).length ? `<section><h2>Word on set</h2>${p.testimonials.map((t) => `<div class="tst"><p>“${esc(t.quote)}”</p><span>· ${esc(t.who)}</span></div>`).join("")}</section>` : ""}
@@ -143,7 +143,7 @@ ${Array.isArray(pr.metrics) && pr.metrics.length ? `.csmet{display:flex;gap:14px
 <a class="back" href="../index.html">← Back to the film</a>
 <div class="hero"><div class="mono" style="margin-bottom:14px">CASE STUDY</div><h1>${esc(pr.name)}</h1>${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}${metaRow(pr, "meta")}</div>
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
-${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}${metricsBlocks(pr, "csmet")}
+${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="blk"><h2>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}${metricsBlocks(pr, "csmet")}${projectLinks(pr, "plinks")}
 ${nav ? `<div class="next"><a href="../index.html">← All productions</a>${nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} →</a>` : ""}</div>` : ""}
 </div>${credit(badge, { fg: text, accent: accent2 })}</body></html>`;
 }
