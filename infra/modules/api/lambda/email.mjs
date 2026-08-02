@@ -110,7 +110,7 @@ ${preheader}
       <!-- header band: the studio slate -->
       <tr><td class="cf-slate" style="background:${BRAND.navy};border-radius:14px 14px 0 0;padding:20px 32px 18px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-          <td style="font-family:${MONO};font-size:12px;letter-spacing:.3em;color:${BRAND.bone};white-space:nowrap;">CINEFOLIO&nbsp;<span style="color:${BRAND.gold};">STUDIOS</span></td>
+          <td style="font-family:${MONO};font-size:12px;letter-spacing:.3em;color:${BRAND.bone};white-space:nowrap;">CINE<span style="color:${BRAND.gold};">FOLIO</span></td>
           <td align="right" style="font-family:${MONO};font-size:10px;letter-spacing:.22em;color:rgba(244,239,230,.55);white-space:nowrap;">EST.&nbsp;2026</td>
         </tr></table>
       </td></tr>
@@ -130,7 +130,7 @@ ${preheader}
 
       <!-- footer: the credit line and the legal reel -->
       <tr><td align="center" style="padding:20px 10px 4px;">
-        <p class="cf-dim" style="margin:0 0 6px;font-family:${MONO};font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:${BRAND.dim};">CineFolio Studios · Your career, filmed.</p>
+        <p class="cf-dim" style="margin:0 0 6px;font-family:${MONO};font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:${BRAND.dim};">CineFolio · Your career, filmed.</p>
         <p class="cf-dim" style="margin:0 0 6px;font-family:${MONO};font-size:10px;letter-spacing:.18em;">
           <a href="https://www.cinefolio.dev" style="color:${BRAND.dim};text-decoration:underline;">cinefolio.dev</a>
           &nbsp;·&nbsp;<a href="https://www.cinefolio.dev/terms.html" style="color:${BRAND.dim};text-decoration:underline;">Terms</a>
@@ -162,7 +162,7 @@ function textOf(title, lines, cta, x = {}) {
     ...(cta ? ["", `${strip(cta.label)}: ${cta.url}`] : []),
     ...(x.secondary ? ["", strip(x.secondary)] : []),
     "",
-    "CineFolio Studios · Your career, filmed.",
+    "CineFolio · Your career, filmed.",
     "https://www.cinefolio.dev",
   ].join("\n");
 }

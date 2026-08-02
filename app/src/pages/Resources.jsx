@@ -83,7 +83,7 @@ export default function Resources() {
         <div className="bkmodal" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(null); }}>
           <div className="bkmodalbox" role="dialog" aria-modal="true" aria-label={sel.name}>
             <div className="bkmodalhead">
-              <b>{sel.name}</b><span className="by">by CineFolio Studios</span>
+              <b>{sel.name}</b><span className="by">by CineFolio</span>
               <button className="bkbtn lite use" onClick={() => use(sel.id, selPal)}>Use this look</button>
               <button className="edicon" aria-label="Close" onClick={() => setOpen(null)}>✕</button>
             </div>

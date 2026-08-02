@@ -214,7 +214,7 @@ export default function Account() {
           {/* ---------- identity ---------- */}
           <form className="ticket" onSubmit={save}>
             <div className="tophalf">
-              <div className="admit">ADMIT ONE · CINEFOLIO STUDIOS</div>
+              <div className="admit">ADMIT ONE · CINEFOLIO</div>
               <div className="name">{form.name || user.email.split("@")[0]}</div>
               <div className="mono" style={{ marginTop: 6, textTransform: "none", letterSpacing: ".06em" }}>{user.email}</div>
               <div style={{ marginTop: 10 }}>

@@ -1,6 +1,6 @@
 // Landing markup: originally ported byte-for-byte from index.html; copy now tracks the live product.
 export const LANDING_HTML = `
-<div id="loader"><div class="lens"></div><div class="cnt" id="loadCnt">0</div><div class="lbl">CINEFOLIO STUDIOS · ROLLING</div></div>
+<div id="loader"><div class="lens"></div><div class="cnt" id="loadCnt">0</div><div class="lbl">CINEFOLIO · ROLLING</div></div>
 <div id="progress"><i id="progressBar"></i></div>
 <div id="cursor"><div class="ring"><span id="cursorLbl">PLAY</span></div><div class="dot"></div></div>
 
@@ -281,7 +281,7 @@ export const LANDING_HTML = `
 
 <footer>
   <div class="zellige"></div>
-  <div class="big">CineFolio<i>•</i>Studios</div>
+  <div class="big">CineFolio</div>
   <div class="statusline">STUDIO CLOCK <b id="bpTime">--:--</b> CET · STATUS <b id="bpStatus">OPEN</b> · EST. BUDAPEST</div>
   MADE WITH AI CAMERAS AND TASTE · A CINEFOLIO PRODUCTION · © 2026
   <div class="statusline" style="margin-top:8px"><a href="/terms.html">TERMS</a> · <a href="/privacy.html">PRIVACY</a> · <a href="/refunds.html">REFUNDS</a> · <a href="/acceptable-use.html">ACCEPTABLE USE</a> · SUPPORT <a href="mailto:info@cinefolio.dev">INFO@CINEFOLIO.DEV</a></div>

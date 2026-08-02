@@ -491,7 +491,7 @@ export default function Studio() {
       <div className="slate">
         <div className="slateleft">
           <span className="clap" aria-hidden="true"><i /><i /><i /><i /></span>
-          <span className="mono slbl">CINEFOLIO STUDIOS · THE SET</span>
+          <span className="mono slbl">CINEFOLIO · THE SET</span>
         </div>
         <div className="slatemid mono">
           <span>YOUR SITE RENDERS <b>AS YOU TYPE</b></span>
