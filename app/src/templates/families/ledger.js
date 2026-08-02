@@ -8,7 +8,7 @@ import {
   esc, indexHead, caseHead, linkRow, credit,
   normExperience, hasCerts, hasLangObjs, eduLabel, langLabel,
   slugify, isCaseStudy, metaRow, csBlocks,
-  metricsBlocks, hasMetrics, noHref, METRICS_CAP, DIRECTION_GLYPH,
+  metricsBlocks, projectLinks, hasMetrics, noHref, METRICS_CAP, DIRECTION_GLYPH,
 } from "../shared.js";
 
 // Three Google Fonts that carry the annual-report register:
@@ -233,7 +233,7 @@ ${pr.cover ? `<img class="case-cover" src="${pr.cover}" alt="${esc(pr.name)}">` 
 
 ${["problem","process","results"].filter((k) => pr[k]).map((k) => `<div class="cs-section"><div class="cs-section-label">${k === "problem" ? "The Problem" : k === "process" ? "The Approach" : "Outcomes"}</div><p>${esc(pr[k])}</p></div>`).join("")}
 
-${Array.isArray(pr.metrics) && pr.metrics.length ? `<div class="cs-section"><div class="cs-section-label">Key Metrics</div><div class="met-grid">${pr.metrics.slice(0, METRICS_CAP).map((m) => { const glyph = DIRECTION_GLYPH[m.direction] || ""; return `<div class="mblock"><span class="mv">${glyph ? `<span class="dir" aria-hidden="true">${glyph}</span>` : ""}${esc(m.value)}</span><span class="ml">${esc(m.label || "")}</span></div>`; }).join("")}</div></div>` : ""}
+${Array.isArray(pr.metrics) && pr.metrics.length ? `<div class="cs-section"><div class="cs-section-label">Key Metrics</div><div class="met-grid">${pr.metrics.slice(0, METRICS_CAP).map((m) => { const glyph = DIRECTION_GLYPH[m.direction] || ""; return `<div class="mblock"><span class="mv">${glyph ? `<span class="dir" aria-hidden="true">${glyph}</span>` : ""}${projectLinks(pr, "plinks")}${esc(m.value)}</span><span class="ml">${esc(m.label || "")}</span></div>`; }).join("")}</div></div>` : ""}
 
 <nav class="case-nav">
 <a href="../index.html">&#8592; Portfolio</a>

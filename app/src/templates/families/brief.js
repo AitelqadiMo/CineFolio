@@ -9,7 +9,7 @@
 import {
   esc, indexHead, caseHead, initialsAvatar, linkRow, credit,
   normExperience, hasCerts, hasLangObjs, eduLabel, langLabel,
-  isCaseStudy, metaRow, noHref, metricsBlocks, hasMetrics, slugify
+  isCaseStudy, metaRow, noHref, metricsBlocks, projectLinks, hasMetrics, slugify
 } from "../shared.js";
 
 // ---------- internal helpers used only inside this family ----------
@@ -177,7 +177,7 @@ ${nameHtml}
 ${pr.summary || pr.desc ? `<p class="bcard-sum">${esc(pr.summary || pr.desc)}</p>` : ""}
 ${inlineNarrative}
 ${metaHtml}
-${metricsBlocks(pr, "bmet-blocks")}
+${metricsBlocks(pr, "bmet-blocks")}${projectLinks(pr, "plinks")}
 ${linkHtml}
 </div></div>`;
   }).join("");
@@ -282,7 +282,7 @@ ${briefMetaRow(pr)}
 </div>
 ${pr.cover ? `<img class="bc-cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${narrativeBlocks}
-${metricsBlocks(pr, "bmet-blocks")}
+${metricsBlocks(pr, "bmet-blocks")}${projectLinks(pr, "plinks")}
 <nav class="bc-nav"><a class="bc-nav-link" href="../index.html">&larr; All case studies</a>${nextNav}</nav>
 </div>${credit(badge, { fg: ink, accent })}</body></html>`;
 }

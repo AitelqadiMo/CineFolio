@@ -8,7 +8,7 @@
 import {
   esc, indexHead, caseHead, initialsAvatar, linkRow, credit,
   normExperience, hasCerts, hasLangObjs, eduLabel, langLabel,
-  isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, hasMetrics,
+  isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, projectLinks, hasMetrics,
   slugify
 } from "../shared.js";
 
@@ -223,7 +223,7 @@ ${thisMets ? `.met-row{display:flex;gap:16px;flex-wrap:wrap;margin:28px 0 0}
 ${pr.summary || pr.desc ? `<p class="sum">${esc(pr.summary || pr.desc)}</p>` : ""}
 ${metaRow(pr, "cs-meta")}
 </div>
-${metricsBlocks(pr, "met-row")}
+${metricsBlocks(pr, "met-row")}${projectLinks(pr, "plinks")}
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 <div style="margin-top:5vh">${["problem", "process", "results"].filter((k) => pr[k]).map((k) => {
   const labels = { problem: "The objective", process: "The strategy and execution", results: "The results" };

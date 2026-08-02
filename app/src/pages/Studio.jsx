@@ -592,6 +592,13 @@ export default function Studio() {
                       <input value={pr.timeline || ""} onChange={(e) => proj(i, { timeline: e.target.value })} placeholder="Timeline" />
                       <input value={pr.tools || ""} onChange={(e) => proj(i, { tools: e.target.value })} placeholder="Tools" />
                     </div>
+                    {/* the outbound proof: a case study that cannot point at the
+                        shipped work is an unverifiable claim. http(s) only; the
+                        engine drops anything else rather than rendering it. */}
+                    <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <input type="url" value={pr.link || ""} onChange={(e) => proj(i, { link: e.target.value })} placeholder="Live URL (https://the-thing-you-shipped.com)" />
+                      <input type="url" value={pr.repo || ""} onChange={(e) => proj(i, { repo: e.target.value })} placeholder="Code URL (https://github.com/you/repo)" />
+                    </div>
                     <textarea value={pr.problem || ""} onChange={(e) => proj(i, { problem: e.target.value })} placeholder="The problem: what was broken, risky, or missing before you started?" style={{ minHeight: 48 }} />
                     <textarea value={pr.process || ""} onChange={(e) => proj(i, { process: e.target.value })} placeholder="The process: how you approached it, what you tried, what you decided." style={{ minHeight: 48 }} />
                     <textarea value={pr.results || ""} onChange={(e) => proj(i, { results: e.target.value })} placeholder="The results: numbers first. Faster, cheaper, safer, adopted by…" style={{ minHeight: 48 }} />

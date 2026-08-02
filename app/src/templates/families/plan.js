@@ -13,7 +13,7 @@
 import {
   esc, indexHead, caseHead, initialsAvatar, linkRow, credit,
   normExperience, hasCerts, hasLangObjs, eduLabel, langLabel,
-  isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, hasMetrics,
+  isCaseStudy, metaRow, csBlocks, noHref, metricsBlocks, projectLinks, hasMetrics,
 } from "../shared.js";
 
 // plan: the index page
@@ -173,7 +173,7 @@ ${pr.summary || pr.desc ? `<div class="dossier-narrative"><h4>Summary</h4><p>${e
 ${pr.problem ? `<div class="dossier-narrative"><h4>Concept</h4><p>${esc(pr.problem)}</p></div>` : ""}
 ${pr.process ? `<div class="dossier-narrative"><h4>Development</h4><p>${esc(pr.process)}</p></div>` : ""}
 ${pr.results ? `<div class="dossier-narrative"><h4>Outcome</h4><p>${esc(pr.results)}</p></div>` : ""}
-${metricsBlocks(pr, "dmet")}
+${metricsBlocks(pr, "dmet")}${projectLinks(pr, "plinks")}
 ${href ? `<a class="dossier-link" href="${href}">Full dossier &rarr;</a>` : ""}
 </div>
 </article>`;
@@ -269,7 +269,7 @@ ${pr.cover ? `<img class="cover-img" src="${pr.cover}" alt="${esc(pr.name)}">` :
 ${pr.problem ? `<div class="blk"><div class="blk-label ann">Concept</div><h2 class="sr-only">Concept</h2><p>${esc(pr.problem)}</p></div>` : ""}
 ${pr.process ? `<div class="blk"><div class="blk-label ann">Design development</div><h2 class="sr-only">Design development</h2><p>${esc(pr.process)}</p></div>` : ""}
 ${pr.results ? `<div class="blk"><div class="blk-label ann">Outcome</div><h2 class="sr-only">Outcome</h2><p>${esc(pr.results)}</p></div>` : ""}
-${metricsBlocks(pr, "dmet")}
+${metricsBlocks(pr, "dmet")}${projectLinks(pr, "plinks")}
 <div class="page-nav">
 <a href="../index.html">&larr; All projects</a>
 ${nav && nav.next ? `<a href="${esc(nav.next.slug)}.html">Next: ${esc(nav.next.pr.name)} &rarr;</a>` : ""}

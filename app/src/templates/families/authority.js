@@ -6,7 +6,7 @@
 import {
   esc, indexHead, caseHead, initialsAvatar, linkRow, credit,
   normExperience, hasCerts, hasEduObjs, hasLangObjs, eduLabel, langLabel,
-  isCaseStudy, metaRow, csBlocks, metricsBlocks, hasMetrics, noHref, slugify
+  isCaseStudy, metaRow, csBlocks, metricsBlocks, projectLinks, hasMetrics, noHref, slugify
 } from "../shared.js";
 
 // Section rule: "Engagements" maps to projects. We treat case-study projects
@@ -300,7 +300,7 @@ ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => {
     <div class="blk-label">${labels[k]}</div>
     <div class="blk-body">${esc(pr[k])}</div>
   </div>`;
-}).join("")}${metricsBlocks(pr, "metrics-row")}
+}).join("")}${metricsBlocks(pr, "metrics-row")}${projectLinks(pr, "plinks")}
 </div>
 
 <div class="nav-row">

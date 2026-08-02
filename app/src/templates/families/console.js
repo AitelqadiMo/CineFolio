@@ -12,7 +12,7 @@
 import {
   esc, indexHead, caseHead, linkRow, credit, normExperience,
   hasCerts, hasLangObjs, eduLabel, langLabel, slugify, isCaseStudy,
-  noHref, metricsBlocks, hasMetrics,
+  noHref, metricsBlocks, projectLinks, hasMetrics,
 } from "../shared.js";
 
 // ------------------------------------------------------------------ index --
@@ -256,7 +256,7 @@ ${pr.summary || pr.desc ? `<p class="cs-sum">${esc(pr.summary || pr.desc)}</p>` 
 ${["role", "timeline"].filter((k) => pr[k]).length ? `<div class="meta-row">${["role", "timeline"].filter((k) => pr[k]).map((k) => `<div class="meta-cell"><span class="mk">${k}</span><span class="mv">${esc(pr[k])}</span></div>`).join("")}</div>` : ""}
 ${pr.tools ? `<div class="stack-row">${stackBadges(pr.tools)}</div>` : ""}
 </div>
-${metricsBlocks(pr, "csmet")}
+${metricsBlocks(pr, "csmet")}${projectLinks(pr, "plinks")}
 ${pr.cover ? `<img class="cover" src="${pr.cover}" alt="${esc(pr.name)}">` : ""}
 ${["problem", "process", "results"].filter((k) => pr[k]).map((k) => `<div class="cs-block"><h2>${k === "problem" ? "Problem" : k === "process" ? "Process" : "Results"}</h2><p>${esc(pr[k])}</p></div>`).join("")}
 <div class="nav-strip">

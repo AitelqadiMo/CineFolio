@@ -258,6 +258,28 @@ export const csBlocks = (pr, cls) => ["problem", "process", "results"]
   .map((k) => `<div class="${cls}"><h4>${k === "problem" ? "The problem" : k === "process" ? "The process" : "The results"}</h4><p>${esc(pr[k])}</p></div>`)
   .join("");
 
+// projectLinks(pr, wrapperClass): the project's outbound proof. A portfolio
+// case study that cannot point at the shipped work is an unverifiable claim,
+// so pr.link (the live thing) and pr.repo (the code) render as real anchors.
+// Doctrine matches metricsBlocks exactly:
+//   - a project with NO links produces exactly "" (no container, no whitespace),
+//     which is the byte-identical guarantee for every existing portfolio;
+//   - the wrapper class is supplied by the template; visual styling here is
+//     deliberately neutral (inherit the surrounding palette, mono smallcaps,
+//     hairline underline) so no per-family CSS wave is required.
+// SECURITY: these URLs are author-controlled text landing in an href. Only
+// absolute http(s) URLs render; anything else (javascript:, data:, relative
+// paths, plain prose) is dropped rather than escaped-and-hoped. target=_blank
+// always pairs with rel="noopener noreferrer".
+export const projectLinks = (pr, cls) => {
+  const ok = (v) => typeof v === "string" && /^https?:\/\/\S+$/i.test(v.trim());
+  const links = [["View it live", pr.link], ["See the code", pr.repo]].filter(([, v]) => ok(v));
+  if (!links.length) return "";
+  const a = (label, url) =>
+    `<a href="${esc(url.trim())}" target="_blank" rel="noopener noreferrer" style="font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:inherit;text-decoration:none;border-bottom:1px solid currentColor;margin-right:18px">${label} ↗</a>`;
+  return `<div class="${cls}" style="margin-top:14px">${links.map(([l, u]) => a(l, u)).join("")}</div>`;
+};
+
 // metricsBlocks: render up to METRICS_CAP outcome metrics from a project, each as
 // a large value + label cell, returning empty string when the array is absent or
 // empty. Direction is explicit: the author knows whether "40% fewer support tickets"
