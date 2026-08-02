@@ -8,7 +8,11 @@ const ENDPOINT = `https://cognito-idp.${CONFIG.region}.amazonaws.com/`;
 const REFRESH_KEY = "cf.refreshToken";
 const EMAIL_KEY = "cf.email";
 
-let session = { idToken: null, exp: 0, email: null };
+// idToken authorizes the API (aud = clientId). accessToken is what Cognito's
+// self-service account mutations require (ChangePassword, UpdateUserAttributes,
+// VerifyUserAttribute), so we retain it in memory alongside the id token. It is
+// never persisted (only the refresh token is), and a refresh re-populates both.
+let session = { idToken: null, accessToken: null, exp: 0, email: null };
 const listeners = new Set();
 
 async function call(target, body) {
@@ -44,11 +48,21 @@ function friendly(code, fallback) {
 }
 
 function adopt(auth, email) {
-  const { IdToken, RefreshToken, ExpiresIn } = auth;
-  session = { idToken: IdToken, exp: Date.now() + (ExpiresIn - 90) * 1000, email };
+  const { IdToken, AccessToken, RefreshToken, ExpiresIn } = auth;
+  session = { idToken: IdToken, accessToken: AccessToken || null, exp: Date.now() + (ExpiresIn - 90) * 1000, email };
   if (RefreshToken) localStorage.setItem(REFRESH_KEY, RefreshToken);
   if (email) localStorage.setItem(EMAIL_KEY, email);
   listeners.forEach((fn) => fn(getUser()));
+}
+
+// a valid access token for a self-service mutation. Refreshes first if the
+// in-memory token is stale, so a mutation never fails just because the tab sat
+// idle. Throws a friendly NO_SESSION if there is genuinely no session.
+async function accessToken() {
+  if (session.accessToken && Date.now() < session.exp) return session.accessToken;
+  await restore();
+  if (!session.accessToken) { const e = new Error("Session expired. Sign in again."); e.code = "NO_SESSION"; throw e; }
+  return session.accessToken;
 }
 
 export function getUser() {
@@ -90,6 +104,28 @@ export async function confirmForgotPassword(email, code, newPassword) {
   await call("ConfirmForgotPassword", { ClientId: CONFIG.clientId, Username: email, ConfirmationCode: code, Password: newPassword });
 }
 
+// change the password of a signed-in user. Cognito verifies the old password
+// itself, so a wrong current password comes back as NotAuthorizedException.
+export async function changePassword(oldPassword, newPassword) {
+  const AccessToken = await accessToken();
+  await call("ChangePassword", { AccessToken, PreviousPassword: oldPassword, ProposedPassword: newPassword });
+}
+
+// change email, two steps. Step 1 sets the new (unverified) email and Cognito
+// emails a code to it. Step 2 confirms the code. Until step 2, the old email
+// still signs in. Receipts are keyed to email, so this is how a buyer who
+// mistyped their signup address recovers their account and its history.
+export async function changeEmailStart(newEmail) {
+  const AccessToken = await accessToken();
+  await call("UpdateUserAttributes", { AccessToken, UserAttributes: [{ Name: "email", Value: newEmail }] });
+}
+export async function changeEmailConfirm(code) {
+  const AccessToken = await accessToken();
+  await call("VerifyUserAttribute", { AccessToken, AttributeName: "email", Code: code });
+  // the id token still carries the old email until the next refresh; the caller
+  // signs out and back in (or refreshes) to pick up the verified address.
+}
+
 export async function signIn(email, password) {
   const r = await call("InitiateAuth", {
     AuthFlow: "USER_PASSWORD_AUTH",
@@ -121,7 +157,7 @@ export async function idToken() {
 }
 
 export function signOut() {
-  session = { idToken: null, exp: 0, email: null };
+  session = { idToken: null, accessToken: null, exp: 0, email: null };
   localStorage.removeItem(REFRESH_KEY);
   listeners.forEach((fn) => fn(null));
 }
