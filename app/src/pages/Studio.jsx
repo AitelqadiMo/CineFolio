@@ -34,6 +34,7 @@ export default function Studio() {
   const [openProj, setOpenProj] = useState(null);
   const [railTab, setRailTab] = useState("content"); // content | design | publish
   const [mobileMode, setMobileMode] = useState("edit"); // edit | preview (small screens)
+  const [saveState, setSaveState] = useState(""); // "" | "local" | "studio" | "big": the draft save truth, worn on the slate
   const [view, setView] = useState("desktop");
   const [pdfBusy, setPdfBusy] = useState(false);
   // premiere + director's cut
@@ -107,7 +108,7 @@ export default function Studio() {
   useEffect(() => {
     const draft = { cvRaw, q, projects, testimonials, services, sections, tpl, pal, locker, photo: String(photo || "").startsWith("data:") ? "" : photo };
     const t = setTimeout(() => {
-      try { localStorage.setItem("cf.studioDraft", JSON.stringify({ ...draft, savedAt: new Date().toISOString() })); } catch { /* full */ }
+      try { localStorage.setItem("cf.studioDraft", JSON.stringify({ ...draft, savedAt: new Date().toISOString() })); setSaveState("local"); } catch { /* full */ }
     }, 500);
     // server copy: strip bulky inline images (CDN URLs stay), 300KB item budget
     const t2 = setTimeout(() => {
@@ -115,7 +116,11 @@ export default function Studio() {
       if (String(slim.q?.photo || "").startsWith("data:")) delete slim.q.photo;
       (slim.projects || []).forEach((p2) => { if (String(p2.cover || "").startsWith("data:")) delete p2.cover; });
       slim.locker = (slim.locker || []).filter((a) => !String(a.url || "").startsWith("data:"));
-      api.putDraft(slim).catch(() => { /* silent, local copy is safe */ });
+      api.putDraft(slim).then(() => setSaveState("studio")).catch((e) => {
+        // the local copy is safe either way. A 413 is not "pending": the studio
+        // copy will never sync until the draft shrinks, so the slate says so.
+        setSaveState(e?.status === 413 ? "big" : "local");
+      });
     }, 2500);
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, [cvRaw, q, projects, testimonials, services, sections, tpl, pal, locker, photo]);
@@ -483,7 +488,7 @@ export default function Studio() {
         <button className={`edicon ${view === "desktop" ? "on" : ""}`} title="Desktop" aria-label="Desktop preview" onClick={() => setView("desktop")}>▭</button>
         <button className={`edicon ${view === "mobile" ? "on" : ""}`} title="Mobile" aria-label="Mobile preview" onClick={() => setView("mobile")}>▯</button>
         <button className="edicon" title="Re-render preview" aria-label="Re-render preview" onClick={() => setPreviewKey((k) => k + 1)}>⟳</button>
-        <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={() => setRailTab("publish")}>Premiere</button>
+        <button className="bkbtn primary" style={{ padding: "6px 16px" }} onClick={() => { setRailTab("publish"); setMobileMode("edit"); /* small screens hide the rail in preview mode; premiering must reveal it */ }}>Premiere</button>
       </div>
       <div className="setbody">
       <h1 className="visually-hidden">The Set</h1>
@@ -496,7 +501,12 @@ export default function Studio() {
         <div className="slatemid mono">
           <span>YOUR SITE RENDERS <b>AS YOU TYPE</b></span>
         </div>
-        <div className="mono slamp">SET · <b style={{ color: "var(--green-lit)" }}>LIT</b></div>
+        <div className="mono slamp" title={saveState === "big" ? "The draft exceeds the studio sync budget (about 300KB). It is safe on this device; trim a very large paste to resume cross-device sync." : "Autosaves locally in half a second, to the studio moments later"}>
+          {saveState === "studio" ? <>DRAFT · <b>SAVED TO THE STUDIO ✓</b></> :
+           saveState === "big" ? <>DRAFT · <span style={{ color: "var(--gold-g)" }}>TOO LARGE TO SYNC · TRIM</span></> :
+           saveState === "local" ? <>DRAFT · SAVED ON THIS DEVICE</> :
+           <>SET · <b style={{ color: "var(--green-lit)" }}>LIT</b></>}
+        </div>
       </div>
 
       <div className="mobiletoggle">

@@ -87,8 +87,8 @@ export default function Profile() {
         await api.putProfile(profile);
         track(STEP.profileUploaded); // funnel: portfolio dossier saved
         setSaveState("studio");
-      } catch {
-        setSaveState("local");
+      } catch (e) {
+        setSaveState(e?.status === 413 ? "big" : "local");
       }
     }, 800);
     return () => clearTimeout(t);
@@ -265,7 +265,7 @@ export default function Profile() {
           <div style={{ width: `${pct}%`, height: "100%", background: "linear-gradient(90deg, #C8102E, #E63946, #D9A441)", transition: "width .4s ease" }} />
         </div>
         <div className="mono" style={{ fontSize: 9.5, letterSpacing: ".05em", textTransform: "none", marginTop: 6, color: "var(--dim)" }}>
-          {saveState === "studio" ? "Saved to the studio ✓" : saveState === "local" ? "Saved on this device; studio sync pending" : "Autosaves as you edit"}
+          {saveState === "studio" ? "Saved to the studio ✓" : saveState === "big" ? "Too large for studio sync: trim a huge paste or photo. Your work is safe on this device." : saveState === "local" ? "Saved on this device; studio sync pending" : "Autosaves as you edit"}
         </div>
       </div>
 
