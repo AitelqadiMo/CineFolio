@@ -5,7 +5,7 @@ export const LANDING_HTML = `
 <div id="cursor"><div class="ring"><span id="cursorLbl">PLAY</span></div><div class="dot"></div></div>
 
 <nav>
-  <a class="brand" href="#/" data-nav><span class="lens"></span>CineFolio</a>
+  <a class="brand" href="#/" data-nav><img src="/nav-128.png" alt="" width="26" height="26" style="width:26px;height:26px;border-radius:50%;display:block" onerror="this.style.display='none'">CineFolio</a>
   <div class="tabs">
     <button data-tab="home" class="on">Home</button>
     <!-- data-tab value stays "services" so the hash router in effects.js keeps working; only the visible label changes to "Plans" to read as software pricing, not a service menu. -->
@@ -30,7 +30,10 @@ export const LANDING_HTML = `
       <p class="sub">Templates all look the same. CineFolio is software that casts <b>you</b> as the lead of a <b>cinematic AI film</b>: you upload your resume and photos, pick a look, and the app renders your story scene by scene as people scroll. <b>The app builds it in about 20 minutes</b> at yourname.cinefolio.dev. Your first render is on the house.</p>
       <div class="cta-row">
         <button class="btn primary magnetic" id="heroEnter">Sign up free · first render on us</button>
-        <a class="btn ghost magnetic" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live example ↗</a>
+        <!-- the live example is a REAL customer film generated and hosted by
+             CineFolio, on a cinefolio.dev address. It replaced an off-product
+             personal-site link that predated real customers. -->
+        <a class="btn ghost magnetic" href="https://saad-bougha.cinefolio.dev" target="_blank" rel="noopener noreferrer">See a live example ↗</a>
       </div>
       <!-- Reviewer-facing framing: "you upload / the app renders / you publish" makes the self-serve nature explicit right in the hero. No card, because the free render is a real product tier, not a trial of a service. -->
       <div class="proof">NO CARD, NO WAITLIST · YOU UPLOAD, THE APP RENDERS · <a href="#" data-goto="services">SEE THE PLANS</a></div>
@@ -96,9 +99,9 @@ export const LANDING_HTML = `
         <div class="rc"><b>~20MIN</b><span>From your upload to a site the app has published. Same engine every run</span></div>
         <div class="rc"><b>120F</b><span>Frames in the scroll-scrub engine, quality-gated per clip</span></div>
         <div class="rc"><b>45</b><span>Looks in The Set, the free manual engine: 15 template families, 3 palettes each</span></div>
-        <div class="rc"><b>1</b><span>Live example already screening on a real custom domain</span></div>
+        <div class="rc"><b>2</b><span>Client films live on their own addresses right now</span></div>
       </div>
-      <p class="opensrc reveal">OPEN SOURCE · CODE AT <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE EXAMPLE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · THIS SITE IS ITSELF THE DEMO: WEBGL SILK, VELOCITY MARQUEE, PINNED GALLERY, CUSTOM CURSOR</p>
+      <p class="opensrc reveal">REAL FILMS, REALLY SHIPPED · <a href="https://saad-bougha.cinefolio.dev" target="_blank" rel="noopener noreferrer">SAAD-BOUGHA.CINEFOLIO.DEV</a> · <a href="https://abdelhamid-chouraichi.cinefolio.dev" target="_blank" rel="noopener noreferrer">ABDELHAMID-CHOURAICHI.CINEFOLIO.DEV</a> · THIS SITE IS ITSELF THE DEMO: WEBGL SILK, VELOCITY MARQUEE, PINNED GALLERY, CUSTOM CURSOR</p>
     </div>
   </section>
 
@@ -244,7 +247,7 @@ export const LANDING_HTML = `
       <!-- A clear path to build your own, always shown regardless of what the API returns. -->
       <div class="cta-row" style="justify-content:center;margin-top:34px">
         <button class="btn primary magnetic" data-enter>Build your own · first render free</button>
-        <a class="btn ghost magnetic" href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">See a live example ↗</a>
+        <a class="btn ghost magnetic" href="https://abdelhamid-chouraichi.cinefolio.dev" target="_blank" rel="noopener noreferrer">See a live example ↗</a>
       </div>
     </div>
   </section>
@@ -280,7 +283,7 @@ export const LANDING_HTML = `
   <div class="zellige"></div>
   <div class="big">CineFolio<i>•</i>Studios</div>
   <div class="statusline">STUDIO CLOCK <b id="bpTime">--:--</b> CET · STATUS <b id="bpStatus">OPEN</b> · EST. BUDAPEST</div>
-  MADE WITH AI CAMERAS AND TASTE · SOURCE ON <a href="https://github.com/AitelqadiMo/CineFolio" target="_blank" rel="noopener noreferrer">GITHUB</a> · LIVE RELEASE AT <a href="https://www.aitelqadi.dev" target="_blank" rel="noopener noreferrer">AITELQADI.DEV</a> · © 2026
+  MADE WITH AI CAMERAS AND TASTE · A CINEFOLIO PRODUCTION · © 2026
   <div class="statusline" style="margin-top:8px"><a href="/terms.html">TERMS</a> · <a href="/privacy.html">PRIVACY</a> · <a href="/refunds.html">REFUNDS</a> · <a href="/acceptable-use.html">ACCEPTABLE USE</a> · SUPPORT <a href="mailto:info@cinefolio.dev">INFO@CINEFOLIO.DEV</a></div>
 </footer>
 `;
