@@ -317,7 +317,7 @@ export default function Onboarding() {
   return (
     <div className="fs-stage" data-scene={scene}>
       <div className="fs-topbar">
-        <span className="fs-brand">CineFolio<i>•</i>Studios</span>
+        <span className="fs-brand">CineFolio</span>
         {/* one direction only: the kicker below counts up (SCENE 01, 02, ...), so this
             counter must agree with it; two counters moving opposite ways read as a bug. */}
         <span className="fs-count" aria-label={`Scene ${scene + 1} of ${SCENES.length}`}>{scene + 1}/{SCENES.length}</span>

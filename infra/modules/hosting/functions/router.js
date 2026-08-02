@@ -38,7 +38,7 @@ function vaultResponse() {
     + '.cta{display:inline-flex;align-items:center;gap:10px;margin-top:22px;background:var(--red);color:#fff;text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:13px 24px;border-radius:9px;box-shadow:0 6px 18px rgba(200,16,46,.28)}'
     + '.foot{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:9px;letter-spacing:.24em;color:rgba(244,239,230,.42);text-align:center;margin-top:30px;text-transform:uppercase}'
     + '</style></head><body><div class="card">'
-    + '<div class="kicker">CineFolio Studios · Between screenings</div>'
+    + '<div class="kicker">CineFolio · Between screenings</div>'
     + '<h1>This portfolio is not currently screening.</h1>'
     + '<p>The film that lived at this address has finished its run for now. Nothing is wrong, and there is nothing you need to do.</p>'
     + '<p><b>CineFolio</b> is where people build a film of their career. You bring your resume and your work, the app renders it into a cinematic portfolio site, and it screens at your own address in one click.</p>'

@@ -473,7 +473,7 @@ export default function Admin() {
                 <span style={mono9}>{when(n.at)}</span>
               </div>
               <p style={{ whiteSpace: "pre-wrap", fontSize: 14, lineHeight: 1.6, color: "var(--navy)", borderLeft: "3px solid var(--red)", paddingLeft: 12, margin: "0 0 12px" }}>{n.message}</p>
-              <a className="btn ghost" style={{ padding: "6px 12px", fontSize: 9 }} href={`mailto:${n.email}?subject=${encodeURIComponent("Re: your note to CineFolio Studios")}`}>Reply</a>
+              <a className="btn ghost" style={{ padding: "6px 12px", fontSize: 9 }} href={`mailto:${n.email}?subject=${encodeURIComponent("Re: your note to CineFolio")}`}>Reply</a>
             </div>
           ))}
         </div>
