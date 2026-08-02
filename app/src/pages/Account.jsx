@@ -8,7 +8,7 @@ import { api, notWired } from "../api.js";
 import { useEntitlement, refreshEnt, watchForCredits } from "../entitlement.js";
 import { CONFIG } from "../config.js";
 import { useAuth } from "../App.jsx";
-import { signOut } from "../cognito.js";
+import { signOut, changePassword, changeEmailStart, changeEmailConfirm } from "../cognito.js";
 import { SplitTitle, Skeleton, friendly, Dialog, PromptDialog } from "../ui.jsx";
 import { ledger } from "../orders.js";
 import { track, STEP } from "../funnel.js";
@@ -44,6 +44,25 @@ export default function Account() {
   const [deleting, setDeleting] = useState(false);   // account-erasure confirm dialog
   const [purchases, setPurchases] = useState(null);  // the buyer's own purchase ledger (null = loading)
   const [creditsLate, setCreditsLate] = useState(false); // checkout watcher timed out without a credit
+  // security: change password / change email. sec.mode drives which mini-form shows.
+  const [sec, setSec] = useState({ mode: null, oldPw: "", newPw: "", email: "", code: "", busy: false, msg: "", err: "" });
+  const secField = (patch) => setSec((s) => ({ ...s, ...patch }));
+
+  const doChangePassword = async () => {
+    secField({ busy: true, err: "", msg: "" });
+    try { await changePassword(sec.oldPw, sec.newPw); secField({ busy: false, mode: null, oldPw: "", newPw: "", msg: "Password changed." }); }
+    catch (e) { secField({ busy: false, err: friendly(e.message) }); }
+  };
+  const doChangeEmailStart = async () => {
+    secField({ busy: true, err: "", msg: "" });
+    try { await changeEmailStart(sec.email.trim().toLowerCase()); secField({ busy: false, mode: "email-confirm", msg: "Code sent to the new address. Enter it below." }); }
+    catch (e) { secField({ busy: false, err: friendly(e.message) }); }
+  };
+  const doChangeEmailConfirm = async () => {
+    secField({ busy: true, err: "", msg: "" });
+    try { await changeEmailConfirm(sec.code.trim()); signOut(); nav("login"); }
+    catch (e) { secField({ busy: false, err: friendly(e.message) }); }
+  };
 
   // real erasure: DELETE /account purges sites, orders, dossier, media, and the
   // auth identity, then we drop the local session and land on the marketing
@@ -318,6 +337,60 @@ export default function Account() {
                 ))}
                 {!ordersWired && orders.length > 0 && (
                   <p className="mono finehint">Order history is kept on this device for now; studio-side history is on the way.</p>
+                )}
+              </div>
+            </section>
+
+            {/* ---------- security ---------- */}
+            <section className="asec" aria-label="Security">
+              <div className="scene-hd">SECURITY</div>
+              <div className="panel">
+                <p className="dlgtext">Signed in as <b>{user.email}</b>.</p>
+                {sec.err && <div className="err" style={{ marginTop: 8 }}>{sec.err}</div>}
+                {sec.msg && !sec.err && <div className="okmsg" style={{ marginTop: 8 }}>{sec.msg}</div>}
+
+                {sec.mode === null && (
+                  <div className="btnrow" style={{ marginTop: 12 }}>
+                    <button type="button" className="btn ghost" onClick={() => setSec({ mode: "password", oldPw: "", newPw: "", email: "", code: "", busy: false, msg: "", err: "" })}>Change password</button>
+                    <button type="button" className="btn ghost" onClick={() => setSec({ mode: "email", oldPw: "", newPw: "", email: "", code: "", busy: false, msg: "", err: "" })}>Change email</button>
+                  </div>
+                )}
+
+                {sec.mode === "password" && (
+                  <div style={{ marginTop: 10 }}>
+                    <label className="mono">Current password</label>
+                    <input type="password" value={sec.oldPw} onChange={(e) => secField({ oldPw: e.target.value })} autoComplete="current-password" />
+                    <label className="mono">New password</label>
+                    <input type="password" minLength={10} value={sec.newPw} onChange={(e) => secField({ newPw: e.target.value })} placeholder="10+ chars, upper + lower + number" autoComplete="new-password" />
+                    <div className="btnrow" style={{ marginTop: 10 }}>
+                      <button type="button" className="btn primary" disabled={sec.busy || sec.oldPw.length < 8 || sec.newPw.length < 10} onClick={doChangePassword}>{sec.busy ? <span className="spin" /> : "Update password"}</button>
+                      <button type="button" className="btn ghost" onClick={() => secField({ mode: null, err: "", msg: "" })}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {sec.mode === "email" && (
+                  <div style={{ marginTop: 10 }}>
+                    <label className="mono">New email</label>
+                    <input type="email" value={sec.email} onChange={(e) => secField({ email: e.target.value })} placeholder="you@newdomain.com" autoComplete="email" />
+                    <p className="dlgtext" style={{ opacity: 0.7, fontSize: 12, marginTop: 6 }}>We email a code to the new address. Your current email keeps working until you confirm it. Receipts move to the new address once verified.</p>
+                    <div className="btnrow" style={{ marginTop: 10 }}>
+                      <button type="button" className="btn primary" disabled={sec.busy || !/.+@.+\..+/.test(sec.email)} onClick={doChangeEmailStart}>{sec.busy ? <span className="spin" /> : "Send code"}</button>
+                      <button type="button" className="btn ghost" onClick={() => secField({ mode: null, err: "", msg: "" })}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {sec.mode === "email-confirm" && (
+                  <div style={{ marginTop: 10 }}>
+                    <label className="mono">Confirmation code</label>
+                    <input inputMode="numeric" value={sec.code} onChange={(e) => secField({ code: e.target.value })} placeholder="6-digit code from the new address" />
+                    <p className="dlgtext" style={{ opacity: 0.7, fontSize: 12, marginTop: 6 }}>After confirming, you will sign in again with your new email.</p>
+                    <div className="btnrow" style={{ marginTop: 10 }}>
+                      <button type="button" className="btn primary" disabled={sec.busy || sec.code.trim().length < 4} onClick={doChangeEmailConfirm}>{sec.busy ? <span className="spin" /> : "Confirm new email"}</button>
+                      <button type="button" className="btn ghost" onClick={() => secField({ mode: null, err: "", msg: "" })}>Cancel</button>
+                    </div>
+                  </div>
                 )}
               </div>
             </section>
