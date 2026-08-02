@@ -113,6 +113,7 @@ locals {
     "GET /profile"                  = true
     "PUT /profile"                  = true
     "GET /billing/checkout"         = true  # the buyer's personalized checkout URL from the active provider
+    "GET /billing/purchases"        = true  # the buyer's own purchase history (GSI1, own sub only)
     "POST /billing/webhook"         = false # authenticated by the active provider's signature HMAC inside the handler
   }
 }

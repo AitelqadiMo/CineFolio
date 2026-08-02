@@ -49,6 +49,7 @@ export const ROUTES = {
   "GET /orders": orders.listOrders,
   "POST /orders/{id}/revision": orders.requestRevision,
   "GET /billing/checkout": billing.checkout,
+  "GET /billing/purchases": billing.purchases,
   "POST /billing/webhook": billing.webhook,
   "GET /sites/{id}/stats": sites.stats,
   "GET /sites/{id}/inspect": sites.inspect,
