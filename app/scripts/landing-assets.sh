@@ -4,7 +4,7 @@
 #   public/reel/cut{1..4}.jpg   posters for the four reel videos (first frames)
 #   public/img/bento-{edge,engine}.jpg  compressed tile art (~80KB each; the
 #     old hot-linked originals were ~2.5MB PNGs on a third-party host)
-# Needs: curl and ffmpeg only. Run from anywhere: bash app/scripts/landing-assets.sh
+# Needs: curl, ffmpeg, and unzip. Run from anywhere: bash app/scripts/landing-assets.sh
 # (v2: the tile step used python3 + Pillow, and a machine without Pillow died
 # AFTER the posters were written, shipping a half-set. ffmpeg compresses jpegs
 # fine, so one dependency does both jobs and the script cannot half-succeed.)
@@ -27,5 +27,15 @@ curl -sf -o /tmp/cf-bento2.png "https://pub.hyperagent.com/api/published/pbf01KW
 ffmpeg -y -loglevel error -i /tmp/cf-bento1.png -vf "scale='min(1200,iw)':-2" -q:v 5 public/img/bento-edge.jpg
 ffmpeg -y -loglevel error -i /tmp/cf-bento2.png -vf "scale='min(1200,iw)':-2" -q:v 5 public/img/bento-engine.jpg
 rm -f /tmp/cf-bento1.png /tmp/cf-bento2.png
+
+echo "==> brand kit (logo, favicons)"
+# the CF monogram in every size the site references: /favicon-32.png,
+# /apple-180.png (touch icon), /nav-128.png (circular nav badge), /logo-512.png
+# (master). Fetched as one zip because the repo cannot carry binaries through
+# the automation that writes it; this script is the binary channel.
+curl -sf -o /tmp/cf-brand.zip "https://pub.hyperagent.com/api/published/pbf01KZ1R7ZWR_WEW3W2KZDV6H8VPF/cinefolio-brand.zip"
+unzip -o -q /tmp/cf-brand.zip -d public/
+rm -f /tmp/cf-brand.zip
 ls -la public/reel public/img
-echo "done: 6 assets in public/"
+ls -la public/*.png 2>/dev/null | head -5
+echo "done: 10 assets in public/"

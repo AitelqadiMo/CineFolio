@@ -29,7 +29,7 @@ export default function Sidebar({ user, route, nav, onSignOut, onCmdK }) {
   return (
     <aside className="bkside">
       <div className="bkside-top">
-        <div className="brand"><span className="lens" />CINEFOLIO</div>
+        <div className="brand"><img src="/nav-128.png" alt="" width="22" height="22" style={{ width: 22, height: 22, borderRadius: "50%", display: "block" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />CINEFOLIO</div>
       </div>
 
       <button className="bkws" onClick={wsPop.toggle} aria-haspopup="menu" aria-expanded={wsPop.open}>
