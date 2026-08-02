@@ -151,7 +151,7 @@ resource "aws_s3_object" "demo_landing" {
   content       = <<-HTML
     <!doctype html>
     <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>CineFolio Studios</title>
+    <title>CineFolio</title>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@700;800&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
     <style>
       :root{--navy:#0E1C3F;--navy2:#132550;--red:#E63946;--gold:#D9A441;--bone:#F4EFE6;--green:#0E9E62;--dim:rgba(244,239,230,.66);--line:rgba(244,239,230,.14)}
@@ -171,11 +171,11 @@ resource "aws_s3_object" "demo_landing" {
       .foot{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.24em;color:rgba(244,239,230,.42);text-align:center;margin-top:30px;text-transform:uppercase}
     </style></head><body>
     <div class="card">
-      <div class="kicker">CineFolio Studios · The Backlot</div>
+      <div class="kicker">CineFolio · The Backlot</div>
       <h1>You're at the <em>studio gate.</em></h1>
       <p>This is the multi-tenant hosting for portfolios filmed by the studio. Every film lives at its <b>own slug</b>, either on <code>{slug}.cinefolio.dev</code> or, in dev, at <code>/_preview/{slug}/</code>.</p>
       <p>Looking for a specific portfolio? Ask its author for the link. Filming your own? Open the console and pick <b>The Set</b>.</p>
-      <a class="cta" href="https://d2f6618tf0eldv.cloudfront.net" target="_top">Open the console →</a>
+      <a class="cta" href="https://cinefolio.dev" target="_top">Open the console →</a>
       <div class="foot">Made with AI cameras and taste · Est. Budapest</div>
     </div>
     </body></html>
