@@ -202,6 +202,24 @@ export default function Studio() {
   // debounce the heavy text; small fields stay live
   useEffect(() => { const t = setTimeout(() => setCvText(cvRaw), 220); return () => clearTimeout(t); }, [cvRaw]);
 
+  // The dossier prefills the set with the account holder, but a film is not
+  // necessarily about them. Whether the resume arrived as a file OR was pasted
+  // into the textarea, when it reads as a DIFFERENT person offer a recast
+  // instead of silently keeping the old cast (the blanks-only merge would
+  // ignore the new resume's identity entirely). The latch keeps one dismissal
+  // from re-prompting on every keystroke for the same name.
+  const recastOffered = useRef("");
+  useEffect(() => {
+    if (!cvText || cvText.trim().length < 200) return;
+    const parsedName = String((parseProfile(cvText) || {}).name || "").trim();
+    const cur = (q.name || "").trim();
+    if (!cur || !parsedName || parsedName.toLowerCase() === cur.toLowerCase()) return;
+    if (recastOffered.current === parsedName.toLowerCase()) return;
+    recastOffered.current = parsedName.toLowerCase();
+    setRecast({ name: parsedName });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cvText]);
+
   // upload once, keep forever: the first real resume (and headshot) seeds the
   // dossier so every future film casts from it. Only blanks are filled; a
   // dossier the client already curated is never overwritten.
@@ -306,17 +324,7 @@ export default function Studio() {
   const onResume = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     setErr(""); setPdfBusy(true);
-    try {
-      const text = await readResume(f);
-      // The dossier prefills the set with the account holder. A film is not
-      // necessarily about them: when the incoming resume reads as a different
-      // person, offer a recast instead of silently keeping the old cast (the
-      // blanks-only merge would ignore the new resume's identity entirely).
-      const parsedName = String((parseProfile(text) || {}).name || "").trim();
-      const cur = (q.name || "").trim().toLowerCase();
-      if (cur && parsedName && parsedName.toLowerCase() !== cur) setRecast({ name: parsedName, text });
-      else setCvRaw(text);
-    }
+    try { setCvRaw(await readResume(f)); }
     catch (e2) { setErr(friendly(e2.message)); }
     finally { setPdfBusy(false); }
   };
@@ -871,9 +879,9 @@ export default function Studio() {
           dossierSaved.current = true; // this film is for someone else: never write them into YOUR dossier
           setQ({ name: "", email: "", headline: "", website: "", focus: "" });
           setProjects([]); setTestimonials([]); setServices([]); setPhoto(null);
-          setCvRaw(recast.text); setRecast(null);
+          setRecast(null);
         }}
-        onClose={() => { setCvRaw(recast?.text || ""); setRecast(null); }}
+        onClose={() => setRecast(null)}
       />
       <Dialog open={lookOpen} title="Browse the looks" kicker="FIFTEEN FAMILIES · FORTY-FIVE FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
         <div className="lookgrid">
