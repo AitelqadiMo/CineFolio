@@ -35,6 +35,7 @@ export default function Studio() {
   const [railTab, setRailTab] = useState("content"); // content | design | publish
   const [mobileMode, setMobileMode] = useState("edit"); // edit | preview (small screens)
   const [saveState, setSaveState] = useState(""); // "" | "local" | "studio" | "big": the draft save truth, worn on the slate
+  const [recast, setRecast] = useState(null); // { name, text }: a loaded resume that reads as a DIFFERENT person than the current cast
   const [view, setView] = useState("desktop");
   const [pdfBusy, setPdfBusy] = useState(false);
   // premiere + director's cut
@@ -305,7 +306,17 @@ export default function Studio() {
   const onResume = async (e) => {
     const f = e.target.files[0]; if (!f) return;
     setErr(""); setPdfBusy(true);
-    try { setCvRaw(await readResume(f)); }
+    try {
+      const text = await readResume(f);
+      // The dossier prefills the set with the account holder. A film is not
+      // necessarily about them: when the incoming resume reads as a different
+      // person, offer a recast instead of silently keeping the old cast (the
+      // blanks-only merge would ignore the new resume's identity entirely).
+      const parsedName = String((parseProfile(text) || {}).name || "").trim();
+      const cur = (q.name || "").trim().toLowerCase();
+      if (cur && parsedName && parsedName.toLowerCase() !== cur) setRecast({ name: parsedName, text });
+      else setCvRaw(text);
+    }
     catch (e2) { setErr(friendly(e2.message)); }
     finally { setPdfBusy(false); }
   };
@@ -850,6 +861,20 @@ export default function Studio() {
 
       </div>
 
+      <ConfirmDialog
+        open={!!recast}
+        title="A new lead actor?"
+        kicker="THE SET · RECAST"
+        body={`This resume reads as ${recast?.name || "someone new"}, but the set is dressed for ${q.name || "the current cast"}. Recast the film for ${recast?.name || "them"}? The look and design stay; name, story, projects and headshot reset so the new resume drives. Your saved dossier is untouched.`}
+        confirmLabel="Recast the film"
+        onConfirm={() => {
+          dossierSaved.current = true; // this film is for someone else: never write them into YOUR dossier
+          setQ({ name: "", email: "", headline: "", website: "", focus: "" });
+          setProjects([]); setTestimonials([]); setServices([]); setPhoto(null);
+          setCvRaw(recast.text); setRecast(null);
+        }}
+        onClose={() => { setCvRaw(recast?.text || ""); setRecast(null); }}
+      />
       <Dialog open={lookOpen} title="Browse the looks" kicker="FIFTEEN FAMILIES · FORTY-FIVE FILM STOCKS" onClose={() => setLookOpen(false)} width={980}>
         <div className="lookgrid">
           {TEMPLATES.map((t, i) => (
