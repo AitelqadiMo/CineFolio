@@ -78,9 +78,14 @@ export default function Home() {
     if (cv.trim().length < 80) { setErr("The AI Director lane needs a resume to read. Drop a PDF or TXT above, paste the resume text right here in the box, or switch to The Set and see your site render as you type, no resume required."); return; }
     setSending(true); setErr("");
     try {
-      const name = (cv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || "").slice(0, 60);
+      // the first line of a paste is not reliably the person (a pasted pack once
+      // shipped "Identity fields" as the film's name AND its slug). Parse first,
+      // fall back to the first line only when the parser finds no name.
+      const parsed = parseProfile(cv) || {};
+      const firstLine = (cv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || "").slice(0, 60);
+      const name = String(parsed.name || firstLine).slice(0, 60);
       const r = await api.order({
-        email: user.email, name, role: "engineer",
+        email: user.email, name, role: String(parsed.headline || "engineer").slice(0, 24),
         cvText: cv,
         template: style, palette: null,
         customIdea: fileCv ? (typed || null) : null, // when the typed text IS the resume, it is not also the creative note

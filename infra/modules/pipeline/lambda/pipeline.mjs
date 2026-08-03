@@ -380,7 +380,20 @@ export const handler = async (event) => {
     // is reused by relative path — it already lives next to the cut server-side
     // and the callback's manifest union keeps it. This is the margin protector:
     // a revision should cost editing, not a second film shoot.
-    const dossier = await getDossier(order);
+    let dossier = await getDossier(order);
+    // THE FILM IS NOT ALWAYS ABOUT THE ACCOUNT HOLDER. The dossier is the
+    // account's curated record, and the director treats it as authoritative
+    // (dossier WINS over cvText) — so attaching it to an order whose resume
+    // belongs to a DIFFERENT person recasts the whole film as the account
+    // holder (order 80a10e12 shipped the owner's film for a resume about
+    // someone else). When both names exist and the dossier's name does not
+    // appear anywhere in the order's resume text, the dossier stays home and
+    // cvText alone is the script.
+    const dossierName = String(dossier?.identity?.name || "").trim().toLowerCase();
+    if (dossierName && order?.cvText && !String(order.cvText).toLowerCase().includes(dossierName)) {
+      console.log(JSON.stringify({ level: "info", msg: "dossier withheld: order resume reads as a different person", orderId, dossierName }));
+      dossier = null;
+    }
     // The dossier is read FRESH here and handed to the model as the approved
     // screenplay, so screening only the frozen order snapshot at validate left
     // the largest model-facing free-text surface in the product unscreened.
