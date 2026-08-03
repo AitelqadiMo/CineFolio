@@ -6,7 +6,7 @@
 // Listings run paginated scans filtered by item type. At demand-test scale
 // (hundreds of rows) a scan is the correct tradeoff, not a shortcut; past
 // ~10k items, move these callers to a type-overloaded GSI and delete scanAll.
-import { ok, bad, json, claimsOf, isAdmin, bodyOf, clampStr, now } from "./lib.mjs";
+import { ok, bad, json, claimsOf, isAdmin, bodyOf, clampStr, now, pathParam } from "./lib.mjs";
 import { previewUrl } from "./sites.mjs";
 
 const deny = (event) => (isAdmin(claimsOf(event)) ? null : json(403, { ok: false, error: "admin only" }));
@@ -202,6 +202,7 @@ export async function sites(event, ctx) {
       releases: s.releases || 0, liveRelease: s.liveRelease ?? null, stagedRelease: s.stagedRelease ?? null,
       pointerMode: s.pointerMode || null, orderId: s.orderId || null,
       customDomain: s.customDomain || null, audienceOf: s.audienceOf || null,
+      showcase: s.showcase === true ? true : s.showcase === "pending" ? "pending" : false,
       createdAt: s.createdAt || null, publishedAt: s.publishedAt || null,
       views30: views[`s/${s.slug}`] || 0,
       url: previewUrl(ctx, s.slug),
@@ -317,4 +318,30 @@ export async function pipelineSet(event, ctx) {
   // honesty: workers cache secrets per container; warm workers pick the flip
   // up as they recycle, new containers see it immediately.
   return ok({ ok: true, enabled: b.enabled, propagation: "new workers immediately; warm workers as they recycle" });
+}
+
+
+// POST /admin/sites/{id}/showcase { approve: boolean } — the Floor decides a
+// pending showcase request, or unlists a film later. This only ever RESOLVES a
+// request the owner made (or revokes a listing); it never fabricates consent:
+// the owner's own toggle remains the only way a request enters the queue.
+export async function showcaseDecide(event, ctx) {
+  const denied = deny(event);
+  if (denied) return denied;
+  const b = bodyOf(event);
+  if (!b || typeof b.approve !== "boolean") return bad("approve must be true or false");
+  const siteId = pathParam(event, "id");
+  if (!siteId) return bad("missing site id");
+  try {
+    await ctx.ddb.update({
+      Key: { PK: `SITE#${siteId}`, SK: "META" },
+      UpdateExpression: "SET showcase = :v, updatedAt = :t",
+      ConditionExpression: "attribute_exists(PK)",
+      ExpressionAttributeValues: { ":v": b.approve === true, ":t": now() },
+    });
+  } catch (e) {
+    if (e?.name === "ConditionalCheckFailedException") return bad("site not found", 404);
+    throw e;
+  }
+  return ok({ ok: true, siteId, showcase: b.approve === true });
 }

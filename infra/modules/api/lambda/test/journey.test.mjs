@@ -466,10 +466,19 @@ test("moderation and showcase journey: consent shows the film with only public f
   assert.equal(before.code, 200);
   assert.equal(before.body.films.find((f) => f.slug === "show-case") ?? null, null, "no consent, no showcase");
 
-  // --- the owner opts in. The film is live, so consent is accepted.
+  // --- the owner opts in. The film is live so the REQUEST is accepted, but
+  // the wall lists nothing until the Floor approves: consent flows
+  // owner -> Floor -> public, and a pending request is never public.
   const optIn = parse(await h(ev("POST /sites/{id}/showcase", { claims: who, path: { id: site.siteId }, body: { showcase: true } })));
   assert.equal(optIn.code, 200);
-  assert.equal(optIn.body.showcase, true);
+  assert.equal(optIn.body.showcase, "pending");
+  assert.equal(parse(await h(ev("GET /showcase"))).body.films.find((f) => f.slug === "show-case") ?? null, null, "a pending request is NOT on the public wall");
+
+  // --- the owner cannot approve their own request; the Floor can.
+  assert.equal(parse(await h(ev("POST /admin/sites/{id}/showcase", { claims: who, path: { id: site.siteId }, body: { approve: true } }))).code, 403, "only the admin group decides the queue");
+  const approved = parse(await h(ev("POST /admin/sites/{id}/showcase", { claims: "floor-1", groups: ["admin"], path: { id: site.siteId }, body: { approve: true } })));
+  assert.equal(approved.code, 200);
+  assert.equal(approved.body.showcase, true);
 
   // --- the PUBLIC read (no auth) now returns the film as a public card.
   const shown = parse(await h(ev("GET /showcase")));

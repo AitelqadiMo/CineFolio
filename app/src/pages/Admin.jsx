@@ -398,12 +398,21 @@ export default function Admin() {
                 </a>
               </div>
               <StatusDot status={s.status} />
+              {s.showcase === "pending" && <span style={{ ...mono9, color: "var(--gold)", fontWeight: 700 }}>SHOWCASE PENDING</span>}
+              {s.showcase === true && <span style={{ ...mono9, color: "var(--green-lit, #0E9E62)" }}>ON THE WALL</span>}
               <span style={{ ...mono9, color: s.views30 ? "var(--navy)" : undefined }}>{s.views30} view{s.views30 === 1 ? "" : "s"} · 30d</span>
               <span style={{ ...mono9, color: "var(--navy)" }}>R{s.releases}{s.liveRelease ? ` · live ${s.liveRelease}` : ""}{s.stagedRelease ? ` · staged ${s.stagedRelease}` : ""}</span>
               <span style={mono9}>{when(s.publishedAt || s.createdAt)}</span>
               <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                 {s.status === "live" && <a className="btn ghost" style={{ padding: "5px 10px", fontSize: 9 }} href={s.url} target="_blank" rel="noopener noreferrer">Watch</a>}
                 <button className="btn ghost" style={{ padding: "5px 10px", fontSize: 9 }} disabled={busy === s.siteId} onClick={() => inspect(s)}>Inspect</button>
+                {s.showcase === "pending" && (<>
+                  <button className="btn primary" style={{ padding: "5px 10px", fontSize: 9 }} disabled={busy === s.siteId} onClick={() => act(() => api.adminShowcase(s.siteId, true), s.siteId)}>Approve showcase</button>
+                  <button className="btn ghost" style={{ padding: "5px 10px", fontSize: 9 }} disabled={busy === s.siteId} onClick={() => act(() => api.adminShowcase(s.siteId, false), s.siteId)}>Decline</button>
+                </>)}
+                {s.showcase === true && (
+                  <button className="btn ghost" style={{ padding: "5px 10px", fontSize: 9 }} disabled={busy === s.siteId} onClick={() => act(() => api.adminShowcase(s.siteId, false), s.siteId)}>Unlist</button>
+                )}
                 {s.status === "live" && (
                   <button className="btn ghost" style={{ padding: "5px 10px", fontSize: 9, color: "var(--red-lit)" }} onClick={() => setConfirm({ kind: "takedown", site: s })}>Take down</button>
                 )}

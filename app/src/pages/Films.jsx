@@ -55,7 +55,7 @@ export default function Films() {
     // confirmed this session is kept, so a reload-free reconcile never regresses.
     setShowcaseOn((cur) => {
       const next = { ...cur };
-      for (const s of r.sites || []) if (!(s.siteId in next)) next[s.siteId] = s.showcase === true;
+      for (const s of r.sites || []) if (!(s.siteId in next)) next[s.siteId] = s.showcase === true ? true : s.showcase === "pending" ? "pending" : false;
       return next;
     });
     // seed the end-credit flag from server truth, defaulting ON (the badge shows
@@ -129,12 +129,12 @@ export default function Films() {
   // confirmed value and surface the error, so the UI never shows a state the
   // server did not confirm.
   const applyShowcase = async (site, next) => {
-    const prev = showcaseOn[site.siteId] === true;
+    const prev = showcaseOn[site.siteId]; // raw tri-state: true | "pending" | false
     setErr(""); setShowcaseBusy(site.siteId);
-    setShowcaseOn((m) => ({ ...m, [site.siteId]: next })); // optimistic
+    setShowcaseOn((m) => ({ ...m, [site.siteId]: next ? "pending" : false })); // optimistic: turning ON is a request
     try {
       const r = await api.setShowcase(site.siteId, next);
-      setShowcaseOn((m) => ({ ...m, [site.siteId]: r.showcase === true })); // reconcile to server truth
+      setShowcaseOn((m) => ({ ...m, [site.siteId]: r.showcase })); // reconcile to server truth (true | "pending" | false)
     } catch (e) {
       setShowcaseOn((m) => ({ ...m, [site.siteId]: prev })); // visible rollback
       setErr(friendly(e.message));
@@ -146,7 +146,8 @@ export default function Films() {
   // Turning OFF is immediate and reversible, no gate.
   const toggleShowcase = (site) => {
     if (showcaseBusy) return;
-    if (showcaseOn[site.siteId] === true) applyShowcase(site, false);
+    const st = showcaseOn[site.siteId];
+    if (st === true || st === "pending") applyShowcase(site, false); // leaving (or withdrawing a request) is immediate
     else setConfirmShowcase(site);
   };
 
@@ -236,7 +237,7 @@ export default function Films() {
                 <input
                   type="checkbox"
                   role="switch"
-                  checked={showcaseOn[s.siteId] === true}
+                  checked={showcaseOn[s.siteId] === true || showcaseOn[s.siteId] === "pending"}
                   disabled={showcaseBusy === s.siteId}
                   onChange={() => toggleShowcase(s)}
                   aria-label={`Show ${s.title || s.slug} on the public showcase`}
@@ -244,10 +245,10 @@ export default function Films() {
                 />
                 <span style={{ minWidth: 0 }}>
                   <b style={{ display: "block", fontSize: 13 }}>
-                    Show on the public showcase{showcaseBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
+                    Show on the public showcase{showcaseOn[s.siteId] === "pending" ? <em style={{ fontStyle: "normal", color: "var(--bk-gold)" }}> · awaiting approval</em> : null}{showcaseBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
                   </b>
                   <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
-                    Lists this film publicly on cinefolio.dev/showcase. Off by default; turn it off any time to remove it.
+                    Requests a spot on cinefolio.dev/showcase. A director approves each film before it lists; turn it off any time.
                   </i>
                 </span>
               </label>
@@ -490,8 +491,9 @@ export default function Films() {
               <span className="shareval mono">{`https://${confirmShowcase.slug}.cinefolio.dev`}</span>
             </div>
             <div className="dlgtext" style={{ marginTop: 12 }}>
-              Nothing else is shared: no email, no account details, no analytics. You can turn this
-              off at any time and the film leaves the showcase on the next visit.
+              Nothing else is shared: no email, no account details, no analytics. A director reviews
+              each request before the film goes public. You can turn this off at any time and the
+              film leaves the showcase on the next visit.
             </div>
             <div className="btnrow" style={{ marginTop: 18 }}>
               <button type="button" className="btn primary" disabled={showcaseBusy === confirmShowcase.siteId}

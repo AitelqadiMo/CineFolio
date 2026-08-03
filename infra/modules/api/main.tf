@@ -95,6 +95,7 @@ locals {
     "GET /admin/pipeline"           = true # the Floor: circuit-breaker state
     "POST /admin/pipeline"          = true # the Floor: the kill switch
     "POST /admin/users/{sub}/credits" = true # the Floor: operator credit-grant lever (+ admin group check in-handler)
+    "POST /admin/sites/{id}/showcase" = true # + admin group check in-handler: decide a pending showcase request
     "POST /sites"                   = true
     "GET /sites"                    = true
     "GET /sites/{id}"               = true
