@@ -824,6 +824,7 @@ export default function Studio() {
             <div className="acthead"><span className="actno">VII</span><div><b>The Director's Cut</b><span className="actsub">{ent && ent.freeCutsLeft > 0 ? `your render credits · ${ent.freeCutsLeft} of ${ent.freeCutsLimit} free left` : "one time, not a subscription · $49 founding"}</span></div></div>
             <ul className="paidlist">
               <li>Every account starts with a free AI render, on us</li>
+              <li>One coherent 3D concept, at least three spatial scenes, and a signature interaction built around your work</li>
               <li>Art direction you steer, with cinematic motion rendered from your resume and photos</li>
               <li>Your likeness only from the photos you upload, never generated</li>
               <li>Download-resume built into the delivered portfolio</li>
@@ -833,7 +834,7 @@ export default function Studio() {
                 the exact framing a merchant of record reads as a prohibited service. Replaced
                 with an honest software statement: one brief in, an automated render out. */}
             <div className="mono" style={{ margin: "0 0 10px", fontSize: 9, letterSpacing: ".12em" }}>ONE BRIEF IN · A FULL RENDER OUT · MINUTES, NOT WEEKS</div>
-            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction for the render: lighting, mood, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
+            <textarea value={customIdea} onChange={(e) => setCustomIdea(e.target.value)} placeholder="Creative direction: the 3D world, lighting, mood, signature interaction, references, sites you admire…" style={{ minHeight: 64, marginTop: 4 }} />
             <div className="btnrow" style={{ marginTop: 10 }}>
               <button className="btn primary" disabled={!ready || !!order} onClick={() => setConfirmCut(true)}>
                 {order ? "DIRECTOR'S CUT ORDERED ✓"

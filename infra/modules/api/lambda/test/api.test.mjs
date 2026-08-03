@@ -5,6 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import { makeHandler } from "../index.mjs";
+import { DIRECTOR_KIT } from "../../../pipeline/lambda/director-kit.mjs";
 
 // ---------- fakes ----------
 function fakeCtx(overrides = {}) {
@@ -1406,4 +1407,100 @@ test("silent-failure page: an order that cannot enqueue pages the operator and i
   ctx2.ddb._store.set("USER#b2|PROFILE", { PK: "USER#b2", SK: "PROFILE", type: "user", email: "b2@x.io", aiCuts: 0 });
   const r2 = parse(await h2(ev("POST /studio/order", { claims: "b2", body: { ...body, email: "b2@x.io" } })));
   assert.equal(r2.code, 200, "no alarm topic: the order still processes, the page is skipped");
+});
+
+test("premium Director callback refuses a JSON cut that misses the depth contract", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = "deadbeef";
+  await ctx.ddb.put({ PK: `ORDER#${orderId}`, SK: "META", type: "order", orderId, status: "filming", directorContract: "premium-depth-v1" });
+  const r = parse(await h(ev("POST /callback", {
+    headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId },
+    body: { files: [{ path: "index.html", html: "<!doctype html><html><body>thin cut</body></html>" }] },
+  })));
+  assert.equal(r.code, 400);
+  assert.match(r.body.error, /director output incomplete/);
+  assert.equal(ctx.s3._store.size, 0, "an incomplete premium cut is rejected before storage");
+  const saved = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  assert.equal(saved.outputValidation.accepted, false);
+  assert.equal(saved.outputValidationAttempts, 1);
+});
+
+test("premium Director cannot bypass the contract with raw HTML", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = "feed2026";
+  await ctx.ddb.put({ PK: `ORDER#${orderId}`, SK: "META", type: "order", orderId, status: "filming", directorContract: "premium-depth-v1" });
+  const r = parse(await h({
+    ...ev("POST /callback", { headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId } }),
+    body: "<!doctype html><html><body>raw bypass</body></html>",
+  }));
+  assert.equal(r.code, 400);
+  assert.match(r.body.error, /requires a JSON file bundle/);
+  assert.equal(ctx.s3._store.size, 0);
+});
+
+test("premium Director callback stores a complete depth cut and its validation evidence", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = "cafe2026";
+  await ctx.ddb.put({ PK: `ORDER#${orderId}`, SK: "META", type: "order", orderId, status: "filming", directorContract: "premium-depth-v1" });
+  const index = `<!doctype html><html><head></head><body>
+  <!-- CINEFOLIO-DIRECTION: The edit table -->${DIRECTOR_KIT}
+  <header data-cf-depth="hero"><a href="projects/launch.html">View Work</a></header>
+  <main><section data-cf-depth="work" data-cf-work-index><a href="projects/launch.html">Launch</a></section>
+  <section data-cf-depth="signature" data-cf-signature><button data-cf-control>Scrub the cut</button><a href="projects/launch.html">Open case study</a></section>
+  <script>document.querySelector('[data-cf-control]').addEventListener('click',()=>{});</script>
+  <video muted playsinline preload="auto" poster="assets/poster.jpg"><source src="assets/hero.mp4"></video><button aria-label="Pause film">Pause</button></main>
+  <footer data-cf-contact><a href="mailto:person@example.com">Email</a><a href="resume.html">Resume</a></footer></body></html>`;
+  const files = [
+    { path: "index.html", html: index },
+    { path: "resume.html", html: "<!doctype html><html><head><style>@media print{button{display:none}}</style></head><body><button onclick=\"window.print()\">Print</button></body></html>" },
+    { path: "projects/launch.html", html: "<!doctype html><html><body><h1>Launch</h1></body></html>" },
+  ];
+  await ctx.ddb.put({ PK: `ORDER#${orderId}`, SK: "ASSET#assets/poster.jpg", type: "orderasset", path: "assets/poster.jpg" });
+  await ctx.ddb.put({ PK: `ORDER#${orderId}`, SK: "ASSET#assets/hero.mp4", type: "orderasset", path: "assets/hero.mp4" });
+  const r = parse(await h(ev("POST /callback", {
+    headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId },
+    body: { files },
+  })));
+  assert.equal(r.code, 200);
+  const saved = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  assert.equal(saved.outputValidation.version, 1);
+  assert.deepEqual(saved.outputValidation.errors, []);
+  assert.equal(saved.outputValidation.stats.depthBeats, 3);
+  assert.deepEqual(saved.cutFiles.sort(), [...files.map((f) => f.path), "assets/poster.jpg", "assets/hero.mp4"].sort());
+});
+
+test("premium revision can reuse prior media while delivering the complete page set", async () => {
+  const ctx = fakeCtx();
+  const h = makeHandler(async () => ctx);
+  const orderId = "face2026";
+  await ctx.ddb.put({
+    PK: `ORDER#${orderId}`, SK: "META", type: "order", orderId, status: "filming",
+    directorContract: "premium-depth-v1", revisionNotes: "Tighten the opening",
+    cutFiles: ["index.html", "resume.html", "projects/launch.html", "assets/old-poster.jpg", "assets/old-hero.mp4"],
+  });
+  const index = `<!doctype html><html><head></head><body>
+  <!-- CINEFOLIO-DIRECTION: The edit table refined -->${DIRECTOR_KIT}
+  <header data-cf-depth="hero"><a href="projects/launch.html">View Work</a></header>
+  <main><section data-cf-depth="work" data-cf-work-index><a href="projects/launch.html">Launch</a></section>
+  <section data-cf-depth="signature" data-cf-signature><button data-cf-control>Scrub the cut</button><a href="projects/launch.html">Open case study</a></section>
+  <script>document.querySelector('[data-cf-control]').addEventListener('click',()=>{});</script>
+  <video muted playsinline preload="auto" poster="assets/old-poster.jpg"><source src="assets/old-hero.mp4"></video><button aria-label="Pause film">Pause</button></main>
+  <footer data-cf-contact><a href="mailto:person@example.com">Email</a><a href="resume.html">Resume</a></footer></body></html>`;
+  const files = [
+    { path: "index.html", html: index },
+    { path: "resume.html", html: "<!doctype html><html><head><style>@media print{button{display:none}}</style></head><body><button onclick=\"window.print()\">Print</button></body></html>" },
+    { path: "projects/launch.html", html: "<!doctype html><html><body><h1>Launch revised</h1></body></html>" },
+  ];
+  const r = parse(await h(ev("POST /callback", {
+    headers: { "x-cf-secret": "cbsec", "x-cf-order": orderId },
+    body: { files },
+  })));
+  assert.equal(r.code, 200);
+  const saved = ctx.ddb._store.get(`ORDER#${orderId}|META`);
+  assert.ok(saved.cutFiles.includes("assets/old-poster.jpg"));
+  assert.ok(saved.cutFiles.includes("assets/old-hero.mp4"));
+  assert.equal(saved.outputValidation.accepted, true);
 });

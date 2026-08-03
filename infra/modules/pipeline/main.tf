@@ -126,6 +126,14 @@ data "archive_file" "worker" {
     filename = "moderation.mjs"
   }
   source {
+    content  = file("${path.module}/lambda/director-kit.mjs")
+    filename = "director-kit.mjs"
+  }
+  source {
+    content  = file("${path.module}/lambda/director-prompt.mjs")
+    filename = "director-prompt.mjs"
+  }
+  source {
     content  = file("${path.module}/../api/lambda/email.mjs")
     filename = "email.mjs"
   }
