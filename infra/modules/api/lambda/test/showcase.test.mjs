@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeHandler } from "../index.mjs";
 import { isShowcased, setShowcase, SHOWCASE_CACHE_SECONDS } from "../showcase.mjs";
+import { showcaseDecide } from "../admin.mjs";
 
 // ---------- a minimal fake ctx: an in-memory table + the config previewUrl reads ----------
 function fakeCtx(seedSites = []) {
@@ -239,19 +240,33 @@ const setEvent = (siteId, sub, showcase, groups) => ({
   body: JSON.stringify({ showcase }),
 });
 
-test("showcase write: the owner can turn consent ON and OFF", async () => {
+test("showcase write: owner opt-in is a PENDING request, the Floor approves, opt-out is immediate", async () => {
   // default OFF to start: the flag is absent on a freshly live film
   const ctx = writeCtx([site({ siteId: "s1", slug: "hindi", owner: "owner-1", showcase: undefined })]);
 
-  // ON
+  // ON: the owner's opt-in stores a REQUEST, never a public listing
   let r = parse(await setShowcase(setEvent("s1", "owner-1", true), ctx));
   assert.equal(r.code, 200);
   assert.equal(r.body.ok, true);
-  assert.equal(r.body.showcase, true);         // server confirms the persisted flag
+  assert.equal(r.body.showcase, "pending");    // server confirms the persisted state
   assert.equal(r.body.slug, "hindi");
-  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, true); // and it is truly stored
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, "pending"); // truly stored
+  assert.equal(isShowcased(ctx.ddb._store.get("SITE#s1|META")), false, "a pending request never reaches the wall");
 
-  // OFF
+  // the Floor approves: only now does the listing become public truth
+  const adminEv = (approve) => ({
+    requestContext: { routeKey: "POST /admin/sites/{id}/showcase", http: { method: "POST", path: "/admin/sites/s1/showcase" },
+      authorizer: { jwt: { claims: { sub: "floor-1", email: "floor-1@x.io", "cognito:groups": ["admin"] } } } },
+    pathParameters: { id: "s1" },
+    body: JSON.stringify({ approve }),
+  });
+  const d = parse(await showcaseDecide(adminEv(true), ctx));
+  assert.equal(d.code, 200);
+  assert.equal(d.body.showcase, true);
+  assert.equal(ctx.ddb._store.get("SITE#s1|META").showcase, true);
+  assert.equal(isShowcased(ctx.ddb._store.get("SITE#s1|META")), true);
+
+  // OFF: leaving the wall is immediate, no approval needed in that direction
   r = parse(await setShowcase(setEvent("s1", "owner-1", false), ctx));
   assert.equal(r.code, 200);
   assert.equal(r.body.showcase, false);
@@ -332,9 +347,20 @@ test("showcase write: the public read reflects the change end to end", async () 
   let wall = parse(await read(publicEvent()));
   assert.equal(wall.body.films.find((f) => f.slug === "abdelhamid-chouraichi"), undefined);
 
-  // owner opts in
+  // owner opts in: a PENDING request, still absent from the wall
   const on = parse(await setShowcase(setEvent("s1", "owner-1", true), ctx));
-  assert.equal(on.body.showcase, true);
+  assert.equal(on.body.showcase, "pending");
+  wall = parse(await read(publicEvent()));
+  assert.equal(wall.body.films.find((f) => f.slug === "abdelhamid-chouraichi"), undefined, "pending is never public");
+
+  // the Floor approves the request
+  const approve = parse(await showcaseDecide({
+    requestContext: { routeKey: "POST /admin/sites/{id}/showcase", http: { method: "POST", path: "/admin/sites/s1/showcase" },
+      authorizer: { jwt: { claims: { sub: "floor-1", email: "floor-1@x.io", "cognito:groups": ["admin"] } } } },
+    pathParameters: { id: "s1" },
+    body: JSON.stringify({ approve: true }),
+  }, ctx));
+  assert.equal(approve.body.showcase, true);
 
   // now it is on the public wall, with only the public card fields
   wall = parse(await read(publicEvent()));

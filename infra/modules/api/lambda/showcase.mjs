@@ -168,11 +168,17 @@ export async function setShowcase(event, ctx) {
     return json(409, { ok: false, error: "premiere the film first, then add it to the showcase" });
   }
 
+  // Turning OFF is immediate: leaving the wall never needs permission.
+  // Turning ON is a REQUEST: the wall lists a film only after a director
+  // approves it (showcase === true via POST /admin/sites/{id}/showcase), so
+  // consent flows owner -> Floor -> public and the wall stays curated. An
+  // admin's own opt-in approves itself; they ARE the Floor.
+  const value = b.showcase === true ? (isAdmin(claims) ? true : "pending") : false;
   await ctx.ddb.update({
     Key: { PK: site.PK, SK: "META" },
     UpdateExpression: "SET showcase = :v, updatedAt = :t",
     ConditionExpression: "attribute_exists(PK)",
-    ExpressionAttributeValues: { ":v": b.showcase, ":t": now() },
+    ExpressionAttributeValues: { ":v": value, ":t": now() },
   });
-  return ok({ ok: true, siteId: site.siteId, slug: site.slug, showcase: b.showcase });
+  return ok({ ok: true, siteId: site.siteId, slug: site.slug, showcase: value });
 }

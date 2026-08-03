@@ -63,6 +63,7 @@ export const api = {
   adminPipelineSet: (enabled) => req("/admin/pipeline", { method: "POST", body: { enabled }, auth: true }),
   adminFunnel: () => req("/funnel/report", { auth: true }),
   adminGrantCredits: (sub, delta, reason) => req(`/admin/users/${encodeURIComponent(sub)}/credits`, { method: "POST", body: { delta, reason }, auth: true }), // operator credit lever: fulfil "where is my credit", recover the claim/grant crash window, or claw back after a refund
+  adminShowcase: (id, approve) => req(`/admin/sites/${id}/showcase`, { method: "POST", body: { approve }, auth: true }), // the Floor decides a pending showcase request (or unlists a film)
 
   // ---------- buyer-facing surfaces (UI-first) ----------
   // These routes are the contract the console expects; some are not wired in the
