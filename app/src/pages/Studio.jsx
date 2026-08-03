@@ -873,12 +873,16 @@ export default function Studio() {
         open={!!recast}
         title="A new lead actor?"
         kicker="THE SET · RECAST"
-        body={`This resume reads as ${recast?.name || "someone new"}, but the set is dressed for ${q.name || "the current cast"}. Recast the film for ${recast?.name || "them"}? The look and design stay; name, story, projects and headshot reset so the new resume drives. Your saved dossier is untouched.`}
+        body={`This resume reads as ${recast?.name || "someone new"}, but the set is dressed for ${q.name || "the current cast"}. Recast the film for ${recast?.name || "them"}? Name, story and projects refill from the new resume; the headshot resets; your look and design stay. Your saved dossier is untouched.`}
         confirmLabel="Recast the film"
         onConfirm={() => {
           dossierSaved.current = true; // this film is for someone else: never write them into YOUR dossier
-          setQ({ name: "", email: "", headline: "", website: "", focus: "" });
-          setProjects([]); setTestimonials([]); setServices([]); setPhoto(null);
+          // refill the set from the NEW resume: the parser already read it, so
+          // the fields land filled instead of leaving an emptied form to retype
+          const p = parseProfile(cvText) || {};
+          setQ({ name: p.name || "", email: p.email || "", headline: p.headline || "", website: "", focus: p.summary || "" });
+          setProjects((p.projects || []).slice(0, 8).map((pr) => ({ name: pr.name || "", summary: pr.desc || "" })));
+          setTestimonials([]); setServices([]); setPhoto(null);
           setRecast(null);
         }}
         onClose={() => setRecast(null)}
