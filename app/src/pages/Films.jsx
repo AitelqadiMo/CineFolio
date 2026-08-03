@@ -265,9 +265,6 @@ export default function Films() {
                   <b style={{ display: "block", fontSize: 13 }}>
                     Show the &ldquo;Made with CineFolio&rdquo; credit{badgeBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
                   </b>
-                  <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
-                    A small end credit at the foot of your site. On by default; turning it off is free and takes effect on the next publish.
-                  </i>
                 </span>
               </label>
             </>

@@ -353,16 +353,31 @@ test("moderationConfigFromSecrets maps the Creem SSM parameters and defaults the
   const cfg = moderationConfigFromSecrets({ CREEM_MODERATION_API_KEY: "creem_live_xyz", CREEM_MODERATION_TIMEOUT_MS: "5000" });
   assert.equal(cfg.creemKey, "creem_live_xyz");
   assert.equal(cfg.creemTimeoutMs, 5000);
-  // the URL DEFAULTS to Creem's real endpoint so the operator only supplies a key
-  assert.equal(cfg.creemEndpoint, "https://api.creem.io/v1/moderation/prompt");
+  // the config layer passes the raw parameter through; the DEFAULT now resolves
+  // inside creemVerdict (prefix-aware), so an absent URL maps to "" here
+  assert.equal(cfg.creemEndpoint, "");
   // an explicit URL overrides the default (e.g. Creem's test host)
   const overridden = moderationConfigFromSecrets({ CREEM_MODERATION_API_KEY: "creem_test_x", CREEM_MODERATION_API_URL: "https://test.creem.io/v1/moderation/prompt" });
   assert.equal(overridden.creemEndpoint, "https://test.creem.io/v1/moderation/prompt");
-  // Creem dormant by default (empty key), URL still defaulted, sane timeout
+  // Creem dormant by default (empty key), URL passthrough empty, sane timeout
   const empty = moderationConfigFromSecrets({});
   assert.equal(empty.creemKey, "");
-  assert.equal(empty.creemEndpoint, "https://api.creem.io/v1/moderation/prompt");
+  assert.equal(empty.creemEndpoint, "");
   assert.equal(empty.creemTimeoutMs, 5000);
+});
+
+test("a literal 'unset' or empty endpoint resolves to the documented default, never fetch('unset')", async () => {
+  // THE INCIDENT (order 80a10e12): the SSM parameter held the placeholder
+  // "unset"; it is truthy, so the old code passed it straight to fetch() and
+  // the fail-closed screen blocked every order with ModerationUnavailable.
+  let seen = null;
+  const capture = async (url) => { seen = url; return okResponse({ decision: "allow" }); };
+  await creemVerdict(CLEAN, { ...CREEM, creemEndpoint: "unset" }, { fetch: capture });
+  assert.equal(seen, "https://test-api.creem.io/v1/moderation/prompt", "test key + placeholder URL screens against Creem's test host");
+  // an empty override with a LIVE key defaults to the live endpoint
+  let seen2 = null;
+  await creemVerdict(CLEAN, { creemKey: "creem_live_xyz", creemEndpoint: "" }, { fetch: async (u) => { seen2 = u; return okResponse({ decision: "allow" }); } });
+  assert.equal(seen2, "https://api.creem.io/v1/moderation/prompt");
 });
 
 // Regression guard for the dispatch-time dossier screen. The dossier is the

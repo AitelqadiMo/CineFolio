@@ -418,7 +418,18 @@ export async function creemVerdict(fields, config = {}, deps = {}) {
   // value. Dormant => null => moderate() behaves exactly as before Creem existed.
   if (!key || key === "unset") return null;
 
-  const endpoint = config?.creemEndpoint || "https://api.creem.io/v1/moderation/prompt";
+  // The endpoint override honors the SAME placeholder discipline as the key:
+  // "" and "unset" mean NOT CONFIGURED, never a URL. A literal "unset" in the
+  // SSM parameter took production down: it is truthy, so it reached fetch(),
+  // fetch("unset") threw, and the fail-closed screen blocked every order.
+  // The default is key-prefix aware: creem_test_ keys screen against Creem's
+  // test host, live keys against the live one.
+  const override = config?.creemEndpoint;
+  const endpoint = (override && override !== "unset")
+    ? override
+    : (key.startsWith("creem_test_")
+      ? "https://test-api.creem.io/v1/moderation/prompt"
+      : "https://api.creem.io/v1/moderation/prompt");
   const fetchFn = deps.fetch || globalThis.fetch;
   // Creem recommends roughly a 5 second timeout with a clean retryable error.
   const timeoutMs = Number(config?.creemTimeoutMs) || 5000;
@@ -644,7 +655,7 @@ export function moderationConfigFromSecrets(sec = {}) {
     timeoutMs: Number(sec.MODERATION_TIMEOUT_MS) || 4000,
     // Creem: key alone arms the screen; URL defaults to the documented endpoint.
     creemKey: sec.CREEM_MODERATION_API_KEY || "",
-    creemEndpoint: sec.CREEM_MODERATION_API_URL || "https://api.creem.io/v1/moderation/prompt",
+    creemEndpoint: sec.CREEM_MODERATION_API_URL || "", // "" / "unset" resolve to the documented default inside creemVerdict (prefix-aware)
     creemTimeoutMs: Number(sec.CREEM_MODERATION_TIMEOUT_MS) || 5000,
   };
 }
