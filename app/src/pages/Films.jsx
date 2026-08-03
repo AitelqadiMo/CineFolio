@@ -222,48 +222,6 @@ export default function Films() {
         </span>
         <button className="kebab" aria-label={`Actions for ${s.title || s.slug}`} aria-haspopup="menu" aria-expanded={kebab === s.siteId} onClick={() => setKebab(kebab === s.siteId ? null : s.siteId)}>⋯</button>
       </span>
-      {s.status === "live" && (
-        <label className="showcasetoggle" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 4px 2px" }}>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={showcaseOn[s.siteId] === true}
-            disabled={showcaseBusy === s.siteId}
-            onChange={() => toggleShowcase(s)}
-            aria-label={`Show ${s.title || s.slug} on the public showcase`}
-            style={{ marginTop: 3, flex: "0 0 auto" }}
-          />
-          <span style={{ minWidth: 0 }}>
-            <b style={{ display: "block", fontSize: 13 }}>
-              Show on the public showcase{showcaseBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
-            </b>
-            <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
-              Lists this film publicly on cinefolio.dev/showcase. Off by default; turn it off any time to remove it.
-            </i>
-          </span>
-        </label>
-      )}
-      {s.status === "live" && (
-        <label className="badgetoggle" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 4px 2px" }}>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={badgeOn[s.siteId] !== false}
-            disabled={badgeBusy === s.siteId}
-            onChange={() => toggleBadge(s)}
-            aria-label={`Show the Made with CineFolio credit on ${s.title || s.slug}`}
-            style={{ marginTop: 3, flex: "0 0 auto" }}
-          />
-          <span style={{ minWidth: 0 }}>
-            <b style={{ display: "block", fontSize: 13 }}>
-              Show the &ldquo;Made with CineFolio&rdquo; credit{badgeBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
-            </b>
-            <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
-              A small end credit at the foot of your site that helps other people find the tool. On by default. Turning it off is free and takes effect the next time you publish this film.
-            </i>
-          </span>
-        </label>
-      )}
       {kebab === s.siteId && (
         <div className="bkmenu" ref={kebabRef} style={{ position: "absolute", right: 0, top: "100%", marginTop: 4 }} role="menu">
           <button role="menuitem" onClick={() => { setKebab(null); nav(`film/${s.siteId}`); }}><span className="mi" aria-hidden="true">◉</span>Open in the workspace</button>
@@ -271,6 +229,49 @@ export default function Films() {
           {s.status === "live" && <button role="menuitem" onClick={() => { setKebab(null); setSharing(s); }}><span className="mi" aria-hidden="true">◈</span>Share</button>}
           {s.liveRelease && s.status === "live" && <button role="menuitem" onClick={() => { setKebab(null); setDuping(s); }}><span className="mi" aria-hidden="true">▦</span>Duplicate</button>}
           {s.status === "taken_down" && s.liveRelease && <button role="menuitem" onClick={() => act(s.siteId, () => api.rollback(s.siteId, s.liveRelease))}><span className="mi" aria-hidden="true">☀</span>Relight</button>}
+          {s.status === "live" && (
+            <>
+              <div className="msep" />
+              <label className="showcasetoggle" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", width: 280, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={showcaseOn[s.siteId] === true}
+                  disabled={showcaseBusy === s.siteId}
+                  onChange={() => toggleShowcase(s)}
+                  aria-label={`Show ${s.title || s.slug} on the public showcase`}
+                  style={{ marginTop: 3, flex: "0 0 auto" }}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <b style={{ display: "block", fontSize: 13 }}>
+                    Show on the public showcase{showcaseBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
+                  </b>
+                  <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
+                    Lists this film publicly on cinefolio.dev/showcase. Off by default; turn it off any time to remove it.
+                  </i>
+                </span>
+              </label>
+              <label className="badgetoggle" style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 12px", width: 280, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={badgeOn[s.siteId] !== false}
+                  disabled={badgeBusy === s.siteId}
+                  onChange={() => toggleBadge(s)}
+                  aria-label={`Show the Made with CineFolio credit on ${s.title || s.slug}`}
+                  style={{ marginTop: 3, flex: "0 0 auto" }}
+                />
+                <span style={{ minWidth: 0 }}>
+                  <b style={{ display: "block", fontSize: 13 }}>
+                    Show the &ldquo;Made with CineFolio&rdquo; credit{badgeBusy === s.siteId ? <span className="spin" style={{ marginLeft: 8 }} /> : null}
+                  </b>
+                  <i style={{ fontStyle: "normal", fontSize: 11, color: "var(--bk-faint)" }}>
+                    A small end credit at the foot of your site. On by default; turning it off is free and takes effect on the next publish.
+                  </i>
+                </span>
+              </label>
+            </>
+          )}
           <div className="msep" />
           {s.status !== "taken_down" && <button role="menuitem" onClick={() => { setKebab(null); setConfirmDown(s); }}><span className="mi" aria-hidden="true">◐</span>Take down</button>}
           {s.status === "taken_down" && <button role="menuitem" onClick={() => { setKebab(null); setConfirmDelete(s); }} style={{ color: "var(--bk-red)" }}><span className="mi" aria-hidden="true">✕</span>Delete forever</button>}

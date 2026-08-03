@@ -1,6 +1,5 @@
 import { useEffect, useState, createContext, useContext, Component } from "react";
 import { getUser, onAuthChange, restore, signOut } from "./cognito.js";
-import { CONFIG } from "./config.js";
 import Landing from "./marketing/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Home from "./pages/Home.jsx";
@@ -50,7 +49,6 @@ export default function App() {
   ledger.scope(user?.sub); // idempotent; must precede any child ledger read
   const [booting, setBooting] = useState(true);
   const [route, setRoute] = useState(path());
-  const [edge, setEdge] = useState(null); // { ms } ambient status
   const [prod, setProd] = useState(null); // global director's-cut tracking
   const [credits, setCredits] = useState(() => ledger.credits());
   const [navOpen, setNavOpen] = useState(false); // phone drawer: the sidebar behind a clapper button
@@ -64,19 +62,6 @@ export default function App() {
     window.addEventListener("popstate", onPop);
     return () => { off(); window.removeEventListener("popstate", onPop); };
   }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    let alive = true;
-    const ping = async () => {
-      const t0 = performance.now();
-      try { await api.health(); if (alive) setEdge({ ms: Math.round(performance.now() - t0) }); }
-      catch { if (alive) setEdge({ ms: -1 }); }
-    };
-    ping();
-    const t = setInterval(ping, 30000);
-    return () => { alive = false; clearInterval(t); };
-  }, [user]);
 
   // global production tracker: The Set stores cf.activeOrder; the shell owns polling
   useEffect(() => {
@@ -135,10 +120,6 @@ export default function App() {
       {credits.revisions > 0 && (
         <button className="bkchip gold" onClick={() => nav("settings")} title="Director's notes left on delivered cuts">◈ {credits.revisions} DIRECTOR&apos;S NOTE{credits.revisions === 1 ? "" : "S"} LEFT</button>
       )}
-      <span className="bkchip plain">{CONFIG.env.toUpperCase()}</span>
-      {edge && (edge.ms >= 0
-        ? <span className="bkchip plain green">{edge.ms}MS</span>
-        : <span className="bkchip plain red">OFFLINE</span>)}
     </div>
   );
 

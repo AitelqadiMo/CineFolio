@@ -70,8 +70,12 @@ export default function Home() {
   // the AI director and the client waits in the Premiere Lounge with a
   // skeleton until the cut lands in the preview
   const rollToDirector = async () => {
-    const cv = intake.resume?.text || "";
-    if (cv.trim().length < 80) { setErr("The AI Director lane needs a resume to read. Drop a PDF or TXT above, or switch to The Set and see your site render as you type, no resume required."); return; }
+    // a resume arrives two ways: a dropped PDF/TXT, or the resume TEXT pasted
+    // straight into the box. A long typed message with no file IS the resume.
+    const typed = brief.trim();
+    const fileCv = intake.resume?.text || "";
+    const cv = fileCv || (typed.length >= 120 ? typed : "");
+    if (cv.trim().length < 80) { setErr("The AI Director lane needs a resume to read. Drop a PDF or TXT above, paste the resume text right here in the box, or switch to The Set and see your site render as you type, no resume required."); return; }
     setSending(true); setErr("");
     try {
       const name = (cv.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || "").slice(0, 60);
@@ -79,7 +83,7 @@ export default function Home() {
         email: user.email, name, role: "engineer",
         cvText: cv,
         template: style, palette: null,
-        customIdea: brief.trim() || null,
+        customIdea: fileCv ? (typed || null) : null, // when the typed text IS the resume, it is not also the creative note
         photo: intake.photo?.url && !String(intake.photo.url).startsWith("data:") ? intake.photo.url : null,
         covers: intake.covers.filter((c) => !String(c.url).startsWith("data:")).map((c) => ({ name: c.name, url: c.url })),
         links: null,
