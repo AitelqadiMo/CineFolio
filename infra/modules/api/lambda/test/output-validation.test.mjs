@@ -136,3 +136,18 @@ test("legacy output keeps structural reference safety without premium markers", 
   assert.deepEqual(inspected.errors, []);
   assert.equal(inspected.warnings[0].code, "missing_relative_reference");
 });
+
+test("premium gate rejects overflow hidden on html or body (the sticky killer)", () => {
+  // the exact failure shipped on the first two premium cuts: the mobile
+  // no-sideways-scroll rule implemented as html,body{overflow-x:hidden}, which
+  // silently disables position:sticky and blanks every pinned scene.
+  const killer = validFiles.map((f) => f.path === "index.html"
+    ? { ...f, html: f.html.replace("</body>", "<style>html, body { overflow-x: hidden; }</style></body>") }
+    : f);
+  const out = inspectDirectorOutput(killer, uploaded, { strict: true });
+  assert.ok(out.errors.some((e) => e.code === "sticky_killer"), JSON.stringify(out.errors));
+  // the kit's own html{overflow-x:clip} and [data-pin]>.stage{overflow:hidden}
+  // never trip the gate: the complete valid cut stays clean
+  const clean = inspectDirectorOutput(validFiles, uploaded, { strict: true });
+  assert.ok(!clean.errors.some((e) => e.code === "sticky_killer"));
+});
