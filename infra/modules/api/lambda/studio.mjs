@@ -5,6 +5,7 @@
 import { ok, bad, json, bodyOf, qs, isEmail, clampStr, uuid, now, safeEqual, claimsOf, isAdmin, validateBundle, isPagePath, assetTypeOf, BUNDLE_ASSET_PATH_RE, CUT_PRICE, NEW_FREE_CUTS, LEGACY_FREE_CUTS, entitlementOf } from "./lib.mjs";
 import { foundingSeatsLeft } from "./billing.mjs";
 import { sendOrderEmail } from "./email.mjs";
+import { inspectDirectorOutput, PREMIUM_DIRECTOR_CONTRACT } from "./output-validation.mjs";
 
 const esc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -295,10 +296,12 @@ export async function callback(event, ctx) {
   const orderId = event.headers?.["x-cf-order"] || event.headers?.["X-CF-Order"] || qs(event, "orderId");
   if (!orderId || !ORDER_ID_RE.test(orderId)) return bad("bad orderId");
   const raw = event.isBase64Encoded ? Buffer.from(event.body || "", "base64").toString("utf8") : event.body || "";
-  // v2: the agent delivers a whole web app as JSON { files: [{ path, html }] };
-  // a raw single html document stays accepted so v1 agents keep working
+  // v2 is the premium Director contract. Raw single-page HTML remains accepted
+  // for the legacy preview path, but only a JSON bundle is held to the depth and
+  // commercial-completeness gate.
+  const premiumBundle = raw.trimStart().startsWith("{");
   let files;
-  if (raw.trimStart().startsWith("{")) {
+  if (premiumBundle) {
     let parsed = null;
     try { parsed = JSON.parse(raw); } catch { return bad("invalid json body"); }
     files = Array.isArray(parsed?.files) ? parsed.files : null;
@@ -310,6 +313,36 @@ export async function callback(event, ctx) {
 
   const order = await ctx.ddb.get({ PK: `ORDER#${orderId}`, SK: "META" });
   if (!order) return bad("unknown order", 404);
+  const premiumRequired = order.directorContract === PREMIUM_DIRECTOR_CONTRACT;
+  if (premiumRequired && !premiumBundle) return bad("premium Director requires a JSON file bundle");
+  const uploaded = await uploadedAssets(ctx, orderId);
+  // Revisions reuse previously delivered media by the same relative path. Pages
+  // must still be delivered as a complete set, so only prior non-page files join
+  // the known media and final manifest.
+  const priorMedia = order.revisionNotes && Array.isArray(order.cutFiles)
+    ? order.cutFiles.filter((p) => !isPagePath(p))
+    : [];
+  const customerMedia = [
+    order.assets?.photo,
+    ...(Array.isArray(order.assets?.covers) ? order.assets.covers.map((c) => c?.url) : []),
+  ].filter(Boolean);
+  const inspection = inspectDirectorOutput(files, [...uploaded, ...priorMedia], {
+    strict: premiumRequired,
+    allowedRemoteMedia: customerMedia,
+  });
+  if (inspection.errors.length) {
+    const detail = inspection.errors.slice(0, 8).map((e) => `${e.code}: ${e.detail}`).join("; ");
+    await ctx.ddb.update({
+      Key: { PK: `ORDER#${orderId}`, SK: "META" },
+      UpdateExpression: "SET outputValidation = :v ADD outputValidationAttempts :one",
+      ExpressionAttributeValues: {
+        ":v": { version: 1, accepted: false, ...inspection, at: now() },
+        ":one": 1,
+      },
+      ConditionExpression: "attribute_exists(PK)",
+    });
+    return bad(`director output incomplete: ${detail}`);
+  }
 
   const key = `orders/${orderId}/cut/index.html`;
   await Promise.all(files.map((f) => isPagePath(f.path)
@@ -317,12 +350,14 @@ export async function callback(event, ctx) {
     : ctx.s3.putObject(ctx.config.artifactsBucket, `orders/${orderId}/cut/${f.path}`, Buffer.from(f.content, "base64"), assetTypeOf(f.path))));
   // the file manifest rides on the order so publish and finalize need no state
   // machine changes. Assets uploaded ahead via /studio/asset fold in here.
-  const uploaded = await uploadedAssets(ctx, orderId);
-  const manifest = [...new Set([...files.map((f) => f.path), ...uploaded])];
+  const manifest = [...new Set([...files.map((f) => f.path), ...uploaded, ...priorMedia])];
   await ctx.ddb.update({
     Key: { PK: `ORDER#${orderId}`, SK: "META" },
-    UpdateExpression: "SET cutFiles = :f",
-    ExpressionAttributeValues: { ":f": manifest },
+    UpdateExpression: "SET cutFiles = :f, outputValidation = :v",
+    ExpressionAttributeValues: {
+      ":f": manifest,
+      ":v": { version: 1, accepted: true, ...inspection, at: now() },
+    },
     ConditionExpression: "attribute_exists(PK)",
   });
 
