@@ -6,6 +6,20 @@ export const PREMIUM_DIRECTOR_KIT_SHA256 = "62f903747aaa851bfc66ee268f5a6adbd2f1
 const REQUIRED_DEPTH_BEATS = ["hero", "work", "signature"];
 const EXTERNAL_REF_RE = /^(?:[a-z][a-z0-9+.-]*:|\/|#)/i;
 
+// Find a style rule that applies overflow(-x/-y):hidden to html or body — the
+// selector-level trap that silently breaks position:sticky pinned scenes.
+function stickyKillerSelector(html) {
+  const css = [...String(html).matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join("\n");
+  const rule = /([^{}]+)\{([^{}]*)\}/g;
+  let m;
+  while ((m = rule.exec(css))) {
+    const selector = m[1];
+    if (!/(^|[\s,>~+])(html|body)\s*(?:[,{:]|$)/i.test(selector.trim() + "{")) continue;
+    if (/overflow(?:-[xy])?\s*:\s*hidden/i.test(m[2])) return selector.trim().replace(/\s+/g, " ").slice(0, 60);
+  }
+  return null;
+}
+
 function htmlOf(files, path) {
   return files.find((f) => f?.path === path)?.html || "";
 }
@@ -140,6 +154,16 @@ export function inspectDirectorOutput(files, uploadedPaths = [], { strict = true
   if (!visibleMarker(index, "data-cf-contact")) add(errors, "missing_contact", "data-cf-contact is required on a visible element");
   if (!/prefers-reduced-motion\s*:\s*reduce/i.test(index)) add(errors, "missing_reduced_motion", "reduced-motion CSS is required");
   if (!/@media\s*\([^)]*(?:max-width\s*:\s*(?:390|600)px|pointer\s*:\s*coarse)/i.test(index)) add(errors, "missing_mobile_fallback", "mobile or coarse-pointer fallback is required");
+  // position:sticky dies silently under an ancestor with overflow(-x/-y):hidden,
+  // which turns every pinned scene into a multi-viewport void (the exact
+  // failure shipped on the first two premium cuts: the mobile no-sideways-scroll
+  // rule implemented as html,body{overflow-x:hidden}). The kit prevents sideways
+  // scroll with html{overflow-x:clip}; hidden on html or body is never needed.
+  for (const f of files) {
+    if (!/\.html$/i.test(f?.path || "") || !/data-pin\b/i.test(f?.html || "")) continue;
+    const killer = stickyKillerSelector(f.html);
+    if (killer) add(errors, "sticky_killer", `${f.path}: overflow hidden on "${killer}" disables position:sticky and blanks pinned scenes; use overflow-x: clip on html (the kit already applies it)`);
+  }
 
   const workBlock = blockWithAttr(index, "data-cf-work-index");
   const contactBlock = blockWithAttr(index, "data-cf-contact");
